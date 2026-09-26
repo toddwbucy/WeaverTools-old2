@@ -162,11 +162,12 @@ words that the record carries no checksum. **The seated prefix's length** of sec
 from the first generation: the SPU records the figure at open per its section 4.2 and no
 event carries it, per the trace charter's section 3.1, so the derivation that recovers
 it is this contract's. **The task's verdict** of section 2.2, the predicate the task
-answered and the ratio over its denominator, whose kind `weaver-trace` has yet to add
-per issue #523 and whose shape is fixed here so that act lands it rather than electing
-it. This contract is the authority for all three, and `weaver-analysis-Spec` section 5
-and `weaver-web-Spec` section 2.2 cite them here. Every other term above has one
-authority already, and this contract states what crosses of them and defines none.
+answered, whether it held, and the ratio over its denominator as its two terms, which
+`weaver-trace`'s `score` kind carries since #707 on issue #523 and whose shape is fixed
+here, amended 2026-09-26 when the reader first read it. This contract is the authority
+for all three, and `weaver-analysis-Spec` section 5 and `weaver-web-Spec` section 2.2
+cite them here. Every other term above has one authority already, and this contract
+states what crosses of them and defines none.
 
 ## 1. What this contract governs
 
@@ -334,8 +335,11 @@ driver by pinned version, and the engine libraries by sha256, per `weaver-analys
 section 3. **The record is the authority for the organ binaries** where both name them,
 the `load` event carrying them since 2026-09-06 for this reason, and that charter's own
 list moves with this act
-- **the task's verdict** where the record carries one, the predicate the task answered
-  and the ratio over its denominator, per issue #523
+- **the task's verdict** where the record carries one, the predicate the task answered,
+  `passed`, whether it held, and `ratio`, the run's `measured` count over the task's
+  `denominator`, per issue #523. **The ratio crosses as its two terms and never as a
+  quotient**, as the record carries it, so no rounding enters between the record and
+  the store, and a task that supplies no denominator sends no ratio
 
 **What the record does not hold is read from a deposit the caller names**, on the
 operator's ruling of 2026-09-09. The device model is the deposit's whole, and the code
@@ -352,10 +356,17 @@ nullable. A default would say the run ran on hardware nobody observed, and a ref
 would make every record drained without a deposit unreadable, including every record
 written before deposits were kept.
 
-**The task's verdict has no producer yet and this clause binds the future act.** The
-kind that carries it is `weaver-trace`'s to add per issue #523, so the member is absent
-on every record written before that act, and the shape is fixed here so that act lands
-it rather than electing it.
+**The task's verdict has a producer since #707 and a reader since this act**,
+2026-09-26. `weaver-trace` carries it as the `score` event, authored at the run's close
+by the task through the seat, and the emitter reads that event and places it on the
+entry for the generation the close names. **This clause fixed the shape before the
+producer existed and is amended by the act that first read it**: the trace carries
+whether the predicate held beside its name, which the earlier words "the predicate the
+task answered" held in reading and did not spell, and the ratio as its two terms rather
+than a quotient. No emitter had sent the member in its earlier reserved shape, so no
+reader meets the change, and a record written before #707 carries no verdict. The web
+half of this change, the store's reading of the member, is the web repository's since
+#689.
 
 **The entry does not depend on the perplexity.** A generation whose record
 carries none still carries its counts, because the residency is what a store

@@ -39,12 +39,23 @@ pub enum Step {
 
 /// A reader over a drained record. One method, called per event in
 /// landing order. The raw-line hook lets readers account for exact bytes
-/// without retaining them; its default keeps the ordinary event parse.
+/// without retaining them, and its default keeps the ordinary event parse.
+///
+/// **The end of the drain is a reader's second exit**, beside whatever event
+/// closes its reading. A record that stops short, from a dead process or a
+/// truncated sink, never lands the closing event, so a reader holding a fact
+/// it emits only at that event is asked once more when the drain ends,
+/// whether the stream ran out or the reader stopped it, and may refuse.
+/// The default holds nothing and answers `Continue`.
 pub trait Reader {
     fn event(&mut self, event: &Event) -> Step;
 
     fn line(&mut self, line: &str) -> Step {
         Event::parse(line).map_or(Step::Continue, |event| self.event(&event))
+    }
+
+    fn end(&mut self) -> Step {
+        Step::Continue
     }
 }
 
@@ -68,13 +79,23 @@ pub fn drain<R: BufRead>(mut source: R, reader: &mut dyn Reader) -> Drained {
     loop {
         line.clear();
         match source.read_line(&mut line) {
-            Ok(0) => return Drained::Exhausted,
+            Ok(0) => {
+                return match reader.end() {
+                    Step::Refuse(why) => Drained::Refused(why),
+                    _ => Drained::Exhausted,
+                };
+            }
             Ok(_) => {}
             Err(error) => return Drained::Refused(format!("the stream failed: {error}")),
         }
         match reader.line(&line) {
             Step::Continue => {}
-            Step::Done => return Drained::Stopped,
+            Step::Done => {
+                return match reader.end() {
+                    Step::Refuse(why) => Drained::Refused(why),
+                    _ => Drained::Stopped,
+                };
+            }
             Step::Refuse(why) => return Drained::Refused(why),
         }
     }

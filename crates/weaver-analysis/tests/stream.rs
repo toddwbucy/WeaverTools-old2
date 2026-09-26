@@ -715,6 +715,152 @@ fn summaries_keep_run_conditions_raw_and_each_absence_independent() {
     }
 }
 
+/// **The task's verdict crosses once, on the entry for the generation the
+/// run's close names**, per `weaver-analysis-web-contract` section 2.2 and
+/// #523: a scored run's summary carries it on its last generation's entry
+/// and on no other, spelled as the record's `score` spelled it, the ratio as
+/// its two terms. A score taken before the run's last turn still crosses on
+/// the last entry, the close being the run's and not the score's. A verdict
+/// with no denominator crosses with no ratio, an unscored run's summary
+/// carries none, and a record holding a second score refuses, the trace
+/// having refused to write one (#707). **Where the closing generation
+/// produced no entry**, its measurement unreadable or never landed, or the
+/// run holds no generation at all, the scored run refuses naming it rather
+/// than moving the verdict to an earlier entry (#708 round one), and a scored
+/// record that ends before its unload refuses naming the run (round two).
+///
+/// Perturbations: drop the `score` arm and the verdict never crosses; place
+/// it on every entry of the run and the first entry carries one; fall back to
+/// the run's last entry where the closing generation has none and the
+/// malformed-last case crosses on turn t1; ignore a verdict still held when
+/// the drain ends and the truncated scored record reads as unscored. Watched
+/// under each.
+#[test]
+fn the_verdict_crosses_once_on_the_closing_generation() {
+    let unload = r#"{"session":"source","run":"r","sequence":"7","kind":"unload","payload":{}}"#;
+    let score = |sequence: &str, ratio: &str| {
+        format!(
+            r#"{{"session":"source","run":"r","sequence":"{sequence}","kind":"score","payload":{{"predicate":"reached-the-goal","passed":true{ratio}}}}}"#
+        )
+    };
+    let terms = r#","ratio":{"measured":14,"denominator":11}"#;
+    let scored = prefix_record().replace(unload, &format!("{}\n{unload}", score("7", terms)));
+    let summary = summary_value(&scored, &[]);
+    let entries = summary["generations"].as_array().unwrap();
+    assert_eq!(entries.len(), 2);
+    assert!(
+        entries[0].get("verdict").is_none(),
+        "no verdict on an earlier generation"
+    );
+    assert_eq!(
+        entries[1]["verdict"],
+        serde_json::json!({
+            "predicate": "reached-the-goal",
+            "passed": true,
+            "ratio": {"measured": 14, "denominator": 11}
+        }),
+        "the verdict and its terms on the closing generation"
+    );
+
+    let t2 = r#"{"session":"source","run":"r","turn":"t2","sequence":"4""#;
+    let early = prefix_record().replace(t2, &format!("{}\n{t2}", score("3b", terms)));
+    let summary = summary_value(&early, &[]);
+    let entries = summary["generations"].as_array().unwrap();
+    assert!(
+        entries[0].get("verdict").is_none() && entries[1].get("verdict").is_some(),
+        "a score before the last turn still crosses on the close's entry: {summary}"
+    );
+
+    let bare = prefix_record().replace(unload, &format!("{}\n{unload}", score("7", "")));
+    let summary = summary_value(&bare, &[]);
+    assert_eq!(
+        summary["generations"][1]["verdict"],
+        serde_json::json!({"predicate": "reached-the-goal", "passed": true}),
+        "no denominator, no ratio, never a default"
+    );
+
+    let unscored = summary_value(&prefix_record(), &[]);
+    for entry in unscored["generations"].as_array().unwrap() {
+        assert!(
+            entry.get("verdict").is_none(),
+            "an unscored run carries none"
+        );
+    }
+
+    let twice = prefix_record().replace(
+        unload,
+        &format!("{}\n{}\n{unload}", score("6b", terms), score("6c", terms)),
+    );
+    let out = signals_from_pipe(&twice, &[]);
+    assert!(
+        !out.status.success(),
+        "a record holding a second score refuses rather than choosing one"
+    );
+
+    // The close names the run's last generation, and where that generation
+    // produced no entry the scored run refuses naming it, rather than the
+    // verdict dropping or landing on an earlier generation (#708 round one).
+    let malformed_last = scored.replace("\"output_tokens\":[10,11,12]", "\"output_tokens\":null");
+    let out = signals_from_pipe(&malformed_last, &[]);
+    assert!(
+        !out.status.success() && String::from_utf8_lossy(&out.stderr).contains("turn t2"),
+        "a closing generation with no readable draws refuses naming its turn: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let measurement_t2 = r#"{"session":"source","run":"r","turn":"t2","sequence":"6","kind":"model.measurement","payload":{"input_tokens":[5,6],"output_tokens":[10,11,12]}}"#;
+    assert!(scored.contains(measurement_t2));
+    let unmeasured_last = scored.replace(&format!("{measurement_t2}\n"), "");
+    assert!(
+        !signals_from_pipe(&unmeasured_last, &[]).status.success(),
+        "a closing generation begun and never measured refuses"
+    );
+    let unmeasured_run = [
+        r#"{"session":"source","run":"r","sequence":"0","kind":"load","payload":{}}"#.to_string(),
+        score("1", terms),
+        r#"{"session":"source","run":"r","sequence":"2","kind":"unload","payload":{}}"#.to_string(),
+    ]
+    .join("\n")
+        + "\n";
+    assert!(
+        !signals_from_pipe(&unmeasured_run, &[]).status.success(),
+        "a scored run with no generation refuses"
+    );
+    // The end of the stream is the reader's other exit: a scored record that
+    // stops before its unload refuses naming the run, where the verdict
+    // would otherwise vanish into a summary reporting it absent (#708 round
+    // two). An unscored truncated record still reads, its digest and prefix
+    // absent as `incomplete_runs_never_vouch_for_a_digest_or_a_prefix` holds.
+    let truncated = scored.replace(&format!("{unload}\n"), "");
+    assert!(!truncated.contains("unload"));
+    let out = signals_from_pipe(&truncated, &[]);
+    assert!(
+        !out.status.success() && String::from_utf8_lossy(&out.stderr).contains("run r"),
+        "a scored record ending before its unload refuses naming the run: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let unscored_truncated = prefix_record().replace(&format!("{unload}\n"), "");
+    assert!(
+        signals_from_pipe(&unscored_truncated, &[]).status.success(),
+        "an unscored truncated record still reads"
+    );
+    let malformed_first = scored.replace("\"output_tokens\":[8,9]", "\"output_tokens\":null");
+    let summary = summary_value(&malformed_first, &[]);
+    let entries = summary["generations"].as_array().unwrap();
+    assert_eq!(
+        entries.len(),
+        1,
+        "the malformed first generation produced no entry"
+    );
+    assert_eq!(
+        entries[0]["turn"], "t2",
+        "the one entry is the closing generation's"
+    );
+    assert!(
+        entries[0].get("verdict").is_some(),
+        "and carries the verdict: {summary}"
+    );
+}
+
 #[test]
 fn sampling_agrees_on_declared_members_and_not_the_generation_seed() {
     let full = prefix_record();

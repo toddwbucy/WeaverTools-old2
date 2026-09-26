@@ -81,11 +81,24 @@ pub struct GenerationSummary {
     pub verdict: Option<Verdict>,
 }
 
-/// Reserved until the task-close event in #523 exists. This reader emits none.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// **The task's verdict**, per `weaver-analysis-web-contract` section 2.2:
+/// the predicate the task answered and whether it held, and the ratio over
+/// the task's denominator where one exists, read from the record's `score`
+/// event as the record spelled it (#523). It crosses once per run, on the
+/// entry for the generation the run's close names.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Verdict {
     pub predicate: String,
-    pub ratio: f64,
+    pub passed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ratio: Option<Ratio>,
+}
+
+/// The ratio as its two terms, what the run measured over the task's
+/// denominator, carried as the record carries it and never divided here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Ratio {
+    pub measured: u64,
     pub denominator: u64,
 }
 
@@ -160,6 +173,12 @@ struct Run {
     entries: Vec<usize>,
     sampling: Option<serde_json::Value>,
     weights: Option<String>,
+    verdict: Option<Verdict>,
+    /// The run's latest measured generation: its turn, and the entry it
+    /// produced, or `None` where its measurement produced none. The close
+    /// names this generation, so the verdict crosses on its entry or not at
+    /// all.
+    closing: Option<(Option<String>, Option<usize>)>,
 }
 
 #[derive(Debug)]
@@ -261,6 +280,30 @@ impl Signals {
             }
             "unload" => {
                 run.closed = true;
+                // The verdict is the run's close's, so it crosses on the entry
+                // for the generation that close names, the run's last, and on
+                // no other: every earlier generation has none to repeat. Where
+                // that generation produced no entry, begun and never measured
+                // or measured with no readable draws, the run refuses naming
+                // it rather than dropping the verdict or moving it elsewhere.
+                if let Some(verdict) = run.verdict.take() {
+                    let closing = match (&run.pending, &run.closing) {
+                        (Some(begun), _) => Err(begun.turn.clone()),
+                        (None, Some((_, Some(entry)))) => Ok(*entry),
+                        (None, Some((turn, None))) => Err(turn.clone()),
+                        (None, None) => Err(None),
+                    };
+                    match closing {
+                        Ok(entry) => self.series.generations[entry].verdict = Some(verdict),
+                        Err(turn) => {
+                            return Step::Refuse(format!(
+                                "run {} is scored and its closing generation{} produced no entry to carry the verdict",
+                                event.run,
+                                turn.map(|t| format!(" in turn {t}")).unwrap_or_default()
+                            ));
+                        }
+                    }
+                }
                 if run.loaded {
                     let digest = run
                         .raw_only
@@ -270,6 +313,20 @@ impl Signals {
                         self.series.generations[*index].prefix_length = run.prefix;
                     }
                 }
+            }
+            // One verdict per run, read as the record spelled it. The trace
+            // refuses a second score, so a record carrying two was not written
+            // by this program's recorder and the run refuses.
+            "score" => {
+                if run.verdict.is_some() {
+                    return Step::Refuse(format!("run {} carries a second score", event.run));
+                }
+                let Some(verdict) =
+                    payload.and_then(|p| serde_json::from_str::<Verdict>(p.get()).ok())
+                else {
+                    return Step::Refuse(format!("run {} has an unreadable score", event.run));
+                };
+                run.verdict = Some(verdict);
             }
             "model.request" => {
                 run.begin(event.turn);
@@ -307,6 +364,7 @@ impl Signals {
                 let Some(tokens) = member("output_tokens")
                     .and_then(|v| serde_json::from_str::<Vec<u32>>(v.get()).ok())
                 else {
+                    run.closing = Some((event.turn.clone(), None));
                     return Step::Continue;
                 };
                 let inputs = member("input_tokens")
@@ -342,6 +400,7 @@ impl Signals {
                         surprisal: surprisals.as_ref().and_then(|v| v.get(ordinal).copied()),
                     });
                 }
+                run.closing = Some((event.turn.clone(), Some(self.series.generations.len())));
                 run.entries.push(self.series.generations.len());
                 self.series.generations.push(GenerationSummary {
                     turn: event.turn,
@@ -385,6 +444,23 @@ impl Reader for Signals {
         match serde_json::from_str(line) {
             Ok(event) => self.observe(event, Some(line)),
             Err(_) => Step::Continue,
+        }
+    }
+
+    /// **A verdict still held when the drain ends refuses, naming its run**
+    /// (#708 round two). The verdict crosses at the run's unload, and a
+    /// record that stops short of it, a dead process or a truncated sink,
+    /// would otherwise report the run unscored. The digest and the prefix
+    /// length also wait for the unload and are absent on a run that never
+    /// closed, which is their stated answer: each describes a whole run and
+    /// a partial one cannot vouch for either. The verdict is a fact the
+    /// record holds, and its absence would say no score was taken.
+    fn end(&mut self) -> Step {
+        match self.runs.iter().find(|(_, run)| run.verdict.is_some()) {
+            Some((name, _)) => Step::Refuse(format!(
+                "run {name} is scored and the record ends before its unload, so the verdict has no closing generation to cross on"
+            )),
+            None => Step::Continue,
         }
     }
 }
