@@ -726,12 +726,15 @@ fn summaries_keep_run_conditions_raw_and_each_absence_independent() {
 /// having refused to write one (#707). **Where the closing generation
 /// produced no entry**, its measurement unreadable or never landed, or the
 /// run holds no generation at all, the scored run refuses naming it rather
-/// than moving the verdict to an earlier entry (#708 round one).
+/// than moving the verdict to an earlier entry (#708 round one), and a scored
+/// record that ends before its unload refuses naming the run (round two).
 ///
 /// Perturbations: drop the `score` arm and the verdict never crosses; place
 /// it on every entry of the run and the first entry carries one; fall back to
 /// the run's last entry where the closing generation has none and the
-/// malformed-last case crosses on turn t1. Watched under each.
+/// malformed-last case crosses on turn t1; ignore a verdict still held when
+/// the drain ends and the truncated scored record reads as unscored. Watched
+/// under each.
 #[test]
 fn the_verdict_crosses_once_on_the_closing_generation() {
     let unload = r#"{"session":"source","run":"r","sequence":"7","kind":"unload","payload":{}}"#;
@@ -821,6 +824,24 @@ fn the_verdict_crosses_once_on_the_closing_generation() {
     assert!(
         !signals_from_pipe(&unmeasured_run, &[]).status.success(),
         "a scored run with no generation refuses"
+    );
+    // The end of the stream is the reader's other exit: a scored record that
+    // stops before its unload refuses naming the run, where the verdict
+    // would otherwise vanish into a summary reporting it absent (#708 round
+    // two). An unscored truncated record still reads, its digest and prefix
+    // absent as `incomplete_runs_never_vouch_for_a_digest_or_a_prefix` holds.
+    let truncated = scored.replace(&format!("{unload}\n"), "");
+    assert!(!truncated.contains("unload"));
+    let out = signals_from_pipe(&truncated, &[]);
+    assert!(
+        !out.status.success() && String::from_utf8_lossy(&out.stderr).contains("run r"),
+        "a scored record ending before its unload refuses naming the run: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let unscored_truncated = prefix_record().replace(&format!("{unload}\n"), "");
+    assert!(
+        signals_from_pipe(&unscored_truncated, &[]).status.success(),
+        "an unscored truncated record still reads"
     );
     let malformed_first = scored.replace("\"output_tokens\":[8,9]", "\"output_tokens\":null");
     let summary = summary_value(&malformed_first, &[]);

@@ -446,4 +446,21 @@ impl Reader for Signals {
             Err(_) => Step::Continue,
         }
     }
+
+    /// **A verdict still held when the drain ends refuses, naming its run**
+    /// (#708 round two). The verdict crosses at the run's unload, and a
+    /// record that stops short of it, a dead process or a truncated sink,
+    /// would otherwise report the run unscored. The digest and the prefix
+    /// length also wait for the unload and are absent on a run that never
+    /// closed, which is their stated answer: each describes a whole run and
+    /// a partial one cannot vouch for either. The verdict is a fact the
+    /// record holds, and its absence would say no score was taken.
+    fn end(&mut self) -> Step {
+        match self.runs.iter().find(|(_, run)| run.verdict.is_some()) {
+            Some((name, _)) => Step::Refuse(format!(
+                "run {name} is scored and the record ends before its unload, so the verdict has no closing generation to cross on"
+            )),
+            None => Step::Continue,
+        }
+    }
 }

@@ -1083,7 +1083,9 @@ run of two generations as a run of two conditions. The task's verdict is authore
 close and crosses on that generation's entry alone, read from the record's `score`
 event as it spelled it. A record holding two refuses the run, and so does a scored run
 whose closing generation produced no entry, the verdict then having nowhere true to
-cross.
+cross. **The end of the drain is the reader's other exit**: a scored record that stops
+before its run's unload refuses naming the run, where the verdict would otherwise vanish
+into a summary saying no score was taken.
 
 **Where the caller names none, the device model crosses absent and the code identity
 crosses carrying only what the record held.** This crate neither infers a device from a
