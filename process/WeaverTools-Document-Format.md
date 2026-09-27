@@ -1,6 +1,6 @@
 # WeaverTools Document Format
 
-**Version:** v0.24, 2026-09-17. Companion to the Working Process. Project
+**Version:** v0.25, 2026-09-27. Companion to the Working Process. Project
 documents carry a version and a date and no state, per Working Process section 2.
 **Parent:** WeaverTools Working Process
 
@@ -26,6 +26,14 @@ the largest body of edge data in the corpus and still not a form a mapper can re
 
 This document does not invent the edges. It picks one notation for edges that are
 already being written and says where the notation goes.
+
+**The graph is deferred to release**, on the operator's ruling of 2026-09-27 recorded
+at Working Process section 6, and two obligations below are suspended with it. **The
+assertion record** of section 3 and **the conformance header** of sections 3 and 4
+are required of nothing new until release: existing records and existing headers are
+legal, stay in place, and are not maintained. The rest of the notation still governs
+how a document is written, since a block states its edges to a reader as surely as
+to a mapper, and nothing reads either obligation until the graph returns.
 
 ## 1. Two node layers, and the third code adds
 
@@ -170,8 +178,8 @@ the container of one experiment, a hypothesis, and its root `README.md` is the
 charter that registers it: what is declared, what is predicted, what would falsify
 it, and which probe answers for each part. Beneath it an arm is one variable the
 hypothesis names, and a probe under an arm is one measurement of that variable,
-holding its Spec as `<probe>-Spec.md`, its `code/`, which the census reads and holds
-to headers exactly as it holds a crate's units, and its `results/`, which holds the
+holding its Spec as `<probe>-Spec.md`, its `code/`, which review reads exactly as it
+reads a crate's units, and its `results/`, which holds the
 dated records the probe produces and which no gate and no ingest reads, on the
 two-clocks reason that section 5 of the Working Process states. The mirror rule does
 not reach it, since the documents and the code share one tree rather than two. The
@@ -325,6 +333,8 @@ are the same node: what a Spec's enforcement section lists, which is already a
 discrete checkable claim, and the load-bearing elections outside those sections,
 the socket type or the descriptor placement or a stated bound, which code must
 conform to as surely and which gate H1 would otherwise leave untraceable.
+**No new assertion record is required until release**, per section 0, and a record
+standing is legal and unmaintained.
 **A claim that divides into two records counts wholly as the first kind.** Where a
 clause names one instrument for a claim's core and another for its periphery, the
 two records it becomes both belong to the enforcement section for any provenance a
@@ -350,23 +360,24 @@ kinds author the graph's document-sourced records. These two add no authored rec
 to it, which is what the Working Process's count is a count of, and the code layer
 authors its own through the conformance header rather than through any document.
 
-**code.** A source unit carrying a conformance header, arriving in phase three and
-never before. A code node is declared by its own header rather than by any fenced
-block, the way a child declares its own parent edge: the header is the set of citations
-the unit carries and it names the assertion identifiers the unit conforms to. A unit is
-a tracked file a workspace member owns, of the kinds the reading walks, the crate's
-manifest among them and its source files the rest. **The bound is ownership and kind
-and never the marker a file could hold**, a `#` line being writable in most of a tree
-that has no business citing anything. The mapper reads headers at merge, so code accrues
-into the graph as work merges and no document restates what source already carries.
-Its identifier is the source path relative to the repository root, the one spelling the
-filesystem already enforces. The kebab-case rule governs names this format invents, and
-a path is not invented, so `crates/weaver-types/src/role.rs` is a node identifier as it
-stands. One canonical form, so the path cannot do what two spellings of a name do:
-forward slashes, no leading `./`, exactly as `git ls-files` prints it. The mapper
-derives the node identifier and every `cites` edge's `from` value from that one form,
-so a second spelling of one file is a defect the same way `permission-modes` beside
-`permission-mode` would be.
+**code.** A source unit carrying a conformance header, arriving in phase three and never
+before. **Until release no unit owes a header**, per section 0, and a header standing is
+legal and unmaintained. A code node is declared by its own header rather than by any
+fenced block, the way a child declares its own parent edge: the header is the set of
+citations the unit carries and it names the assertion identifiers the unit conforms to.
+A unit is a tracked file a workspace member owns, of the kinds the reading walks, the
+crate's manifest among them and its source files the rest. **The bound is ownership and
+kind and never the marker a file could hold**, a `#` line being writable in most of a
+tree that has no business citing anything. The mapper reads headers at merge, so code
+accrues into the graph as work merges and no document restates what source already
+carries. Its identifier is the source path relative to the repository root, the one
+spelling the filesystem already enforces. The kebab-case rule governs names this format
+invents, and a path is not invented, so `crates/weaver-types/src/role.rs` is a node
+identifier as it stands. One canonical form, so the path cannot do what two spellings of
+a name do: forward slashes, no leading `./`, exactly as `git ls-files` prints it. The
+mapper derives the node identifier and every `cites` edge's `from` value from that one
+form, so a second spelling of one file is a defect the same way `permission-modes`
+beside `permission-mode` would be.
 
 **A conformance count is over every tracked unit carrying a header, and a
 directory is never the rule.** The scope follows from the node kind, a code node
@@ -519,16 +530,17 @@ reaching code.
 
 **The four forms are admitted as citation forms on the ruling of 2026-09-15, and what
 moved was this document.** A citation is what binds a unit to an assertion, and
-`census.py` has resolved one from any of the four since before the question was put,
-so a rule admitting one form alone was a rule the reading gate did not run under.
+`census.py` resolved one from any of the four before the question was put, so a
+rule admitting one form alone was a rule the reading gate did not run under.
 That act moved no count, which is the shape of a format catching up with a reading
 rather than changing one.
 
 **The module header is a second obligation and the marker that carries it is the
 unit's own file-level leader.** Admitting a form as a citation says nothing about
 where a file owes a header, and phase three's rule that every source unit carries one
-is read by H6 through that marker by itself. A file citing only at item level resolves
-each of its citations and is counted headerless all the same. **For Rust and CUDA the
+was read by H6 through that marker by itself, and is suspended with H6 until release.
+A file citing only at item level resolved each of its citations and was counted
+headerless all the same. **For Rust and CUDA the
 leader is `//!`**, which the language gives to the file rather than to an item, so it
 heads a unit wherever in the unit it sits. **For Python it is `#` at the head of the
 unit**, on the ruling of 2026-09-17 that admitted the kind: `#` opens every comment
@@ -542,10 +554,10 @@ corrected.** It read "four such files stand inside today's forty-eight" and name
 `replay.rs`, `native.rs`, `gemma4.rs` and `mistral3.rs`. Measured 2026-09-17: all four
 carry `//!` headers, no headerless unit in the tree cites at item level, and the
 reading is not forty-eight. A count in a governing document argues with the command
-the first time the command is run, so the rule stands here and the reading is taken
-from `census.py`. `act-04-inline-citations-get-a-header` of issue #569 is filed
-against the set this passage listed, and what that measurement leaves it is the
-register's to settle rather than this document's.
+the first time the command is run, so the rule stands here and a reading, when one is
+wanted, is taken from the tree. `act-04-inline-citations-get-a-header` of issue #569
+was filed against the set this passage listed and closed with that issue under the
+ruling of 2026-09-27.
 
 The alternative the 2026-09-15 ruling weighed was to hoist every citation into
 a file header, which a manifest cannot hold at all, and the manifest citations are the
@@ -734,13 +746,12 @@ election carries rather than a corpus that complies.
 **The reading is taken from the tree and the rule carries no instrument yet.** It is
 every node whose record reads `tag: review` matched against every `conforms:`
 citation under `crates`, narrowed to the citations the scope above admits, which
-wants a grep over two trees and no graph server. Issue #569 carries each reading with
+wants a grep over two trees and no graph server. Issue #569 carried each reading with
 its date and each sighting with its disposition rather than this document, a count
-written here being stale by the next act. **The reading is owed to
-`act-20-census-readings`**, the act that extends the census, because the census is
-the one device that compares a claim in a document against a fact in code and this
-rule is that comparison exactly. Until it lands, the rule is checked by looking and a
-sighting is answered on the act that opens the file it sits in.
+written here being stale by the next act. **The reading was owed to
+`act-20-census-readings`**, which closed with #569 and the census under the ruling of
+2026-09-27. The rule is checked by looking, and a sighting is answered on the act that
+opens the file it sits in.
 
 Keys are `node`, `kind`, `edge`, `from`, `to`, `via`, and `tag`. A record
 begins with `node` or with `edge` and no record carries both. Unknown keys are a defect
@@ -821,6 +832,9 @@ It does not make the graph. Phase two builds the graph from documents written th
 and never by hand.
 
 ## 9. When mapping runs
+
+**Mapping is suspended until release** with the graph, per section 0. What follows is
+how it ran and the rule it resumes under.
 
 Mapping runs continuously, from the first charter. **Ratification is per-charter as of
 2026-08-23**, per the operator's ruling of that date and Working Process section 2 as

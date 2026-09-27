@@ -8,7 +8,7 @@ separately.
 **Document ID:** `weaver-harness-trace-contract`
 **Parent:** `weaver-agents-PRD`, invariant 5.3
 **Editorial:** Per the Working Rules.
-**Landing PR:** #300
+**Landing PR:** #713
 
 **This is a contract, not a Spec.** It states the protocol two parties agree to. It
 names no Rust type, no module, and no function, because how either party implements
@@ -357,8 +357,8 @@ duplication this seam exists to prevent.
 
 This contract is one agreement. A change to the exchange in section 2, to either
 party's obligations, to the ordering guarantee, or to the failure vocabulary is one
-edit requiring both parties to re-ratify in the same act, together with any Spec
-written against it.
+edit reaching both parties in the same act, together with any Spec written against
+it.
 
 Adding an event kind is a change to `weaver-trace-PRD` and to this contract, because
 the kind set is closed and consumers key on it.

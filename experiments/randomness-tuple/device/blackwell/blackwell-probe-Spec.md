@@ -6,7 +6,7 @@
 **Document ID:** `blackwell-probe-Spec`
 **Parent:** `randomness-tuple-PRD`
 **Editorial:** Per the Working Rules.
-**Landing PR:** #685
+**Landing PR:** #713
 
 ---
 
@@ -29,9 +29,8 @@ claim's instrument in the suite.
 It is written from the code as it stood after sixteen review passes on pull request
 #683 and from the registration on issues #511 and #679. The code lands in `code/`
 beside this document with #683, which moves it there and cites the assertion
-records declared here from its file headers with `conforms:` lines, read by the
-census as it reads a crate's units. Until that lands, the nineteen perturbation
-records stand uncited and the baseline says so. Results, when a leg has run, sit in
+records declared here from its file headers with `conforms:` lines, which stand
+unmaintained and are read by nothing until release. Results, when a leg has run, sit in
 `results/`, dated and read by no gate.
 What the probe measures and why is the charter's and is restated in sections 1
 through 3 only as far as the code enforces it. How the seams it drives behave is the
@@ -757,8 +756,7 @@ named.
 
 **The enforcement table.** Every record this document declares, with the instrument
 that holds it. A perturbation row is held by `perturb.py` removing and inverting the
-guards the clause names and by the suite's test of the same name, and the census
-reads each citation from `code/`.
+guards the clause names and by the suite's test of the same name.
 
 | Claim | Instrument |
 | --- | --- |
