@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # conforms: blackwell-probe-tuple-held-field-for-field
-# conforms: blackwell-probe-root-receives-bytes-never-a-path
+# conforms: blackwell-probe-root-runs-no-operator-bytes
 # conforms: blackwell-probe-approval-in-root-custody
 # conforms: blackwell-probe-operator-input-read-once
 # conforms: blackwell-probe-served-tree-locked-and-verified
@@ -8,9 +8,11 @@
 # conforms: blackwell-probe-installation-refuses-to-adopt
 # conforms: blackwell-probe-load-stands-on-the-interlock
 # conforms: blackwell-probe-refeed-completes-against-a-verified-source
-"""Operator-only TB payload; tb_order hands root its verified source by -c, never a path.
+"""Operator-only TB payload, run by root only from the approval's root-owned copy.
 
-Stdlib only: sudo runs this with -I and closed stdin. Never run it directly.
+tb_root.py, the one hand-installed root program, executes this file with -I from
+the approval directory it found complete, never from the operator's staging.
+Stdlib only, closed stdin. Never run it directly.
 All mutations belong to the isolated TB installation and the bravo account.
 """
 import hashlib
@@ -33,7 +35,7 @@ MODEL = Path('/opt/weaver/models/Qwen3-8B-Q8_0.gguf')
 # inventories exactly this set, so the identity verdict covers what is served;
 # a directory served from outside it is a test failure, not silent drift.
 STACK_ROOTS = ('bin', 'engine-lib', 'cuda-lib')
-# The approvals `approve` writes, each in a directory named by its own digest,
+# The approvals tb_root.py's `approve` writes, each in a directory named by its digest,
 # beneath the install root and outside everything provision serves (679.5).
 APPROVAL = 'approval'
 REVIEW_SEAT = 'thinkpad-CC-WeaverTools-ReviewSeat'
@@ -61,18 +63,6 @@ def sha(path):
     return h.hexdigest()
 
 
-def own_code(cmdline=None):
-    """The bytes this root process runs, read back from its own command line:
-    sudo was handed them as the `-c` argument, so they are the one thing an
-    approval's payload digest can be held against without trusting a file
-    or the operator's state (679.5). `cmdline` is the kernel's NUL-separated
-    record, read from `/proc/self/cmdline` where none is given."""
-    raw = Path('/proc/self/cmdline').read_bytes() if cmdline is None else cmdline
-    argv = raw.split(b'\0')
-    need('own-code', b'-c' in argv)
-    return argv[argv.index(b'-c') + 1]
-
-
 def read_once(path, follow=True):
     """A file's bytes in one read, refusing a link where `follow` is off."""
     fd = os.open(path, os.O_RDONLY | (0 if follow else os.O_NOFOLLOW))
@@ -93,129 +83,6 @@ def well_formed_review(record):
             and isinstance(record.get('reference'), str) and RULING.fullmatch(record['reference']) is not None
             and isinstance(record.get('plan'), str) and record['plan'] in files
             and isinstance(record.get('payload'), str) and record['payload'] in files)
-
-
-def write_new(path, data, mode):
-    """A file root creates and nobody held a name for: O_EXCL and O_NOFOLLOW,
-    so the write lands in a new regular file or not at all."""
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, mode)
-    with os.fdopen(fd, 'wb') as stream:
-        stream.write(data)
-        stream.flush()
-        os.fsync(stream.fileno())
-    os.chmod(path, mode)
-
-
-def complete(held):
-    """An approval directory as `approve` leaves it at its rename: named by the
-    digest of its own `approval.json`, locked, no link. A `.pending-` directory
-    a crash left mid-write, or anything else in the approvals, is not."""
-    try:
-        return (DIGEST.fullmatch(held.name) is not None and not held.is_symlink() and held.is_dir()
-                and locked(held) and hashlib.sha256(read_once(held / 'approval.json', follow=False)).hexdigest() == held.name)
-    except OSError:
-        return False
-
-
-def approve(record_path, expected):
-    """**The one privileged approval step** (679.5, the ruling of 2026-09-26 on
-    #698). Root reads the review record once, refusing a link, and every
-    artifact it names once, each held to its digest before the first write.
-    The reviewed payload is the code now running, held to its digest too. It
-    then copies the reviewed payload and the plan root-owned and writes
-    `approval.json` (0600) and `approval.pub.json` (0644), the same bytes,
-    into a directory named by their digest, which it prints. A refusal leaves
-    nothing behind.
-
-    **Root holds the record to the digest the coordinator took before sudo**,
-    so the record approved is the one the coordinator records, whatever moves
-    on disk between the two. **A record approved before is adopted, not
-    approved again**: its complete approval is verified and its digest printed,
-    and nothing is written. That is what makes the step safe to retry when
-    the coordinator died after root committed and before the state learned the
-    pointer. A partial approval a crash left mid-write is never adopted and
-    refuses by name, since an interrupted step is never silently resumed.
-
-    **On one box the operator at the sudo prompt is the trust anchor.** The
-    snapshot closes the window between approval and `next`. The window before
-    approval closes only when the review seat has an identity of its own,
-    which the signed review record owed on #698 waits on."""
-    try:
-        raw = read_once(record_path, follow=False)
-        record = json.loads(raw)
-    except (OSError, ValueError):
-        record = None
-    need('approval-record', well_formed_review(record))
-    record_sha = hashlib.sha256(raw).hexdigest()
-    need('approval-record-digest', record_sha == expected)
-    approvals = ROOT / APPROVAL
-    matches = []
-    if approvals.exists():
-        need('approval-root', locked(ROOT) and locked(approvals))
-        for held in sorted(approvals.iterdir()):
-            need('approval-partial', complete(held))
-            if json.loads(read_once(held / 'approval.json', follow=False)).get('record_sha256') == record_sha:
-                matches.append(held)
-        need('approval-once', len(matches) <= 1)
-    elif ROOT.exists():
-        need('approval-root', locked(ROOT))
-    need('root-chain-custody', chain_custody(ROOT))
-    need('approval-self', hashlib.sha256(own_code()).hexdigest() == record['artifacts'][record['payload']])
-    if matches:
-        # The approval this record already has, finished and renamed before
-        # whatever interrupted the run that made it: adopted whole, after the
-        # same checks a reader makes of it, and nothing written.
-        held = matches[0]
-        body = read_once(held / 'approval.json', follow=False)
-        prior = json.loads(body)
-        need('approval-adopt', read_once(held / 'approval.pub.json', follow=False) == body
-             and all(locked(held / name) for name in ('approval.json', 'approval.pub.json', 'plan.json', 'tb_payload.py'))
-             and hashlib.sha256(read_once(held / 'plan.json', follow=False)).hexdigest() == prior['plan']['sha256']
-             and hashlib.sha256(read_once(held / 'tb_payload.py', follow=False)).hexdigest() == prior['payload']['sha256'])
-        print(f'APPROVAL: {held.name}', flush=True)
-        return held.name
-    kept = {}
-    for path, digest in record['artifacts'].items():
-        data = Path(path).read_bytes()
-        need('approval-artifacts', hashlib.sha256(data).hexdigest() == digest)
-        if path in (record['plan'], record['payload']):
-            kept[path] = data
-    plan = json.loads(kept[record['plan']])
-    need('fixed-root-agent', plan['install_root'] == str(ROOT) and plan['agent'] == 'bravo')
-    need('operator', type(plan['operator_uid']) is int and
-         pwd.getpwnam(plan['operator']).pw_uid == plan['operator_uid'] == int(os.environ['SUDO_UID']))
-    # Everything is verified. From here each directory made is recorded, so a
-    # failed write removes exactly what this run made and nothing else.
-    made = []
-    pending = approvals / f'.pending-{record_sha}'
-    try:
-        for directory in [ROOT, approvals]:
-            if not directory.exists():
-                directory.mkdir(mode=0o755)
-                os.chmod(directory, 0o755)
-                made.append(directory)
-        pending.mkdir(mode=0o700)
-        made.append(pending)
-        write_new(pending / 'plan.json', kept[record['plan']], 0o600)
-        write_new(pending / 'tb_payload.py', kept[record['payload']], 0o600)
-        body = (json.dumps(dict(
-            version=1, record_sha256=record_sha, record=record,
-            plan=dict(path=record['plan'], sha256=record['artifacts'][record['plan']], copy='plan.json'),
-            payload=dict(path=record['payload'], sha256=record['artifacts'][record['payload']], copy='tb_payload.py'),
-            approved_by_uid=int(os.environ['SUDO_UID']), approved_at=time.time()), sort_keys=True, indent=1) + '\n').encode()
-        digest = hashlib.sha256(body).hexdigest()
-        write_new(pending / 'approval.json', body, 0o600)
-        write_new(pending / 'approval.pub.json', body, 0o644)
-        os.chmod(pending, 0o755)
-        final = approvals / digest
-        need('approval-new', not final.exists() and not final.is_symlink())
-        os.rename(pending, final)
-    except BaseException:
-        for directory in reversed(made):
-            shutil.rmtree(directory, ignore_errors=True)
-        raise
-    print(f'APPROVAL: {digest}', flush=True)
-    return digest
 
 
 def read_approval(pointer):
@@ -778,16 +645,11 @@ def load(plan, job, source_sink=None):
 
 def main():
     need('root-payload', os.geteuid() == 0)
-    if sys.argv[1:2] == ['approve']:
-        need('approve-arguments', len(sys.argv) == 4 and DIGEST.fullmatch(sys.argv[3]) is not None)
-        approve(sys.argv[2], sys.argv[3])
-        print('SUCCESS: approve', flush=True)
-        return
     step, pointer, *source_sink = sys.argv[1:]
     approval, directory = read_approval(pointer)
-    # The code running is the payload the approval names, and the plan is the
-    # root-owned copy it took, one snapshot held to its digest, then parsed.
-    need('payload-hash', hashlib.sha256(own_code()).hexdigest() == approval['payload']['sha256'])
+    # This file is the approval's own root-owned copy, found complete by
+    # tb_root.py before it ran it, and the plan is the copy beside it, one
+    # snapshot held to its digest, then parsed.
     expected = approval['plan']['sha256']
     data = read_once(directory / approval['plan']['copy'], follow=False)
     need('plan-hash', hashlib.sha256(data).hexdigest() == expected)

@@ -254,7 +254,7 @@ state records no approval. Once one is recorded, every step reads it from the ro
 record the state's `approval` digest names and never from the state, per section 5, and
 verifies that the record is root's and matches that digest, that it states a passed
 review with the hold lifted, naming its seat and reference, that its artifact map covers
-the plan and the nine staged files, the eight scripts and the suite, that every artifact
+the plan and the ten staged files, the nine scripts and the suite, that every artifact
 still hashes as recorded, that the plan snapshot parses from the bytes that matched the
 approved digest, that the plan's file map is covered by the artifact map and agrees with
 it, and that no halt is recorded, under `approval-digest`, `approval-custody`,
@@ -317,72 +317,84 @@ to: blackwell-probe-halt-is-evidence
 
 ## 5. The privilege boundary, and custody
 
-**Root receives the reviewed bytes and never a path.** The coordinator reads
-`tb_payload.py` once, checks the bytes against the digest the approval record holds,
-and runs `sudo /usr/bin/python3 -I -c <those bytes> <step> <approval digest>` with
-standard input closed and the transcript captured, per `payload`. Root reads the
-approval that digest names from its root-owned record, holds the code it is running to
-the approval's payload digest, read back from its own command line, and parses the one
-plan snapshot whose bytes matched the approved digest, the root-owned copy, under
-`approval-digest`, `approval-custody`, `payload-hash` and `plan-hash`, before anything
-else. The payload runs in isolated mode and imports nothing from the working
-directory. The reason is stated where it binds: a file the operator's uid can rename,
-any process of that uid can swap between a check and sudo's open, and that uid need
-not hold the sudo credential. A sudoers allowlist for the payload therefore matches
-this form, since there is no payload file to name. The payload refuses to run as
-anything but root, refuses a plan not naming the isolated root and the `bravo` agent,
-and refuses an invoking uid that is not the plan's recorded operator, under
-`root-payload`, `fixed-root-agent` and `operator`. The coordinator and the driver
-refuse to run as root, under `operator-not-root` and `driver-not-root`.
+**Root runs one hand-installed program and no bytes the operator's uid can write.**
+Every privileged step enters `tb_root.py`, installed once by hand at
+`/usr/local/libexec/weaver-tb/tb-root`, root-owned, mode 0755, the one path the probe's
+sudoers entry names, on the ruling of 2026-09-27,
+https://github.com/toddwbucy/WeaverTools/issues/698#issuecomment-5852640576. The
+coordinator runs `sudo <that path> run <step> <approval digest>` with standard input
+closed and the transcript captured, per `payload`, and hands root no bytes and no path.
+The root program finds the approval that digest names complete in root custody, every
+file of it checked, and executes the approval's root-owned copy of the reviewed payload
+with `python3 -I`, under `known-verb`, `run-arguments`, `approval-digest`,
+`approval-custody`, `approval-complete` and `approval-record`. The payload parses the
+one plan snapshot beside it whose bytes match the approved digest, under `plan-hash`,
+before anything else. The reason is stated where it binds: a file the operator's uid can
+rename, any process of that uid can swap between a check and root's open, and a program
+that checks its own bytes proves nothing, since a swapped program skips the check
+(#709's fourth pass). The root program and the payload refuse to run as anything but
+root, the payload refuses a plan not naming the isolated root and the `bravo` agent, and
+an invoking uid that is not the plan's recorded operator is refused, by the payload at
+every step and by the root program at `approve`, under `root-program`, `root-payload`,
+`fixed-root-agent` and `operator`. The coordinator and the driver refuse to run as root,
+under `operator-not-root` and `driver-not-root`.
 
 **Approval is in root custody, by one privileged step, `approve`**, on the ruling of
 2026-09-26 on #698 (679.5). The review seat publishes its review as a record: the
 status, the hold, the seat, the reference, the plan's path, the payload's path and the
 artifact map, every path with its sha256. The operator runs `tb-operator.sh approve
-<record>`. The coordinator hashes the record once and hands root the reviewed payload by
-the `-c` form above with the record's path and that digest. Root reads the record once,
-refusing a link, holds it to the coordinator's digest, reads every artifact it names
-once, each held to its digest before the first write, and holds the code it is running
-to the record's payload digest. It copies the reviewed payload and the plan into a
-directory under `/var/lib/weaver-tb/approval/`, writes `approval.json` (0600) and
-`approval.pub.json` (0644), the same bytes, names the directory by their digest, and
-prints it. A refusal leaves nothing behind, under `approval-record`,
-`approval-record-digest`, `approval-root`, `root-chain-custody`, `approval-self`,
-`approval-artifacts` and `approval-new`. **The state keeps that digest and nothing else
-about approval**, as `approval`, a pointer the coordinator records only once the public
-copy it names is root's and matches it and the record digest taken before sudo, the
-record never read again after root has run, under `approve-exit`, `approve-printed` and
-`approve-record`. **A new approval means a new state**: the pointer is set once, a
-second `approve` against a state holding one refuses before root is asked, under
-`one-approval-per-state`, and every receipt records the approval it ran under, so no run
-carries evidence of two. The hold and the review's fields are the record's. `halt` and
-`cursor` stay the operator's by design: a halt is the operator's right, and the cursor
-selects a step whose every earlier receipt is verified.
+<record>`. The coordinator hashes the record once and runs the root program's `approve`
+with the record's path and that digest. Root reads the record once, refusing a link,
+holds it to the coordinator's digest, and reads every artifact it names once, as data,
+each held to its digest before the first write: nothing it reads is executed. It copies
+the reviewed payload and the plan into a directory under `/var/lib/weaver-tb/approval/`,
+writes `approval.json` (0600) and `approval.pub.json` (0644), the same bytes, names the
+directory by their digest, and prints it. A refusal leaves nothing behind, under
+`approve-arguments`, `approval-record`, `approval-record-digest`, `approval-root`,
+`root-chain-custody`, `approval-artifacts` and `approval-new`. **The state keeps that
+digest and nothing else about approval**, as `approval`, a pointer the coordinator
+records only once the public copy it names is root's and matches it and the record
+digest taken before sudo, the record never read again after root has run, under
+`approve-exit`, `approve-printed` and `approve-record`. **A new approval means a new
+state**: the pointer is set once, a second `approve` against a state holding one refuses
+before root is asked, under `one-approval-per-state`, and every receipt records the
+approval it ran under, so no run carries evidence of two. The hold and the review's
+fields are the record's. `halt` and `cursor` stay the operator's by design: a halt is
+the operator's right, and the cursor selects a step whose every earlier receipt is
+verified.
 
 **Every handoff across sudo answers a death between its two sides**, on #709's third
 pass. An interrupted step is never silently resumed, and adopting a finished, verified
 result is not a resume. **`approve` is adopted on retry**: a coordinator that dies after
 root commits and before the state is written leaves an approval the state does not name,
-and the retry hands root the same record, which root finds complete, checks as a reader
-would, and answers with its digest, writing nothing, under `approval-adopt`. Two
-complete approvals of one record refuse, under `approval-once`. A directory a crash left
-mid-write, or anything in the approvals that is not a complete approval, is never
-adopted and refuses by name, under `approval-partial`. **The scheduled steps refuse
-rather than repeat**: a `provision` retried over its own partial or finished work
-refuses under `fresh-install-root`, a `load` whose sink stands refuses under
-`fresh-sink` rather than loading the run twice, and an `unload` re-measures its whole
-claim, the agent unloaded and the interlock clear, from nothing it recorded before. A
-coordinator that survives the failure records a halt, and every later step refuses under
-`halt` while it stands.
+and the retry hands root the same record, which root finds complete and answers with its
+digest, writing nothing. Two complete approvals of one record refuse, under
+`approval-once`. A directory a crash left mid-write, or anything in the approvals that
+is not a complete approval, is never adopted and refuses by name, under
+`approval-complete`. **Complete means every file checked**, on #709's fourth pass: the
+directory named by its record's digest and locked, holding the four files and nothing
+else, each a regular file of one name, locked, at its written mode, the public copy the
+private record's bytes, and the plan and payload copies hashing as the record says.
+**The scheduled steps refuse rather than repeat**: a `provision` retried over its own
+partial or finished work refuses under `fresh-install-root`, a `load` whose sink stands
+refuses under `fresh-sink` rather than loading the run twice, and an `unload`
+re-measures its whole claim, the agent unloaded and the interlock clear, from nothing it
+recorded before. A coordinator that survives the failure records a halt, and every later
+step refuses under `halt` while it stands.
 
-**On one box the operator at the sudo prompt is the trust anchor.** The snapshot closes
-the window between approval and `next`, the one the security review on #683 found, where
-any operator-uid process could rewrite what was approved before root read it. **The
-window before approval stays open**: a process of that uid can still change what the
-review seat is about to approve, and that closes only when the review seat has an
-identity of its own, another uid or another box, and signs its record. The signed review
-record is owed on #698, and the record's shape is kept so a signature slots in without
-moving the consumer.
+**The trust anchor is the operator's hash check of the root program at install time**,
+on the ruling of 2026-09-27. The operator installs `tb_root.py` once, by hand, with
+`sudo install -o root -g root -m 0755`, and compares the installed copy's sha256 by eye
+against the file at the merged commit, per the README. Every privileged step goes
+through that one program, and its bytes are fixed once installed. The operator at the
+sudo prompt was the anchor before, and it now sits where the bytes being trusted are
+fixed. The snapshot closes the window between approval and `next`, the one the security
+review on #683 found, where any operator-uid process could rewrite what was approved
+before root read it. **The window before approval stays open**: a process of that uid
+can still change what the review seat is about to approve, and that closes only when the
+review seat has an identity of its own, another uid or another box, and signs its
+record. The signed review record is owed on #698, and the record's shape is kept so a
+signature slots in without moving the consumer.
 
 ```graph
 node: blackwell-probe-approval-in-root-custody
@@ -482,13 +494,13 @@ agent. The README states the operator's rule that no other agent is loaded while
 runs, and that rule is what covers the window.
 
 ```graph
-node: blackwell-probe-root-receives-bytes-never-a-path
+node: blackwell-probe-root-runs-no-operator-bytes
 kind: assertion
 tag: perturbation
 
 edge: asserts
 from: blackwell-probe
-to: blackwell-probe-root-receives-bytes-never-a-path
+to: blackwell-probe-root-runs-no-operator-bytes
 
 node: blackwell-probe-operator-input-read-once
 kind: assertion
@@ -679,35 +691,37 @@ coordinator's: `schema`, `agent`, `stacks-distinct`, `isolated-root`, `tuple`,
 `manifest-coverage`, `manifest-hashes`, `identity-evidence`, `identity-inputs`,
 `identity-binds-stacks`, `identity-recomputed`, `cursor`, `prior-success`,
 `prior-approval`, `prior-evidence`, `step-order`, `seat`, `not-repeated`, `driver-live`,
-`driver-owner`, `no-live-driver`, `report-evidence`, `payload-hash`, `payload-exit`,
-`payload-receipt`, `wait-owner`, `wait-order`, `wait-deadline`, `source-sink-recorded`,
+`driver-owner`, `no-live-driver`, `report-evidence`, `payload-exit`, `payload-receipt`,
+`wait-owner`, `wait-order`, `wait-deadline`, `source-sink-recorded`,
 `one-approval-per-state`, `approve-exit`, `approve-printed`, `approve-record`,
-`approve-record-named`, `no-record-outside-approve` and `operator-not-root`. The
-payload's: `root-payload`, `approve-arguments`, `own-code`, `approval-record`,
-`approval-root`, `approval-once`, `approval-self`, `approval-artifacts`, `approval-new`,
-`approval-record-digest`, `approval-partial`, `approval-adopt`, `fresh-sink`,
-`approval-digest`, `approval-custody`, `payload-hash`, `plan-hash`, `fixed-root-agent`,
-`operator`, `source-file-hash`, `job-found`, `model-source`, `existing-model-custody`,
-`existing-model`, `stack-no-symlinks`, `stack-libraries`, `stack-file-coverage`,
-`fresh-install-root`, `no-symlink-destination`, `snapshot-hash`, `new-model-custody`,
-`installed-no-symlinks`, `installed-stack-custody`, `installed-stack-coverage`,
-`installed-stack-hash`, `installation-plan`, `installed-model-custody`,
-`served-directory-custody`, `installed-model`, `m1-inactive`, `m1-state-readable`,
-`m1-no-door`, `m1-no-process`, `gpu-tuple`, `resolved-libraries`, `cuda-local`,
-`source-run-selected`, `derived-artifact`, `derived-tuple`, `preload-door`,
-`diagnostic-load`, `admin-answer`, `no-bravo-account`, `no-bravo-group`,
-`operator-group`, `model-chain-custody`, `root-chain-custody`, `source-sink-given`,
-`m1-unloaded-at-unload`, `known-step` and `command-exit`. The driver's:
-`driver-not-root`, `reader-approved`, `fresh-arm`, `gate-answer`, `single-turn`,
-`nonempty-measurement`, `field-depth`, `seed-held`, `weights-held`, `source-trace`,
-`source-measurement`, `source-weights-held`, `source-seed-held`, `replay-completed`,
-`single-replay`, `replay-measurement`, `request-absent`, `request-duplicated`,
-`output-absent`, `output-duplicated`, `field-duplicated`, `field-beyond-output`,
-`replay-weights-held`, `replay-seed-held`, `input-held`, `divergence-in-input`,
-`pair-count`, `pair-falsifier`, `own-refeed-falsifier`, `control-falsifier`,
-`changed-seed-prediction`, `sink-closed`, `receipt-present`, `receipt-digest`,
-`m1-unloaded-at-close` and `report-path`. The inventory raises its refusals as errors on
-the command line, since it runs before any plan exists.
+`approve-record-named`, `no-record-outside-approve` and `operator-not-root`. The root
+program's: `root-program`, `known-verb`, `approve-arguments`, `run-arguments`,
+`approval-record`, `approval-record-digest`, `approval-root`, `approval-complete`,
+`approval-once`, `root-chain-custody`, `approval-artifacts`, `fixed-root-agent`,
+`operator`, `approval-new`, `approval-digest` and `approval-custody`. The payload's:
+`root-payload`, `fresh-sink`, `approval-digest`, `approval-custody`, `approval-record`,
+`plan-hash`, `fixed-root-agent`, `operator`, `source-file-hash`, `job-found`,
+`model-source`, `existing-model-custody`, `existing-model`, `stack-no-symlinks`,
+`stack-libraries`, `stack-file-coverage`, `fresh-install-root`,
+`no-symlink-destination`, `snapshot-hash`, `new-model-custody`, `installed-no-symlinks`,
+`installed-stack-custody`, `installed-stack-coverage`, `installed-stack-hash`,
+`installation-plan`, `installed-model-custody`, `served-directory-custody`,
+`installed-model`, `m1-inactive`, `m1-state-readable`, `m1-no-door`, `m1-no-process`,
+`gpu-tuple`, `resolved-libraries`, `cuda-local`, `source-run-selected`,
+`derived-artifact`, `derived-tuple`, `preload-door`, `diagnostic-load`, `admin-answer`,
+`no-bravo-account`, `no-bravo-group`, `operator-group`, `model-chain-custody`,
+`root-chain-custody`, `source-sink-given`, `m1-unloaded-at-unload`, `known-step` and
+`command-exit`. The driver's: `driver-not-root`, `reader-approved`, `fresh-arm`,
+`gate-answer`, `single-turn`, `nonempty-measurement`, `field-depth`, `seed-held`,
+`weights-held`, `source-trace`, `source-measurement`, `source-weights-held`,
+`source-seed-held`, `replay-completed`, `single-replay`, `replay-measurement`,
+`request-absent`, `request-duplicated`, `output-absent`, `output-duplicated`,
+`field-duplicated`, `field-beyond-output`, `replay-weights-held`, `replay-seed-held`,
+`input-held`, `divergence-in-input`, `pair-count`, `pair-falsifier`,
+`own-refeed-falsifier`, `control-falsifier`, `changed-seed-prediction`, `sink-closed`,
+`receipt-present`, `receipt-digest`, `m1-unloaded-at-close` and `report-path`. The
+inventory raises its refusals as errors on the command line, since it runs before any
+plan exists.
 
 **The rulings are refusals too.** A plan whose `hold_lifted`, `cuda_provenance` or
 `control_count` ruling is empty is refused under `rulings`, and each names the URL
@@ -754,10 +768,10 @@ reads each citation from `code/`.
 | `blackwell-probe-falsifier-halts-after-unload` | perturbation, `pair-falsifier`, `own-refeed-falsifier`, `control-falsifier`, `changed-seed-prediction` |
 | `blackwell-probe-one-command-one-seat-per-step` | perturbation, `step-order`, `seat`, `not-repeated`, `driver-owner`, `operator-not-root`, `driver-not-root` |
 | `blackwell-probe-approval-gates-every-step` | perturbation, `approval-digest`, `approval-custody`, `approval-record`, `approval-coverage`, `artifact-hashes`, `plan-snapshot`, `manifest-coverage`, `manifest-hashes`, `halt` |
-| `blackwell-probe-approval-in-root-custody` | perturbation, `one-approval-per-state`, `prior-approval`, `approval-record-digest`, `approval-partial`, `approval-adopt`, the interrupted-approve test, `approval-record`, `approval-root`, `approval-once`, `approval-self`, `approval-artifacts`, `approval-new`, `approval-digest`, `approval-custody`, `own-code`, `approve-arguments`, `approve-exit`, `approve-printed`, `approve-record`, the tampered-artifact, flipped-state, replaced-payload and second-approve tests |
+| `blackwell-probe-approval-in-root-custody` | perturbation, `one-approval-per-state`, `prior-approval`, `approval-record-digest`, `approval-complete`, the interrupted-approve test, the every-file test, `approval-record`, `approval-root`, `approval-once`, `approval-artifacts`, `approval-new`, `approval-digest`, `approval-custody`, `approve-arguments`, `approve-exit`, `approve-printed`, `approve-record`, the tampered-artifact, flipped-state, replaced-payload and second-approve tests |
 | `blackwell-probe-wait-verifies-when-the-state-moves` | perturbation, `wait-owner`, `wait-order`, `wait-deadline` and the state-moves test |
 | `blackwell-probe-halt-is-evidence` | perturbation, `prior-success`, `prior-approval`, `prior-evidence`, `payload-exit`, `payload-receipt`, `cursor`, `fresh-sink` |
-| `blackwell-probe-root-receives-bytes-never-a-path` | perturbation, `payload-hash`, `plan-hash`, `root-payload`, `fixed-root-agent`, `operator` |
+| `blackwell-probe-root-runs-no-operator-bytes` | perturbation, `root-program`, `known-verb`, `run-arguments`, `approval-complete`, `plan-hash`, `root-payload`, `fixed-root-agent`, `operator`, the no-operator-bytes and root-copy tests |
 | `blackwell-probe-operator-input-read-once` | perturbation, `snapshot-hash`, `source-file-hash`, `source-run-selected`, `reader-approved`, `source-trace`, `receipt-present`, `receipt-digest` |
 | `blackwell-probe-served-tree-locked-and-verified` | perturbation, `stack-no-symlinks`, `stack-file-coverage`, `installed-no-symlinks`, `installed-stack-custody`, `installed-stack-coverage`, `installed-stack-hash`, `served-directory-custody`, `root-chain-custody` |
 | `blackwell-probe-model-in-custody-on-both-paths` | perturbation, `existing-model-custody`, `new-model-custody`, `installed-model-custody`, `model-source`, `existing-model`, `installed-model`, `model-chain-custody` |
