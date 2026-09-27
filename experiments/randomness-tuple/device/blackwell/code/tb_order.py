@@ -3,6 +3,7 @@
 # conforms: blackwell-probe-schedule-validated-whole
 # conforms: blackwell-probe-one-command-one-seat-per-step
 # conforms: blackwell-probe-approval-gates-every-step
+# conforms: blackwell-probe-approval-in-root-custody
 # conforms: blackwell-probe-wait-verifies-when-the-state-moves
 # conforms: blackwell-probe-halt-is-evidence
 # conforms: blackwell-probe-root-receives-bytes-never-a-path
@@ -31,6 +32,13 @@ import sections
 
 
 RULING = re.compile(r'https://github\.com/toddwbucy/WeaverTools/(issues|pull)/[0-9]+(#issuecomment-[0-9]+)?')
+DIGEST = re.compile(r'[0-9a-f]{64}')
+REVIEW_SEAT = 'thinkpad-CC-WeaverTools-ReviewSeat'
+# **Approval lives root-owned, never in the state file** (679.5, the ruling of
+# 2026-09-26 on #698). `approve` writes each approval under a directory named
+# by its own digest, and the state keeps that digest alone as a pointer.
+APPROVAL_ROOT = Path('/var/lib/weaver-tb/approval')
+APPROVAL_OWNER = 0
 
 
 class Refused(RuntimeError):
@@ -197,6 +205,48 @@ def validate_plan(plan):
            all(j['kind'] == 'refeed' and j['stack'] == 'B2' for j in arms[2]['jobs'])))
 
 
+def well_formed_review(record):
+    """The review record's own fields, the shape root holds at `approve` and
+    the coordinator holds again at every step: the review passed, the hold is
+    lifted, the seat is the named one, the reference is a decision's URL, and
+    the plan and the payload are among the artifacts it names."""
+    files = record.get('artifacts') if isinstance(record, dict) else None
+    return (isinstance(files, dict) and all(isinstance(p, str) and isinstance(h, str) and DIGEST.fullmatch(h)
+                                            for p, h in files.items())
+            and record.get('status') == 'PASS' and record.get('hold') is False
+            and record.get('seat') == REVIEW_SEAT
+            and isinstance(record.get('reference'), str) and RULING.fullmatch(record['reference']) is not None
+            and isinstance(record.get('plan'), str) and record['plan'] in files
+            and isinstance(record.get('payload'), str) and record['payload'] in files)
+
+
+def root_held(path):
+    """Written by root and by nobody else since: owned by the approval's owner,
+    closed to group and world writes, and not a link."""
+    entry = os.lstat(path)
+    return (not os.path.islink(path) and entry.st_uid == APPROVAL_OWNER and not entry.st_mode & 0o022)
+
+
+def publication(pointer):
+    """The approval the state's pointer names, read once from its root-owned
+    public copy and held to the pointer's digest: the state says which
+    approval, the record root wrote says what it approved. A pointer naming a
+    file anyone but root could have written names nothing."""
+    check('approval-digest', isinstance(pointer, str) and DIGEST.fullmatch(pointer) is not None)
+    directory = APPROVAL_ROOT / pointer
+    public = directory / 'approval.pub.json'
+    try:
+        held = all(root_held(p) for p in [APPROVAL_ROOT, directory, public])
+    except OSError:
+        held = False
+    check('approval-custody', held)
+    data = public.read_bytes()
+    check('approval-digest', hashlib.sha256(data).hexdigest() == pointer)
+    approval = json.loads(data)
+    check('approval-record', isinstance(approval, dict) and well_formed_review(approval.get('record')))
+    return approval
+
+
 class Order:
     def __init__(self, state):
         self.path = Path(state).resolve()
@@ -215,21 +265,25 @@ class Order:
             yield
 
     def approved(self, s):
-        check('hold', s.get('hold') is False)
-        review = s.get('review', {})
-        check('review', review.get('status') == 'PASS' and review.get('reference') and
-              review.get('seat') == 'thinkpad-CC-WeaverTools-ReviewSeat')
-        files = review.get('artifacts', {})
+        # **Approval is read from the record root wrote, never from the state**
+        # (679.5): the state's `approval` is a pointer, and the hold, the
+        # review's status, seat and reference, the plan's path and every
+        # artifact's digest are the root-owned record's. `halt` and `cursor`
+        # stay the operator's by design: a halt is the operator's right, and
+        # the cursor selects a step whose every earlier receipt is verified.
+        self.approval = approval = publication(s.get('approval'))
+        record = approval['record']
+        files = record['artifacts']
         required = {str(Path(__file__).resolve().parent / name) for name in
                     ['tb_order.py', 'tb_payload.py', 'tb_driver.py', 'tb-operator.sh',
                      'test_tb.py', 'golden.py', 'perturb.py', 'sections.py', 'prepare.py']}
-        required.add(s['plan'])
         check('approval-coverage', required <= files.keys())
         check('artifact-hashes', all(Path(p).is_file() and sha(p) == h for p, h in files.items()))
         check('halt', not s.get('halt'))
-        # One snapshot: parse the bytes that matched the recorded digest, never a re-read.
-        data = Path(s['plan']).read_bytes()
-        check('plan-snapshot', hashlib.sha256(data).hexdigest() == files[s['plan']])
+        # One snapshot: parse the bytes that matched the approved digest, never a re-read.
+        data = Path(record['plan']).read_bytes()
+        check('plan-snapshot', same(hashlib.sha256(data).hexdigest(), approval.get('plan', {}).get('sha256'))
+              and same(approval['plan']['sha256'], files[record['plan']]))
         plan = json.loads(data)
         validate_plan(plan)
         check('manifest-coverage', bool(plan.get('files')) and set(plan['files']) <= files.keys())
@@ -324,8 +378,8 @@ class Order:
     def _operator(self, requested, runner):
         with self.locked():
             s = self.read()
-            if requested == 'next' and (s.get('hold') is not False or s.get('review', {}).get('status') != 'PASS'):
-                print('WAITING ON: review seat - lift HOLD and record approval hashes')
+            if requested == 'next' and s.get('approval') is None:
+                print('WAITING ON: review seat - publish the review record, then the operator runs approve')
                 return
             plan = self.approved(s)
             if requested == 'next' and same(s.get('cursor'), len(schedule(plan))):
@@ -442,30 +496,70 @@ def notice(step):
 
 
 def payload(state, step, log, *sink):
+    approval = publication(state.get('approval'))
     source = Path(__file__).with_name('tb_payload.py')
     data = source.read_bytes()
-    check('payload-hash', hashlib.sha256(data).hexdigest() == state['review']['artifacts'][str(source.resolve())])
+    check('payload-hash', same(str(source.resolve()), approval['record']['payload']) and
+          same(hashlib.sha256(data).hexdigest(), approval['payload']['sha256']))
     with log.open('w') as out:
         # Root receives the verified bytes themselves, never a path. A file
         # the operator's UID can rename, any process of that UID can swap
         # between the check and sudo's open, and that UID need not hold the
-        # sudo credential (#683 finding 17). The plan goes by path with the
-        # digest recorded at approval, which the payload verifies in one read.
-        # A local re-feed's load also carries its source sink's recorded length
-        # and digest, which the payload snapshots the sink against.
-        return subprocess.run(['sudo', '/usr/bin/python3', '-I', '-c', data.decode(), state['plan'],
-                               state['review']['artifacts'][state['plan']], step, *sink],
+        # sudo credential (#683 finding 17). Beside them it receives the step
+        # and the approval's digest, and takes the plan, the payload's digest
+        # and the artifact map from the root-owned record that digest names,
+        # never from this state file (679.5). A local re-feed's load also
+        # carries its source sink's recorded length and digest, which the
+        # payload snapshots the sink against.
+        return subprocess.run(['sudo', '/usr/bin/python3', '-I', '-c', data.decode(), step,
+                               state['approval'], *sink],
                               stdin=subprocess.DEVNULL,
                               stdout=out, stderr=subprocess.STDOUT).returncode
+
+
+def approve(state_path, record, log):
+    """`tb-operator.sh approve <record>`, the one privileged approval step
+    (679.5): the reviewed payload is handed to root, which reads the review
+    record and every artifact it names once, verifies each digest before its
+    first write, and snapshots the approval root-owned. On one box the
+    operator at the sudo prompt is the trust anchor, so this step checks
+    nothing root does not check again. The state learns only the digest root
+    printed, and only once the public copy it names is root's and matches."""
+    order = Order(state_path)
+    with order.locked():
+        s = order.read()
+        data = Path(__file__).with_name('tb_payload.py').read_bytes()
+        target = Path(record).resolve()
+        with log.open('w') as out:
+            code = subprocess.run(['sudo', '/usr/bin/python3', '-I', '-c', data.decode(), 'approve', str(target)],
+                                  stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT).returncode
+        check('approve-exit', code == 0)
+        printed = [line.split(' ', 1)[1] for line in log.read_text().splitlines() if line.startswith('APPROVAL: ')]
+        check('approve-printed', len(printed) == 1)
+        approval = publication(printed[0])
+        check('approve-record', same(approval.get('record_sha256'), sha(target)))
+        s['approval'] = printed[0]
+        atomic(order.path, s)
+        return printed[0]
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--state', required=True)
     parser.add_argument('step', nargs='?', default='next')
+    parser.add_argument('record', nargs='?')
     args = parser.parse_args()
     try:
         check('operator-not-root', os.geteuid() != 0)
+        if args.step == 'approve':
+            check('approve-record-named', args.record is not None)
+            state = Path(args.state).resolve()
+            fd, name = tempfile.mkstemp(prefix='approve-', suffix='.log', dir=state.parent)
+            os.close(fd)
+            digest = approve(state, args.record, Path(name))
+            print(f'APPROVED: {digest} (transcript {name}); NEXT: operator - next')
+            return 0
+        check('no-record-outside-approve', args.record is None)
         Order(args.state).operator(args.step)
     except (Refused, OSError, ValueError, KeyError) as error:
         print(f'REFUSED: {error}; NEXT: review seat - rule on refusal', file=sys.stderr)

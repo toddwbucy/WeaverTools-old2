@@ -5,6 +5,7 @@
 # conforms: blackwell-probe-falsifier-halts-after-unload
 # conforms: blackwell-probe-one-command-one-seat-per-step
 # conforms: blackwell-probe-approval-gates-every-step
+# conforms: blackwell-probe-approval-in-root-custody
 # conforms: blackwell-probe-wait-verifies-when-the-state-moves
 # conforms: blackwell-probe-halt-is-evidence
 # conforms: blackwell-probe-root-receives-bytes-never-a-path
