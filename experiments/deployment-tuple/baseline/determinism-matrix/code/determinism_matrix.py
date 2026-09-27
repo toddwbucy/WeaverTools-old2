@@ -71,7 +71,10 @@ def parse_seed_schedule(text):
     """The schedule as given: comma-separated integers, at least one, no
     repeats, because a repeated seed is a session counted twice under one
     condition and read as two."""
-    seeds = [int(part.strip()) for part in text.split(",") if part.strip()]
+    # Each seed as the sampler takes it, decimal and within u64, refused by
+    # name at preflight rather than at every session's load (#716 round
+    # seven).
+    seeds = [base.seed_value(part, "a scheduled seed") for part in text.split(",") if part.strip()]
     if not seeds:
         raise ValueError("the seed schedule is empty")
     if len(set(seeds)) != len(seeds):
@@ -141,9 +144,17 @@ def standing_seed(declaration):
         value = base.yaml_scalar(values[0])
     except ValueError as e:
         raise ValueError(f"the declaration's seed: {e}") from None
-    if re.fullmatch(r"[0-9]+", value) is None:
-        raise ValueError(f"the declaration's seed {value!r} is not a decimal integer")
-    return int(value)
+    return base.seed_value(value, "the declaration's seed")
+
+
+def hours_value(hours):
+    """The run's wall-clock bound: finite, positive, and a deadline the clock
+    can reach, or refused by name before anything is written (#716 round
+    seven). Zero or less runs no session, and an infinite or overflowing one
+    never ends."""
+    if not (math.isfinite(hours) and hours > 0 and math.isfinite(time.time() + hours * 3600.0)):
+        raise ValueError(f"--hours {hours} is not a finite positive bound")
+    return hours
 
 
 def session_seed(schedule, standing, iteration, cell_index):
@@ -524,37 +535,37 @@ def main():
                          " line is rewritten before each session, rotating"
                          " through the list, and restored on exit")
     args = ap.parse_args()
+    # **Preflight, whole, before the run writes or loads anything** (#716
+    # round seven): every value checked against its consumer's domain, the
+    # declaration read and checked, and only then the outdir made.
+    def refuse(message):
+        print(message, file=sys.stderr)
+        sys.exit(2)
+
     # `is not None` rather than truthiness: an explicitly empty schedule is
     # refused by the parser, an omitted one is no schedule.
     schedule = None
-    if args.seed_schedule is not None:
-        try:
+    try:
+        hours_value(args.hours)
+        if args.seed_schedule is not None:
             schedule = parse_seed_schedule(args.seed_schedule)
-        except ValueError as e:
-            print(str(e), file=sys.stderr)
-            sys.exit(2)
+    except ValueError as e:
+        refuse(str(e))
 
     with open(args.config) as f:
         cfg = json.load(f)
-    os.makedirs(args.outdir, exist_ok=True)
-    # A run writes into a deposit no earlier run has written: an appended
-    # record under a summary of the new invocation alone disagrees with it
-    # (#716 round five). What the operator's shell writes beside the run,
-    # the config, the box facts and the clock log, is not the run's.
-    stale = base.stale_outputs(args.outdir, ["matrix.jsonl", "matrix.log", "summary.json"])
-    if stale:
-        print(f"the outdir already holds a run's output: {', '.join(stale)}."
-              " A run writes into a deposit no earlier run has written.", file=sys.stderr)
-        sys.exit(2)
+    try:
+        base.loop_digest(cfg)
+    except ValueError as e:
+        refuse(str(e))
     # A run that rewrites the declaration leaves this backup until it has
     # restored it, so one standing now is a run that never did, and the file
     # on disk is not the operator's: a seed a killed schedule left would be
     # read as the declaration's own.
     pending = cfg["declaration"] + ".pre-matrix"
     if os.path.lexists(pending):
-        print(f"a previous run left the declaration unrestored: its backup stands at"
-              f" {pending}. Restore the declaration from it and remove it first.", file=sys.stderr)
-        sys.exit(2)
+        refuse(f"a previous run left the declaration unrestored: its backup stands at"
+               f" {pending}. Restore the declaration from it and remove it first.")
 
     with open(cfg["declaration"]) as f:
         original = f.read()
@@ -562,29 +573,30 @@ def main():
     # or the artifact-swapped one, and the seed rewrite per session starts
     # from it so the two overrides compose rather than overwrite each other.
     standing = original
-    if args.artifact:
-        try:
-            standing = base.with_artifact(original, args.artifact)
-        except ValueError as e:
-            print(str(e), file=sys.stderr)
-            sys.exit(2)
-    if schedule:
-        # Refused before any load and before anything is written: a
-        # declaration without exactly one seed line is not one this override
-        # can vary, and the refusal leaves the operator's file untouched.
-        try:
-            with_declared_seed(standing, schedule[0])
-        except ValueError as e:
-            print(str(e), file=sys.stderr)
-            sys.exit(2)
-    # The declaration's own seed and artifact, read on every path so a run
-    # without a schedule holds them too, and refused before anything loads.
     try:
+        if args.artifact:
+            standing = base.with_artifact(original, args.artifact)
+        # A declaration without exactly one seed line is not one the
+        # schedule can vary, refused with the operator's file untouched.
+        if schedule:
+            with_declared_seed(standing, schedule[0])
+        # The declaration's own seed and artifact, read on every path so a
+        # run without a schedule holds them too.
         seed = standing_seed(standing)
         artifact = artifact_of(standing)
     except ValueError as e:
-        print(str(e), file=sys.stderr)
-        sys.exit(2)
+        refuse(str(e))
+
+    # A run writes into a deposit no earlier run has written: an appended
+    # record under a summary of the new invocation alone disagrees with it
+    # (#716 round five). What the operator's shell writes beside the run,
+    # the config, the box facts and the clock log, is not the run's.
+    if os.path.isdir(args.outdir):
+        stale = base.stale_outputs(args.outdir, ["matrix.jsonl", "matrix.log", "summary.json"])
+        if stale:
+            refuse(f"the outdir already holds a run's output: {', '.join(stale)}."
+                   " A run writes into a deposit no earlier run has written.")
+    os.makedirs(args.outdir, exist_ok=True)
 
     deadline = time.time() + args.hours * 3600.0
     # Opened before the first load so the journal read at the summary

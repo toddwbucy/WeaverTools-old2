@@ -260,6 +260,38 @@ ARTIFACT_KEY = re.compile(r"^([ \t]*)artifact:(.*)$", re.M)
 PLAIN_START = re.compile(r"[\[\]{}&*!|>'\"%@`,#?:-]")
 
 
+# **Every value a run takes is checked against its consumer's domain before
+# the run writes or loads anything** (#716 round seven). A value outside it
+# otherwise starts a run that fails every session.
+# The sampler's seed is a u64 (weaver-spu/src/sampling.rs).
+U64_MAX = 2 ** 64 - 1
+SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+
+
+def seed_value(text, where):
+    """A seed as the sampler takes it: decimal digits within u64. Anything
+    else, a sign, a base prefix, an underscore or a value past u64, is
+    refused by name."""
+    text = text.strip()
+    if re.fullmatch(r"[0-9]+", text) is None:
+        raise ValueError(f"{where} {text!r} is not a decimal integer")
+    value = int(text)
+    if value > U64_MAX:
+        raise ValueError(f"{where} {value} is past the sampler's u64 range, 0 to {U64_MAX}")
+    return value
+
+
+def loop_digest(cfg):
+    """The config's `loop_sha256`, absent or 64 lowercase hex digits: a
+    digest of another shape can match no load, and every session would be
+    refused at its first load."""
+    declared = cfg.get("loop_sha256")
+    if declared is not None and (not isinstance(declared, str)
+                                 or re.fullmatch(r"[0-9a-f]{64}", declared) is None):
+        raise ValueError(f"the config's loop_sha256 {declared!r} is not 64 lowercase hex digits")
+    return declared
+
+
 def yaml_scalar(raw):
     """One YAML scalar from a key's value text: double or single quoted with
     no escapes, or plain, each optionally followed by a comment. Anything
@@ -1492,8 +1524,23 @@ def main():
     args = ap.parse_args()
     with open(args.config) as f:
         cfg = json.load(f)
-    os.makedirs(args.outdir, exist_ok=True)
-    stale = stale_outputs(args.outdir, [f"report-{cfg['box']}.json"], "cell-*.ndjson")
+    # Every value the run takes is checked before it writes or loads
+    # anything (#716 round seven): the names that become filenames, each
+    # cell's artifact against the declaration, and the loop digest.
+    try:
+        loop_digest(cfg)
+        for what, name in [("box", cfg["box"])] + [("cell name", c["name"]) for c in cfg["cells"]]:
+            if not isinstance(name, str) or SAFE_NAME.fullmatch(name) is None:
+                raise ValueError(f"the {what} {name!r} is not a name a deposit file can carry")
+        with open(cfg["declaration"]) as f:
+            standing = f.read()
+        for c in cfg["cells"]:
+            with_artifact(standing, c["artifact"])
+    except ValueError as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(2)
+    stale = stale_outputs(args.outdir, [f"report-{cfg['box']}.json"], "cell-*.ndjson") \
+        if os.path.isdir(args.outdir) else []
     if stale:
         print(f"the outdir already holds a run's output: {', '.join(stale)}."
               " A run writes into a deposit no earlier run has written.", file=sys.stderr)
@@ -1507,6 +1554,7 @@ def main():
         print(f"a previous run left the declaration unrestored: its backup stands at"
               f" {backup}. Restore the declaration from it and remove it first.", file=sys.stderr)
         sys.exit(2)
+    os.makedirs(args.outdir, exist_ok=True)
     shutil.copy2(cfg["declaration"], backup)
     # Read once for the run: the libraries cannot change under it, and
     # `libggml-cuda` built for four architectures is 142 MiB to hash.

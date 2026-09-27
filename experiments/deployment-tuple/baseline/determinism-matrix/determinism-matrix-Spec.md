@@ -152,18 +152,19 @@ sha256 of its emission.
 **Every session is declared under a seed, the declaration's own where no schedule
 stands.** The declaration's one `seed:` line is read at the start on every path, as a
 YAML scalar, quoted or plain with any comment dropped, and a declaration carrying other
-than exactly one, or a seed that is not a decimal integer, is refused by name before
-anything loads. The artifact is read the same way, and `--artifact` rewrites only its
-own line, refusing a path a plain scalar cannot carry unchanged. With `--seed-schedule`,
-a comma-separated list of distinct integers, that line is rewritten before each session.
-Both halves of a session read the same seed and successive sessions read different ones.
-The seed a matrix cell takes rotates by matrix cell and is offset by sweep, so over as
-many sweeps as the schedule has seeds every matrix cell meets every seed and no matrix
-cell keeps one seed from one sweep to the next. A schedule that cannot hold both
-properties with the sweep boundary, one seed or two, is refused. The declaration is
-restored when the run ends, by its clock or by an interrupt, and not by a hangup, per
-section 5. `--artifact` overrides the declaration's artifact for every session in the
-same way and is restored with it.
+than exactly one, or a seed that is not a decimal integer within the sampler's u64
+range, 0 to 2^64 - 1, is refused by name before anything loads, and each seed of a
+schedule is held to the same domain. The artifact is read the same way, and `--artifact`
+rewrites only its own line, refusing a path a plain scalar cannot carry unchanged. With
+`--seed-schedule`, a comma-separated list of distinct integers, that line is rewritten
+before each session. Both halves of a session read the same seed and successive sessions
+read different ones. The seed a matrix cell takes rotates by matrix cell and is offset
+by sweep, so over as many sweeps as the schedule has seeds every matrix cell meets every
+seed and no matrix cell keeps one seed from one sweep to the next. A schedule that
+cannot hold both properties with the sweep boundary, one seed or two, is refused. The
+declaration is restored when the run ends, by its clock or by an interrupt, and not by a
+hangup, per section 5. `--artifact` overrides the declaration's artifact for every
+session in the same way and is restored with it.
 
 **A session whose seed the record does not bear out is a fault, not a verdict.** The
 source turns must carry one recorded seed, `sampling.seed` on each `model.request`, with
@@ -266,6 +267,13 @@ A second run on an unchanged stack copies the file and records at its head when 
 re-read the stack and found it unchanged.
 
 ## 7. What a run requires
+
+**Every value a run takes is checked at preflight, before it writes or loads anything.**
+The seeds, per section 4, `--hours`, which must be finite, positive and a deadline the
+clock reaches, the config's `loop_sha256`, which must be 64 lowercase hex digits, and
+the declaration's artifact and any `--artifact` are refused by name, and the outdir is
+made only once every check has passed. The cross-precision entry point checks its box
+and cell names, which become filenames, and each cell's artifact the same way.
 
 **A run writes into a deposit no earlier run wrote.** An outdir already holding
 `matrix.jsonl`, `matrix.log` or `summary.json` is refused before anything is written,

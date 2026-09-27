@@ -11,8 +11,9 @@ carry the fixes of #716, named in the Spec's section 0, with a test holding that
 path the 2026-09-27 runs took every verdict, seed and turn is what it was before, the
 fields that move named: the declared seed and the device each load logged. The
 `test_*.py` files are the tests of the two, three from that tree and
-`test_recorded_seed.py`, `test_absence_and_evidence.py` and `test_round_five.py` from
-#716. Each is a plain script and exits non-zero on the first failure:
+`test_recorded_seed.py`, `test_absence_and_evidence.py`, `test_round_five.py` and
+`test_round_seven.py` from #716. Each is a plain script and exits non-zero on the first
+failure:
 
 ```
 python3 test_seed_schedule.py
@@ -21,6 +22,7 @@ python3 test_provenance_close.py
 python3 test_recorded_seed.py
 python3 test_absence_and_evidence.py
 python3 test_round_five.py
+python3 test_round_seven.py
 ```
 
 Stdlib only. It needs the installed agent stack, one agent whose declaration it
@@ -42,7 +44,7 @@ One JSON file per box. The matrix reads these fields:
 | `repo` | yes | the checkout the stack was built from, for the toolchain reading |
 | `spu_bin` | optional | overrides the `spu-binary` the admin configuration names |
 | `build_flags` | yes | a description of the build, recorded and not parsed |
-| `loop_sha256` | optional | the sha256 of the loop the agent composes with, which every load is held to, a load composed by another being a fault. Absent, the loop is unchecked |
+| `loop_sha256` | optional | the sha256 of the loop the agent composes with, 64 lowercase hex digits or refused at preflight, which every load is held to, a load composed by another being a fault. Absent, the loop is unchecked |
 
 **`cells` is not read by the matrix.** It lists artifacts for `confirm_cells.py`'s own
 entry point, the cross-precision protocol, and a config shared with that protocol
