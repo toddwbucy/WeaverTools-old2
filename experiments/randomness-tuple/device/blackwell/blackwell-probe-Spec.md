@@ -6,7 +6,7 @@
 **Document ID:** `blackwell-probe-Spec`
 **Parent:** `randomness-tuple-PRD`
 **Editorial:** Per the Working Rules.
-**Landing PR:** #685
+**Landing PR:** #713
 
 ---
 

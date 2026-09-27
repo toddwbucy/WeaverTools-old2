@@ -15,7 +15,7 @@ nothing yet existed to be consistent with, rather than a standing obligation.
 **Date filed:** 2026-07-28
 **Document ID:** `weaver-agents-PRD`
 **Editorial:** Per the Working Rules.
-**Landing PR:** #634
+**Landing PR:** #713
 
 ---
 
