@@ -451,6 +451,12 @@ class Fixture(unittest.TestCase):
                 with self.assertRaisesRegex(order.Refused,'prior-approval'):self.o.previous(self.state,self.plan)
                 with self.assertRaisesRegex(order.Refused,'prior-approval'):self.o.coding('report',report)
                 self.assertNotIn('report',self.o.read()['done'])
+        # Two absences compare equal: a state holding no approval and a receipt
+        # naming none refuse in previous() itself, whatever its caller checked.
+        # Perturbation: drop the presence clause and previous() passes this.
+        self.due('report');bare=copy.deepcopy(self.state);bare['approval']=None
+        for step in bare['done']:del bare['done'][step]['approval']
+        with self.assertRaisesRegex(order.Refused,'prior-approval'):self.o.previous(bare,self.plan)
         steps=order.schedule(self.plan);self.due(steps[-1][0])
         review=self.root/'review.log';review.write_text('PASS\n')
         self.state['done']['review']=dict(status='SUCCESS',path=str(review),sha256=order.sha(review),approval=other)

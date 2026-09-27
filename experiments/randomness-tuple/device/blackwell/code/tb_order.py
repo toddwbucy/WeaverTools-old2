@@ -334,7 +334,9 @@ class Order:
             check('prior-success', done.get('status') == 'SUCCESS')
             # Every receipt names the approval it ran under, and a state runs
             # under one: a receipt of another approval is no step of this run.
-            check('prior-approval', same(done.get('approval'), s.get('approval')))
+            # Two absences compare equal, so the state's own is required here
+            # rather than trusted to every caller having run approved() first.
+            check('prior-approval', s.get('approval') is not None and same(done.get('approval'), s.get('approval')))
             check('prior-evidence', Path(done['path']).is_file() and sha(done['path']) == done['sha256'])
 
     def guard(self, s, plan, requested, seat):

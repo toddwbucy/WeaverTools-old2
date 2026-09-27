@@ -241,13 +241,13 @@ step of the schedule: it is the review seat's record, snapshotted root-owned whe
 operator runs `approve`, per section 5. A step out of order, by the wrong seat, or
 already recorded is refused under `step-order`, `seat` and `not-repeated`, and every
 step first re-verifies every earlier receipt against its recorded digest, and against
-the approval it names, which must be the state's, under `prior-success`,
-`prior-approval` and `prior-evidence`. **A free run's `measure` receipt also holds its
-sink as it stood at the run's `turn.closed`**, the path, the length of the prefix
-through that line and that prefix's digest, recorded by the driver under the
-coordinator's lock as of 2026-09-26 (#679 item 1). A local re-feed's `load` is handed
-that length and digest beside the plan, and refuses under `source-sink-recorded` where
-the source run's receipt holds no well-formed sink at the path its job names.
+the approval it names, which must be the state's, a state holding none refusing it,
+under `prior-success`, `prior-approval` and `prior-evidence`. **A free run's `measure`
+receipt also holds its sink as it stood at the run's `turn.closed`**, the path, the
+length of the prefix through that line and that prefix's digest, recorded by the driver
+under the coordinator's lock as of 2026-09-26 (#679 item 1). A local re-feed's `load` is
+handed that length and digest beside the plan, and refuses under `source-sink-recorded`
+where the source run's receipt holds no well-formed sink at the path its job names.
 
 **Approval gates every step and is not this program's to grant.** `next` waits while the
 state records no approval. Once one is recorded, every step reads it from the root-owned
