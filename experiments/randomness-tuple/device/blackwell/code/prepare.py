@@ -28,6 +28,9 @@ def template(deposit, operator, uid):
     return dict(version=1, agent='bravo', install_root='/var/lib/weaver-tb', deposit=str(deposit),
                 operator=operator, operator_uid=uid, instrument=str(instrument), model_source=str(model),
                 stacks={s: str(deposit / 'stacks' / s) for s in ['B1', 'B2']}, files=files,
+                # Each ruling is filled in at re-staging (679.4). The CUDA
+                # provenance ruling of 2026-09-26 (679.3) is the one the plan
+                # will carry: https://github.com/toddwbucy/WeaverTools/issues/698#issuecomment-5851860887
                 rulings=dict(hold_lifted=None, cuda_provenance=None, control_count=None),
                 tuple=dict(artifact='/opt/weaver/models/Qwen3-8B-Q8_0.gguf',
                            weights_sha256='0cfbf745760f07a76ddeb358dd025a27f2e11d1ca9c9a4169a373d52990fe86e',
@@ -58,10 +61,13 @@ def main():
             shutil.copy2(path, target / path.name)
     plan = evidence / 'tb-plan.json'
     atomic(plan, template(args.deposit, args.operator, args.uid))
-    atomic(state, dict(version=1, hold=True, cursor=0, plan=str(plan), done={}, driver=None,
-                       halt=None, refusals=[], review=dict(status='PENDING', seat=None, reference=None, artifacts={})))
+    # Held by construction: no approval is recorded, and the review, the hold
+    # and the approved digests live in the root-owned approval record that
+    # `tb-operator.sh approve` writes, never in this state file (679.5).
+    atomic(state, dict(version=1, cursor=0, done={}, driver=None, halt=None, refusals=[], approval=None))
     atomic(evidence / 'staged-files.json', {str(p): sha(p) for p in sorted(target.iterdir()) if p.is_file()})
-    print(f'Staged held preparation at {target}; WAITING ON: review seat - rulings and approval after hold lifts')
+    print(f'Staged held preparation at {target}, plan {plan}; WAITING ON: review seat - rulings, then the '
+          'review record, then the operator runs approve')
 
 
 if __name__ == '__main__':

@@ -323,7 +323,7 @@ def drive(order, arm_name):
     root.mkdir(exist_ok=True)
     start = root / f'{arm_name}-start.json'
     check('fresh-arm', not start.exists())
-    atomic(start, dict(arm=arm_name, pid=os.getpid(), plan=state['review']['artifacts'][state['plan']]))
+    atomic(start, dict(arm=arm_name, pid=os.getpid(), plan=order.approval['plan']['sha256']))
     # Every evidence read below is against the receipts the coordinator last
     # verified and handed back, never a path read alone (#683 thread 14).
     receipts = order.coding(f'start:{arm_name}', start)

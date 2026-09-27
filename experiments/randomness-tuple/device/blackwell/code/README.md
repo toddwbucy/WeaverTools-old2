@@ -38,8 +38,10 @@ python3 experiments/randomness-tuple/device/blackwell/code/prepare.py --handoffs
 
 It creates `handoffs/tb/`, `handoffs/tb-evidence/tb-plan.json`,
 `tb-state.json`, and a manifest of the staged files. It refuses to overwrite
-existing staging or state. `hold` starts true and review starts PENDING. It
-never manufactures approval hashes. The staged operator command is:
+existing staging or state. The state starts with no approval, and it never
+manufactures one. Approval is the review seat's record, published after the
+rulings are filled, and the operator's `approve` of it, below. The staged
+operator command is:
 
 ```
 bash handoffs/tb/tb-operator.sh next
@@ -53,7 +55,10 @@ The staged plan deliberately remains incomplete where #679 has unresolved
 inputs. Before review, the coding seat must fill and hash the historical
 Ampere/Ada source traces, both CUDA library directories, and the rulings. Do not
 put an arbitrary nonempty placeholder in a ruling field. Each is the URL of the
-actual decision. `control_count` must explicitly accept eight Q8_0 pairs and all
+actual decision. `cuda_provenance` stays unset until the re-staging, which fills
+it with the ruling of 2026-09-26,
+https://github.com/toddwbucy/WeaverTools/issues/698#issuecomment-5851860887.
+`control_count` must explicitly accept eight Q8_0 pairs and all
 16 own-record re-feeds for this schedule. If the operator chooses more pairs,
 change the schedule validator and tests in a reviewed rework first. No optional
 BF16 rung is silently added. The kernel schedule contains all 16 B1 records;
@@ -75,20 +80,32 @@ coverage, changed artifacts, changed receipts or a recorded refusal.
 Only the operator runs `next`, as the recorded operator uid, without wrapping it
 in sudo. The coordinator requests sudo internally and hands root the reviewed
 payload's verified bytes, never a path: it reads `tb_payload.py` once, checks
-those bytes against the recorded digest, and runs
-`sudo /usr/bin/python3 -I -c <those bytes> <plan> <digest> <step>` with stdin
+those bytes against the approval's payload digest, and runs
+`sudo /usr/bin/python3 -I -c <those bytes> <step> <approval digest>` with stdin
 closed, capturing a transcript. A file the operator's UID can rename, any
 process of that UID can swap between a check and sudo's open, and that UID need
 not hold the sudo credential. **Any sudoers allowlist for the payload must match
-this `-c` form**, since there is no payload file to name. **Approval is not yet in
-root custody:** the review seat's PASS and the artifact digests live in
-`tb-state.json`, which the operator's UID owns, so a process of that UID could
-rewrite what is approved before `next` hands it to root (#683 thread 24). Lifting
-the HOLD owes one privileged step first, installing the approval digests
-root-owned and verifying them on the root side, and that step is #679's. The payload is handed
-the plan digest the review seat recorded, never one recomputed at call time, and
-it parses the one plan snapshot that matched that digest. The coordinator's own
-approval check parses its plan the same way. The payload uses
+this `-c` form**, since there is no payload file to name. **Approval is in
+root custody**, on the ruling of 2026-09-26,
+https://github.com/toddwbucy/WeaverTools/issues/698#issuecomment-5851860966. The
+operator runs `bash handoffs/tb/tb-operator.sh approve <record>` on the review
+seat's published record, and root reads the record and every artifact it names
+once, checks each digest before its first write, copies the reviewed payload and
+plan root-owned under `/var/lib/weaver-tb/approval/<digest>/`, writes
+`approval.json` (0600) and `approval.pub.json` (0644), and prints the digest. It
+leaves nothing on any refusal. The coordinator hashes the record once before sudo
+and root holds its own read to that digest. A second approve of the same record
+adopts the approval root already made and writes nothing, so a coordinator that
+died after root committed recovers by running `approve` again. A partial
+approval a crash left refuses by name.
+The state keeps only that digest, as `approval`. Root reads the approval it
+names, holds its own code to the approval's payload digest, and parses the
+root-owned plan copy. The coordinator reads the public copy and takes the hold
+and the review's fields from it, never from the state. On one box the operator
+at the sudo prompt is the trust anchor: the snapshot closes the window between
+approval and `next` (#683 thread 24), and the window before approval closes only
+once the review seat has an identity of its own and signs its record, owed on
+#698. The payload uses
 Python isolated mode and no import from the working directory. No sudo is run by
 the probe driver. Notification failure never changes a successful step.
 
@@ -137,10 +154,14 @@ python3 handoffs/tb/tb_driver.py --state handoffs/tb-evidence/tb-state.json repo
 
 The cursor then rests on `review`, and `next` prints `WAITING ON: review seat -
 review`. **The review is the review seat's own edit of the state file, never a
-command of this program**, as approval is. Holding the coordinator lock
+command of this program**, and approval is the operator's `approve` of the
+review seat's record. Holding the coordinator lock
 (`flock handoffs/tb-evidence/tb-state.lock`), the review seat records
-`done.review` as `{status: SUCCESS, path, sha256}` naming its review evidence and
-advances `cursor` by one. `next` then prints `COMPLETE`.
+`done.review` as `{status: SUCCESS, path, sha256, approval}` naming its review
+evidence and the state's approval digest, as every receipt does, and advances
+`cursor` by one. A receipt naming another approval refuses every later step. A new
+approval means a new state, and `approve` refuses a state that already holds one.
+`next` then prints `COMPLETE`.
 
 The same verb takes TB-d or TB-k only when due. This is documentation for after
 approval, not a request to run it now. The driver appends `probe.jsonl`, preserves

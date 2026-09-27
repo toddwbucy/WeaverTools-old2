@@ -227,36 +227,40 @@ to: blackwell-probe-falsifier-halts-after-unload
 
 ## 4. The order of operations
 
-**One command, one state file, three seats.** The operator runs `next` and nothing
-else, never under sudo, per `Order.operator`, and the payload refuses a `next` whose
-invoking uid is not the plan's recorded operator, under its `operator` guard. The
-state file `tb-state.json` carries the cursor over a schedule the plan determines:
-`provision`, then for each leg `start`, and for each job `load`, `measure`, `unload`
-and `settle`, then `finish`, and after the last leg `report` and `review`. Each step
-names its seat. The operator owns `provision`, `load` and `unload`. The coding seat
-owns `start`, `measure`, `settle`, `finish` and `report`. The review seat owns
-`review`, which is its own edit of the state file under the coordinator's lock and
-never a command of this program, as approval is. A step out of order, by the wrong
-seat, or already recorded is refused under `step-order`, `seat` and `not-repeated`,
-and every step first re-verifies every earlier receipt against its recorded digest under
-`prior-success` and `prior-evidence`. **A free run's `measure` receipt also holds its
-sink as it stood at the run's `turn.closed`**, the path, the length of the prefix
-through that line and that prefix's digest, recorded by the driver under the
-coordinator's lock as of 2026-09-26 (#679 item 1). A local re-feed's `load` is handed
-that length and digest beside the plan, and refuses under `source-sink-recorded` where
-the source run's receipt holds no well-formed sink at the path its job names.
+**One command, one state file, three seats.** The operator runs `next` and nothing else,
+never under sudo, per `Order.operator`, and the payload refuses a `next` whose invoking
+uid is not the plan's recorded operator, under its `operator` guard. The state file
+`tb-state.json` carries the cursor over a schedule the plan determines: `provision`,
+then for each leg `start`, and for each job `load`, `measure`, `unload` and `settle`,
+then `finish`, and after the last leg `report` and `review`. Each step names its seat.
+The operator owns `provision`, `load` and `unload`. The coding seat owns `start`,
+`measure`, `settle`, `finish` and `report`. The review seat owns `review`, which is its
+own edit of the state file under the coordinator's lock and never a command of this
+program, its receipt naming the state's approval as every receipt does. Approval is no
+step of the schedule: it is the review seat's record, snapshotted root-owned when the
+operator runs `approve`, per section 5. A step out of order, by the wrong seat, or
+already recorded is refused under `step-order`, `seat` and `not-repeated`, and every
+step first re-verifies every earlier receipt against its recorded digest, and against
+the approval it names, which must be the state's, a state holding none refusing it,
+under `prior-success`, `prior-approval` and `prior-evidence`. **A free run's `measure`
+receipt also holds its sink as it stood at the run's `turn.closed`**, the path, the
+length of the prefix through that line and that prefix's digest, recorded by the driver
+under the coordinator's lock as of 2026-09-26 (#679 item 1). A local re-feed's `load` is
+handed that length and digest beside the plan, and refuses under `source-sink-recorded`
+where the source run's receipt holds no well-formed sink at the path its job names.
 
-**Approval gates every step and is not this program's to grant.** `next` waits while
-the hold stands or the review is not `PASS`. Once lifted, every step verifies that
-the review names its seat and reference, that its artifact map covers the plan and
-the nine staged files, the eight scripts and the suite, that every artifact still
-hashes as recorded, that the
-plan snapshot parses from the bytes that matched its digest, that the plan's file map
-is covered by the artifact map and agrees with it, and that no halt is recorded,
-under `hold`, `review`, `approval-coverage`, `artifact-hashes`, `plan-snapshot`,
-`manifest-coverage`, `manifest-hashes` and `halt`. Staging creates the state held and
-unapproved and refuses to overwrite an existing state, so approval is never
-manufactured.
+**Approval gates every step and is not this program's to grant.** `next` waits while the
+state records no approval. Once one is recorded, every step reads it from the root-owned
+record the state's `approval` digest names and never from the state, per section 5, and
+verifies that the record is root's and matches that digest, that it states a passed
+review with the hold lifted, naming its seat and reference, that its artifact map covers
+the plan and the nine staged files, the eight scripts and the suite, that every artifact
+still hashes as recorded, that the plan snapshot parses from the bytes that matched the
+approved digest, that the plan's file map is covered by the artifact map and agrees with
+it, and that no halt is recorded, under `approval-digest`, `approval-custody`,
+`approval-record`, `approval-coverage`, `artifact-hashes`, `plan-snapshot`,
+`manifest-coverage`, `manifest-hashes` and `halt`. Staging creates the state with no
+approval and refuses to overwrite an existing state, so approval is never manufactured.
 
 **The driver blocks, and the coordinator holds the lock only while it decides.** An
 leg runs in one driver invocation that takes a lease bound to its process start time,
@@ -314,12 +318,14 @@ to: blackwell-probe-halt-is-evidence
 ## 5. The privilege boundary, and custody
 
 **Root receives the reviewed bytes and never a path.** The coordinator reads
-`tb_payload.py` once, checks the bytes against the digest the review seat recorded,
-and runs `sudo /usr/bin/python3 -I -c <those bytes> <plan> <digest> <step>` with
-standard input closed and the transcript captured, per `payload`. The digest handed
-to root is the one recorded at approval, never one recomputed at call time, and the
-payload parses the one plan snapshot whose bytes matched it, under `plan-hash`, before
-anything else. The payload runs in isolated mode and imports nothing from the working
+`tb_payload.py` once, checks the bytes against the digest the approval record holds,
+and runs `sudo /usr/bin/python3 -I -c <those bytes> <step> <approval digest>` with
+standard input closed and the transcript captured, per `payload`. Root reads the
+approval that digest names from its root-owned record, holds the code it is running to
+the approval's payload digest, read back from its own command line, and parses the one
+plan snapshot whose bytes matched the approved digest, the root-owned copy, under
+`approval-digest`, `approval-custody`, `payload-hash` and `plan-hash`, before anything
+else. The payload runs in isolated mode and imports nothing from the working
 directory. The reason is stated where it binds: a file the operator's uid can rename,
 any process of that uid can swap between a check and sudo's open, and that uid need
 not hold the sudo credential. A sudoers allowlist for the payload therefore matches
@@ -329,14 +335,64 @@ and refuses an invoking uid that is not the plan's recorded operator, under
 `root-payload`, `fixed-root-agent` and `operator`. The coordinator and the driver
 refuse to run as root, under `operator-not-root` and `driver-not-root`.
 
-**Approval is not yet in root custody, and the hold lift owes one privileged step.**
-The review seat's `PASS` and the artifact digests live in `tb-state.json`, which the
-operator's uid owns, so the adversary of the paragraph above could rewrite what is
-approved before `next` hands it to root. That gap was found by the security review on
-#683 and is recorded on #679: before the hold lifts, a privileged step installs the
-reviewed payload and the approval digests root-owned, verified against what the
-review seat published, and `next` hands sudo the root-owned copy. Until that step
-lands, this workflow is held.
+**Approval is in root custody, by one privileged step, `approve`**, on the ruling of
+2026-09-26 on #698 (679.5). The review seat publishes its review as a record: the
+status, the hold, the seat, the reference, the plan's path, the payload's path and the
+artifact map, every path with its sha256. The operator runs `tb-operator.sh approve
+<record>`. The coordinator hashes the record once and hands root the reviewed payload by
+the `-c` form above with the record's path and that digest. Root reads the record once,
+refusing a link, holds it to the coordinator's digest, reads every artifact it names
+once, each held to its digest before the first write, and holds the code it is running
+to the record's payload digest. It copies the reviewed payload and the plan into a
+directory under `/var/lib/weaver-tb/approval/`, writes `approval.json` (0600) and
+`approval.pub.json` (0644), the same bytes, names the directory by their digest, and
+prints it. A refusal leaves nothing behind, under `approval-record`,
+`approval-record-digest`, `approval-root`, `root-chain-custody`, `approval-self`,
+`approval-artifacts` and `approval-new`. **The state keeps that digest and nothing else
+about approval**, as `approval`, a pointer the coordinator records only once the public
+copy it names is root's and matches it and the record digest taken before sudo, the
+record never read again after root has run, under `approve-exit`, `approve-printed` and
+`approve-record`. **A new approval means a new state**: the pointer is set once, a
+second `approve` against a state holding one refuses before root is asked, under
+`one-approval-per-state`, and every receipt records the approval it ran under, so no run
+carries evidence of two. The hold and the review's fields are the record's. `halt` and
+`cursor` stay the operator's by design: a halt is the operator's right, and the cursor
+selects a step whose every earlier receipt is verified.
+
+**Every handoff across sudo answers a death between its two sides**, on #709's third
+pass. An interrupted step is never silently resumed, and adopting a finished, verified
+result is not a resume. **`approve` is adopted on retry**: a coordinator that dies after
+root commits and before the state is written leaves an approval the state does not name,
+and the retry hands root the same record, which root finds complete, checks as a reader
+would, and answers with its digest, writing nothing, under `approval-adopt`. Two
+complete approvals of one record refuse, under `approval-once`. A directory a crash left
+mid-write, or anything in the approvals that is not a complete approval, is never
+adopted and refuses by name, under `approval-partial`. **The scheduled steps refuse
+rather than repeat**: a `provision` retried over its own partial or finished work
+refuses under `fresh-install-root`, a `load` whose sink stands refuses under
+`fresh-sink` rather than loading the run twice, and an `unload` re-measures its whole
+claim, the agent unloaded and the interlock clear, from nothing it recorded before. A
+coordinator that survives the failure records a halt, and every later step refuses under
+`halt` while it stands.
+
+**On one box the operator at the sudo prompt is the trust anchor.** The snapshot closes
+the window between approval and `next`, the one the security review on #683 found, where
+any operator-uid process could rewrite what was approved before root read it. **The
+window before approval stays open**: a process of that uid can still change what the
+review seat is about to approve, and that closes only when the review seat has an
+identity of its own, another uid or another box, and signs its record. The signed review
+record is owed on #698, and the record's shape is kept so a signature slots in without
+moving the consumer.
+
+```graph
+node: blackwell-probe-approval-in-root-custody
+kind: assertion
+tag: perturbation
+
+edge: asserts
+from: blackwell-probe
+to: blackwell-probe-approval-in-root-custody
+```
 
 **No privileged step acts on a copy of a fact held by another party without checking
 it against evidence it verified itself**, as a rule of this probe's custody from
@@ -349,9 +405,10 @@ under `source-sink-recorded`. **The rule is substrate-neutral**: a state store t
 moved from a file on this box to a service across a network would change nothing on
 the consuming side but the address, the copy still arriving from another party and
 still checked against evidence the consumer verifies. **Where no such evidence exists
-the fact is named rather than trusted**: the approval fields, the halt, the cursor and
-each receipt's status are read by shape or equality and acted on, and they rest on the
-state file's owner until the privileged approval step above puts them in root custody.
+the fact is named rather than trusted**: the halt, the cursor and each receipt's status
+are read by shape or equality and acted on, and they rest on the state file's owner.
+The halt and the cursor do so by design, per the approval paragraph above, and each
+receipt's bytes are held to their recorded digest before its status is read.
 
 **Nothing privileged reads an operator-owned input twice.** A check on a path
 followed by a second read of the path binds nothing, so every operator-owned input
@@ -392,12 +449,13 @@ root and is outside the adversary this document names.
 
 **The installation is isolated and refuses to adopt.** Provisioning uses only
 `/var/lib/weaver-tb`, its own two admin roots and the `weaver-bravo` account and
-group, refuses an existing root or account rather than adopting custody, under
-`fresh-install-root`, installs the model at the historical absolute artifact path or
-checks an identical existing file and never overwrites a different one, and changes
-nothing of `m1`, `karl`, their declarations or `/etc/weaver/admin`. The sinks
-directory is root-owned, its group the operator's own, mode `2750`, so the operator
-reads evidence and no member writes outside its own trace.
+group, and refuses rather than adopting custody: an existing account, and a root that
+is not exactly as `approve` left it, standing, locked and holding `approval/` and
+nothing else, under `fresh-install-root`. It installs the model at the historical
+absolute artifact path or checks an identical existing file and never overwrites a
+different one, and changes nothing of `m1`, `karl`, their declarations or
+`/etc/weaver/admin`. The sinks directory is root-owned, its group the operator's own,
+mode `2750`, so the operator reads evidence and no member writes outside its own trace.
 
 **Every load stands on an interlock.** A `bravo` load refuses a non-inactive `m1`
 unit, an unreadable unit status, a remaining `m1` coordination door, or any process
@@ -616,35 +674,40 @@ here by the module that raises them, and section 9 says how each is watched. The
 coordinator's: `schema`, `agent`, `stacks-distinct`, `isolated-root`, `tuple`,
 `rulings`, `arm-order`, `job-identities`, `job-types`, `control-schedule`,
 `own-refeeds`, `source-order`, `device-sources`, `device-traces`,
-`device-selections-distinct`, `kernel-schedule`, `hold`, `review`, `approval-coverage`,
-`artifact-hashes`, `halt`, `plan-snapshot`, `manifest-coverage`, `manifest-hashes`,
-`identity-evidence`, `identity-inputs`, `identity-binds-stacks`, `identity-recomputed`,
-`cursor`, `prior-success`, `prior-evidence`, `step-order`, `seat`, `not-repeated`,
-`driver-live`, `driver-owner`, `no-live-driver`, `report-evidence`, `payload-hash`,
-`payload-exit`, `payload-receipt`, `wait-owner`, `wait-order`, `wait-deadline`,
-`source-sink-recorded` and `operator-not-root`. The payload's: `root-payload`,
-`plan-hash`, `fixed-root-agent`, `operator`, `source-file-hash`, `job-found`,
-`model-source`, `existing-model-custody`, `existing-model`, `stack-no-symlinks`,
-`stack-libraries`, `stack-file-coverage`, `fresh-install-root`,
-`no-symlink-destination`, `snapshot-hash`, `new-model-custody`, `installed-no-symlinks`,
-`installed-stack-custody`, `installed-stack-coverage`, `installed-stack-hash`,
-`installation-plan`, `installed-model-custody`, `served-directory-custody`,
-`installed-model`, `m1-inactive`, `m1-state-readable`, `m1-no-door`, `m1-no-process`,
-`gpu-tuple`, `resolved-libraries`, `cuda-local`, `source-run-selected`,
-`derived-artifact`, `derived-tuple`, `preload-door`, `diagnostic-load`, `admin-answer`,
-`no-bravo-account`, `no-bravo-group`, `operator-group`, `model-chain-custody`,
-`root-chain-custody`, `source-sink-given`, `m1-unloaded-at-unload`, `known-step` and
-`command-exit`. The driver's: `driver-not-root`, `reader-approved`, `fresh-arm`,
-`gate-answer`, `single-turn`, `nonempty-measurement`, `field-depth`, `seed-held`,
-`weights-held`, `source-trace`, `source-measurement`, `source-weights-held`,
-`source-seed-held`, `replay-completed`, `single-replay`, `replay-measurement`,
-`request-absent`, `request-duplicated`, `output-absent`, `output-duplicated`,
-`field-duplicated`, `field-beyond-output`, `replay-weights-held`, `replay-seed-held`,
-`input-held`, `divergence-in-input`, `pair-count`, `pair-falsifier`,
-`own-refeed-falsifier`, `control-falsifier`, `changed-seed-prediction`, `sink-closed`,
-`receipt-present`, `receipt-digest`, `m1-unloaded-at-close` and `report-path`. The
-inventory raises its refusals as errors on the command line, since it runs before any
-plan exists.
+`device-selections-distinct`, `kernel-schedule`, `approval-digest`, `approval-custody`,
+`approval-record`, `approval-coverage`, `artifact-hashes`, `halt`, `plan-snapshot`,
+`manifest-coverage`, `manifest-hashes`, `identity-evidence`, `identity-inputs`,
+`identity-binds-stacks`, `identity-recomputed`, `cursor`, `prior-success`,
+`prior-approval`, `prior-evidence`, `step-order`, `seat`, `not-repeated`, `driver-live`,
+`driver-owner`, `no-live-driver`, `report-evidence`, `payload-hash`, `payload-exit`,
+`payload-receipt`, `wait-owner`, `wait-order`, `wait-deadline`, `source-sink-recorded`,
+`one-approval-per-state`, `approve-exit`, `approve-printed`, `approve-record`,
+`approve-record-named`, `no-record-outside-approve` and `operator-not-root`. The
+payload's: `root-payload`, `approve-arguments`, `own-code`, `approval-record`,
+`approval-root`, `approval-once`, `approval-self`, `approval-artifacts`, `approval-new`,
+`approval-record-digest`, `approval-partial`, `approval-adopt`, `fresh-sink`,
+`approval-digest`, `approval-custody`, `payload-hash`, `plan-hash`, `fixed-root-agent`,
+`operator`, `source-file-hash`, `job-found`, `model-source`, `existing-model-custody`,
+`existing-model`, `stack-no-symlinks`, `stack-libraries`, `stack-file-coverage`,
+`fresh-install-root`, `no-symlink-destination`, `snapshot-hash`, `new-model-custody`,
+`installed-no-symlinks`, `installed-stack-custody`, `installed-stack-coverage`,
+`installed-stack-hash`, `installation-plan`, `installed-model-custody`,
+`served-directory-custody`, `installed-model`, `m1-inactive`, `m1-state-readable`,
+`m1-no-door`, `m1-no-process`, `gpu-tuple`, `resolved-libraries`, `cuda-local`,
+`source-run-selected`, `derived-artifact`, `derived-tuple`, `preload-door`,
+`diagnostic-load`, `admin-answer`, `no-bravo-account`, `no-bravo-group`,
+`operator-group`, `model-chain-custody`, `root-chain-custody`, `source-sink-given`,
+`m1-unloaded-at-unload`, `known-step` and `command-exit`. The driver's:
+`driver-not-root`, `reader-approved`, `fresh-arm`, `gate-answer`, `single-turn`,
+`nonempty-measurement`, `field-depth`, `seed-held`, `weights-held`, `source-trace`,
+`source-measurement`, `source-weights-held`, `source-seed-held`, `replay-completed`,
+`single-replay`, `replay-measurement`, `request-absent`, `request-duplicated`,
+`output-absent`, `output-duplicated`, `field-duplicated`, `field-beyond-output`,
+`replay-weights-held`, `replay-seed-held`, `input-held`, `divergence-in-input`,
+`pair-count`, `pair-falsifier`, `own-refeed-falsifier`, `control-falsifier`,
+`changed-seed-prediction`, `sink-closed`, `receipt-present`, `receipt-digest`,
+`m1-unloaded-at-close` and `report-path`. The inventory raises its refusals as errors on
+the command line, since it runs before any plan exists.
 
 **The rulings are refusals too.** A plan whose `hold_lifted`, `cuda_provenance` or
 `control_count` ruling is empty is refused under `rulings`, and each names the URL
@@ -690,14 +753,15 @@ reads each citation from `code/`.
 | `blackwell-probe-schedule-validated-whole` | perturbation, the ten schedule guards of `validate_plan` and `stacks-distinct`, the two stacks resolved, distinct and disjoint |
 | `blackwell-probe-falsifier-halts-after-unload` | perturbation, `pair-falsifier`, `own-refeed-falsifier`, `control-falsifier`, `changed-seed-prediction` |
 | `blackwell-probe-one-command-one-seat-per-step` | perturbation, `step-order`, `seat`, `not-repeated`, `driver-owner`, `operator-not-root`, `driver-not-root` |
-| `blackwell-probe-approval-gates-every-step` | perturbation, `hold`, `review`, `approval-coverage`, `artifact-hashes`, `plan-snapshot`, `manifest-coverage`, `manifest-hashes`, `halt` |
+| `blackwell-probe-approval-gates-every-step` | perturbation, `approval-digest`, `approval-custody`, `approval-record`, `approval-coverage`, `artifact-hashes`, `plan-snapshot`, `manifest-coverage`, `manifest-hashes`, `halt` |
+| `blackwell-probe-approval-in-root-custody` | perturbation, `one-approval-per-state`, `prior-approval`, `approval-record-digest`, `approval-partial`, `approval-adopt`, the interrupted-approve test, `approval-record`, `approval-root`, `approval-once`, `approval-self`, `approval-artifacts`, `approval-new`, `approval-digest`, `approval-custody`, `own-code`, `approve-arguments`, `approve-exit`, `approve-printed`, `approve-record`, the tampered-artifact, flipped-state, replaced-payload and second-approve tests |
 | `blackwell-probe-wait-verifies-when-the-state-moves` | perturbation, `wait-owner`, `wait-order`, `wait-deadline` and the state-moves test |
-| `blackwell-probe-halt-is-evidence` | perturbation, `prior-success`, `prior-evidence`, `payload-exit`, `payload-receipt`, `cursor` |
+| `blackwell-probe-halt-is-evidence` | perturbation, `prior-success`, `prior-approval`, `prior-evidence`, `payload-exit`, `payload-receipt`, `cursor`, `fresh-sink` |
 | `blackwell-probe-root-receives-bytes-never-a-path` | perturbation, `payload-hash`, `plan-hash`, `root-payload`, `fixed-root-agent`, `operator` |
 | `blackwell-probe-operator-input-read-once` | perturbation, `snapshot-hash`, `source-file-hash`, `source-run-selected`, `reader-approved`, `source-trace`, `receipt-present`, `receipt-digest` |
 | `blackwell-probe-served-tree-locked-and-verified` | perturbation, `stack-no-symlinks`, `stack-file-coverage`, `installed-no-symlinks`, `installed-stack-custody`, `installed-stack-coverage`, `installed-stack-hash`, `served-directory-custody`, `root-chain-custody` |
 | `blackwell-probe-model-in-custody-on-both-paths` | perturbation, `existing-model-custody`, `new-model-custody`, `installed-model-custody`, `model-source`, `existing-model`, `installed-model`, `model-chain-custody` |
-| `blackwell-probe-installation-refuses-to-adopt` | perturbation, `fresh-install-root`, `no-bravo-account`, `no-bravo-group`, `operator-group`, `no-symlink-destination`, `installation-plan` |
+| `blackwell-probe-installation-refuses-to-adopt` | perturbation, `fresh-install-root` and the approval-only-root test, `no-bravo-account`, `no-bravo-group`, `operator-group`, `no-symlink-destination`, `installation-plan` |
 | `blackwell-probe-load-stands-on-the-interlock` | perturbation, `m1-inactive`, `m1-state-readable`, `m1-no-door`, `m1-no-process`, `m1-unloaded-at-close`, `m1-unloaded-at-unload`, `gpu-tuple`, `resolved-libraries`, `cuda-local`, `preload-door`, `diagnostic-load`, `admin-answer` |
 | `blackwell-probe-inventory-covers-every-served-file` | perturbation, the inventory tests and the pin of `STACK_ROOTS` |
 | `blackwell-probe-comparison-takes-b1-then-b2` | perturbation, `compare`'s refusals and the scope test |
@@ -709,9 +773,10 @@ reads each citation from `code/`.
 **What the instruments cannot buy, named.** No test here touches the card, loads a
 model, or runs as root, so `gpu-tuple`, `cuda-local`, `diagnostic-load` and the
 provisioning path are watched against stubs and captured shapes and are proven only
-by the first held run under the operator's own sequence. The approval custody gap of
-section 5 has no instrument until the privileged step lands, and this document says
-so rather than claiming otherwise.
+by the first held run under the operator's own sequence. The window before approval of
+section 5, an operator-uid process changing what the review seat is about to approve,
+has no instrument until the review seat has an identity of its own, and this document
+says so rather than claiming otherwise.
 
 ```graph
 node: blackwell-probe-stubs-are-captures
@@ -725,11 +790,13 @@ to: blackwell-probe-stubs-are-captures
 
 ## 10. What this document does not carry
 
-The results of any leg, which are #679's evidence and the report's. The design of the
-privileged approval step, the re-staging of the two stacks without links and with their
-CUDA libraries, and the `cuda_provenance` ruling, all of which are hold-lift items on
-#679. The evidence digests passed from the coordinator's state into the driver, design
-item B there, are held in section 7 since 2026-09-26. The historical instrument's
-readers and gate client, which are #516's and are cited by hash rather than restated.
-And the question this document was written to answer, whether operator tooling under
-`deploy/` answers to a document in this corpus: it does, and this is the document.
+The results of any leg, which are #679's evidence and the report's. The re-staging of
+the two stacks without links and with their CUDA libraries (679.4), and the signed
+review record owed on #698. The `cuda_provenance` ruling is made, on 2026-09-26, and the
+re-staged plan carries its URL,
+https://github.com/toddwbucy/WeaverTools/issues/698#issuecomment-5851860887. The
+evidence digests passed from the coordinator's state into the driver, design item B
+there, are held in section 7 since 2026-09-26. The historical instrument's readers and
+gate client, which are #516's and are cited by hash rather than restated. And the
+question this document was written to answer, whether operator tooling under `deploy/`
+answers to a document in this corpus: it does, and this is the document.
