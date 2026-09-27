@@ -427,12 +427,13 @@ root and is outside the adversary this document names.
 
 **The installation is isolated and refuses to adopt.** Provisioning uses only
 `/var/lib/weaver-tb`, its own two admin roots and the `weaver-bravo` account and
-group, refuses an existing root or account rather than adopting custody, under
-`fresh-install-root`, installs the model at the historical absolute artifact path or
-checks an identical existing file and never overwrites a different one, and changes
-nothing of `m1`, `karl`, their declarations or `/etc/weaver/admin`. The sinks
-directory is root-owned, its group the operator's own, mode `2750`, so the operator
-reads evidence and no member writes outside its own trace.
+group, and refuses rather than adopting custody: an existing account, and a root that
+is not exactly as `approve` left it, standing, locked and holding `approval/` and
+nothing else, under `fresh-install-root`. It installs the model at the historical
+absolute artifact path or checks an identical existing file and never overwrites a
+different one, and changes nothing of `m1`, `karl`, their declarations or
+`/etc/weaver/admin`. The sinks directory is root-owned, its group the operator's own,
+mode `2750`, so the operator reads evidence and no member writes outside its own trace.
 
 **Every load stands on an interlock.** A `bravo` load refuses a non-inactive `m1`
 unit, an unreadable unit status, a remaining `m1` coordination door, or any process
@@ -737,7 +738,7 @@ reads each citation from `code/`.
 | `blackwell-probe-operator-input-read-once` | perturbation, `snapshot-hash`, `source-file-hash`, `source-run-selected`, `reader-approved`, `source-trace`, `receipt-present`, `receipt-digest` |
 | `blackwell-probe-served-tree-locked-and-verified` | perturbation, `stack-no-symlinks`, `stack-file-coverage`, `installed-no-symlinks`, `installed-stack-custody`, `installed-stack-coverage`, `installed-stack-hash`, `served-directory-custody`, `root-chain-custody` |
 | `blackwell-probe-model-in-custody-on-both-paths` | perturbation, `existing-model-custody`, `new-model-custody`, `installed-model-custody`, `model-source`, `existing-model`, `installed-model`, `model-chain-custody` |
-| `blackwell-probe-installation-refuses-to-adopt` | perturbation, `fresh-install-root`, `no-bravo-account`, `no-bravo-group`, `operator-group`, `no-symlink-destination`, `installation-plan` |
+| `blackwell-probe-installation-refuses-to-adopt` | perturbation, `fresh-install-root` and the approval-only-root test, `no-bravo-account`, `no-bravo-group`, `operator-group`, `no-symlink-destination`, `installation-plan` |
 | `blackwell-probe-load-stands-on-the-interlock` | perturbation, `m1-inactive`, `m1-state-readable`, `m1-no-door`, `m1-no-process`, `m1-unloaded-at-close`, `m1-unloaded-at-unload`, `gpu-tuple`, `resolved-libraries`, `cuda-local`, `preload-door`, `diagnostic-load`, `admin-answer` |
 | `blackwell-probe-inventory-covers-every-served-file` | perturbation, the inventory tests and the pin of `STACK_ROOTS` |
 | `blackwell-probe-comparison-takes-b1-then-b2` | perturbation, `compare`'s refusals and the scope test |

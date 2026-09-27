@@ -117,9 +117,9 @@ BUILT="$BUILT/release"
 # and its libraries from a workspace that has nothing to do with this one.
 # Discovering the subject from a directory is how a deployment installs what
 # it was never asked to. The build also makes `weaver-analysis` and
-# `weaver-spu-classify`, which this script does not ship. The frontend package
-# and its binaries are excluded from the build below. A member joins the
-# installed set by being written here.
+# `weaver-spu-classify`, which this script does not ship. The build below is
+# the whole workspace, the frontend having left the repository on 2026-09-26.
+# A member joins the installed set by being written here.
 MEMBERS="pyworker worker weaver-admin weaver-gate weaver-spu weaver-state"
 
 MEMBER_FEATURES=weaver-harness/pyworker,weaver-state/sqlite,weaver-state/postgres

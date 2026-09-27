@@ -1015,6 +1015,27 @@ class PayloadTests(unittest.TestCase):
                 (Path(self.plan['stacks']['B1'])/'cuda-lib').mkdir(exist_ok=True)
         with patch('tb_payload.pwd.getpwnam',return_value=self.user),self.assertRaisesRegex(RuntimeError,'no-bravo-account'):payload.provision(self.plan,'d'*64)
 
+    def test_provision_takes_only_the_root_approve_left(self):
+        # 679.5: fresh means the root holds its approvals and nothing else.
+        # Anything beside them is custody provision did not take, and a root
+        # approve never made, or one opened to the group, is no root at all.
+        self.stacks()
+        for extra in ['stacks','config','stray']:
+            with self.subTest(extra=extra):
+                (self.root/extra).mkdir()
+                with self.assertRaisesRegex(RuntimeError,'fresh-install-root'):self.provision()
+                self.assertEqual(sorted(os.listdir(self.root)),sorted(['approval',extra]))
+                (self.root/extra).rmdir()
+        (self.root/'loose').write_text('x')
+        with self.assertRaisesRegex(RuntimeError,'fresh-install-root'):self.provision()
+        (self.root/'loose').unlink();(self.root/'approval').rmdir()
+        with self.assertRaisesRegex(RuntimeError,'fresh-install-root'):self.provision()
+        self.assertEqual(os.listdir(self.root),[])
+        (self.root/'approval').mkdir();os.chmod(self.root,0o775)
+        with self.assertRaisesRegex(RuntimeError,'fresh-install-root'):self.provision()
+        self.assertTrue(self.untouched())
+        os.chmod(self.root,0o755);self.provision()
+
     def setup_load(self):
         self.root.mkdir(exist_ok=True);(self.root/'sinks').mkdir();(self.root/'agents/B1').mkdir(parents=True)
         return dict(id='job',kind='free',stack='B1',seed=7)
@@ -1901,6 +1922,22 @@ class PerturbationBaselineTests(unittest.TestCase):
             result=subprocess.run([sys.executable,'-B',str(copy_dir/'perturb.py')],capture_output=True,text=True,timeout=120,env=dict(os.environ,PYTHONDONTWRITEBYTECODE='1'))
             self.assertNotEqual(result.returncode,0)
             self.assertIn('BASELINE FAILED',result.stderr)
+            self.assertEqual(result.stdout,'')
+
+    def test_a_subject_moved_during_the_sweep_refuses_the_reading(self):
+        # 679.5: an edit made during a sweep misaimed every mutation after it
+        # and eight guards read as survivors. The sweep pins its subject by its
+        # bytes, and a subject that moves under it refuses the whole reading.
+        # This suite passes and edits the subject each time it runs.
+        with tempfile.TemporaryDirectory() as tmp:
+            here=Path(__file__).resolve().parent;copy_dir=Path(tmp)
+            for p in here.glob('*'):
+                if p.suffix in ['.py','.sh']:(copy_dir/p.name).write_bytes(p.read_bytes())
+            (copy_dir/'test_tb.py').write_text('import os,unittest\nclass T(unittest.TestCase):\n    def test_moves(self):\n        with open(os.environ["TB_SUBJECT"],"a") as f:f.write("# moved\\n")\n')
+            result=subprocess.run([sys.executable,'-B',str(copy_dir/'perturb.py')],capture_output=True,text=True,timeout=120,
+                                  env=dict(os.environ,PYTHONDONTWRITEBYTECODE='1',TB_SUBJECT=str(copy_dir/'tb_order.py')))
+            self.assertEqual(result.returncode,2,result.stderr[-600:])
+            self.assertIn('SUBJECT MOVED: tb_order.py',result.stderr)
             self.assertEqual(result.stdout,'')
 
 

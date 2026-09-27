@@ -31,8 +31,8 @@ import sys
 import tempfile
 
 
-def guards(path):
-    return [(node.lineno, node.args[0].value) for node in ast.walk(ast.parse(path.read_text()))
+def guards(text):
+    return [(node.lineno, node.args[0].value) for node in ast.walk(ast.parse(text))
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in ['check','need']
             and len(node.args) == 2 and isinstance(node.args[0], ast.Constant)]
 
@@ -43,11 +43,21 @@ def guards(path):
 HANDLERS = {'tb_payload.py': ['m1_reading', 'door_state']}
 
 
-def handlers(path, functions):
-    tree = ast.parse(path.read_text())
+def handlers(text, functions):
+    tree = ast.parse(text)
     return [(handler.lineno, function.name) for function in ast.walk(tree)
             if isinstance(function, ast.FunctionDef) and function.name in functions
             for handler in ast.walk(function) if isinstance(handler, ast.ExceptHandler)]
+
+
+# An edit made during a sweep once misaimed every mutation after it, each guard's
+# line having been read before the edit and its mutation made after, so eight
+# guards read as survivors (679.5). A misaimed mutation can as easily read as a
+# kill of a guard it never touched. The subject is pinned by its bytes when the
+# sweep begins, every mutation is made from those bytes, and a sweep the subject
+# moved under refuses whole.
+def moved(root, pinned):
+    return sorted(name for name, data in pinned.items() if (root/name).read_bytes() != data)
 
 
 def suite(target):
@@ -66,8 +76,10 @@ def main():
     records=[]
     with tempfile.TemporaryDirectory(prefix='tb-mutations-') as temporary:
         target=Path(temporary)
+        pinned={}
         for p in root.glob('*'):
-            if p.suffix in ['.py','.sh']:shutil.copy2(p,target/p.name)
+            if p.suffix in ['.py','.sh']:
+                pinned[p.name]=p.read_bytes();(target/p.name).write_bytes(pinned[p.name])
         # A kill is a failure the mutation caused. Against a suite that already
         # fails, every mutation reads as killed, so the unmodified suite must pass.
         base=suite(target)
@@ -75,11 +87,10 @@ def main():
             print('BASELINE FAILED: the unmodified suite does not pass; no mutation was run\n'+base.stderr[-1800:],file=sys.stderr)
             return 2
         for name in ['tb_order.py','tb_payload.py','tb_driver.py']:
-            source=root/name
-            for line, label in guards(source):
+            for line, label in guards(pinned[name].decode()):
                 for mode in ['removed','inverted']:
                     shutil.rmtree(target/'__pycache__',ignore_errors=True)
-                    tree=ast.parse(source.read_text())
+                    tree=ast.parse(pinned[name].decode())
                     for node in ast.walk(tree):
                         if isinstance(node,ast.Call) and node.lineno==line and isinstance(node.func,ast.Name) and node.func.id in ['check','need']:
                             node.args[1]=ast.Constant(value=True) if mode=='removed' else ast.UnaryOp(op=ast.Not(),operand=node.args[1])
@@ -87,12 +98,14 @@ def main():
                     result=suite(target)
                     records.append(dict(file=name,line=line,guard=label,mode=mode,killed=result.returncode!=0,
                                         evidence=result.stderr[-1800:]))
-                    shutil.copy2(source,target/name)
+                    if moved(root,pinned):
+                        print(f'SUBJECT MOVED: {", ".join(moved(root,pinned))} changed during the sweep; no reading is taken',file=sys.stderr)
+                        return 2
+                    (target/name).write_bytes(pinned[name])
         for name, functions in HANDLERS.items():
-            source=root/name
-            for line, function in handlers(source, functions):
+            for line, function in handlers(pinned[name].decode(), functions):
                 shutil.rmtree(target/'__pycache__',ignore_errors=True)
-                tree=ast.parse(source.read_text())
+                tree=ast.parse(pinned[name].decode())
                 for node in ast.walk(tree):
                     if isinstance(node,ast.ExceptHandler) and node.lineno==line:
                         node.type=ast.Tuple(elts=[],ctx=ast.Load())
@@ -100,7 +113,10 @@ def main():
                 result=suite(target)
                 records.append(dict(file=name,line=line,guard=f'{function} handler',mode='uncaught',
                                     killed=result.returncode!=0,evidence=result.stderr[-1800:]))
-                shutil.copy2(source,target/name)
+                if moved(root,pinned):
+                    print(f'SUBJECT MOVED: {", ".join(moved(root,pinned))} changed during the sweep; no reading is taken',file=sys.stderr)
+                    return 2
+                (target/name).write_bytes(pinned[name])
         print(json.dumps(records,indent=2))
     return int(any(not r['killed'] for r in records))
 
