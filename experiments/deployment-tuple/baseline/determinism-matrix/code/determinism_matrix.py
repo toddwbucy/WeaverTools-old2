@@ -170,38 +170,9 @@ def weights(path):
     return read
 
 
-def load_held(cfg, before, declaration_sha, half, rec, timeout=15.0):
-    """After a load stands, the loop that composed it and the declaration it
-    served are the session's. The loop is checked as `confirm_cells.run_cell`
-    checks it, against the config's `loop_sha256`. The declaration is checked
-    by the digest the load event records, which is the declaration file's
-    sha256, so the artifact path, the seed, the sampling knobs and every other
-    declared field are held per load. Answers True where both hold, and
-    otherwise sets the session's verdict and answers False."""
-    refused = base.assert_loop(cfg, cfg["trace"], before)
-    if refused:
-        rec["loop_refused"] = dict(refused, half=half)
-        rec["verdict"] = (f"loop refused at the {half} load: declared"
-                          f" {refused['declared']}, recorded {refused['recorded']}")
-        return False
-    if declaration_sha is None:
-        return True
-    end, delay = time.time() + timeout, 0.02
-    while True:
-        run, event = base.newest_load(cfg["trace"])
-        if run is not None and run != before:
-            break
-        if time.time() >= end:
-            rec["verdict"] = f"no load event reached the trace for the {half} load"
-            return False
-        time.sleep(delay)
-        delay = min(delay * 1.5, 1.0)
-    served = (event.get("payload") or {}).get("declaration")
-    if served != declaration_sha:
-        rec["verdict"] = (f"the {half} load served another declaration:"
-                          f" declared {declaration_sha}, served {served}")
-        return False
-    return True
+# Every load either entry point makes goes through one held check, which
+# lives in confirm_cells beside the loop check it extends (#716 round six).
+load_held = base.load_held
 
 
 def load_device(cfg, half, rec):

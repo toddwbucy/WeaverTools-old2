@@ -194,8 +194,10 @@ the digest of the declaration it served, the sha256 of the declaration file, and
 loop that composed it. After each half's load stands the harness holds the first to the
 declaration the session wrote, which holds the artifact path, the seed, the sampling
 knobs and every other declared field per load, and where the config names `loop_sha256`
-it holds the second to that digest, as `confirm_cells.run_cell` does. A config naming no
-loop leaves the loop unchecked.
+it holds the second to that digest. The check is one function, `load_held` in
+`confirm_cells.py`, and every load either entry point makes goes through it: the
+matrix's two per session and the cross-precision protocol's two per cell. A config
+naming no loop leaves the loop unchecked.
 
 **Each tuple field the probe holds, and how:**
 

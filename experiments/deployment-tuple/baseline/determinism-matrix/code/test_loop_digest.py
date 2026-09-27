@@ -30,11 +30,14 @@ def _trace(td, events):
     return p
 
 
-def _load(run, composer):
-    """One load event in the shape the record carries since #419."""
+def _load(run, composer, declaration=None):
+    """One load event in the shape the record carries since #419, with the
+    digest of the declaration it served where one is given."""
     payload = {"residual_readout": False, "surprisal": False}
     if composer is not None:
         payload["composer"] = composer
+    if declaration is not None:
+        payload["declaration"] = declaration
     return {"session": "s-1", "run": run, "sequence": "0", "kind": "load",
             "subsystem": "harness", "wall_ms": 0, "monotonic_ns": "0",
             "payload": payload}
@@ -125,8 +128,10 @@ class _Served(Exception):
     """Raised by the gate stub: a turn was about to be served."""
 
 
-def _drive_run_cell(composer_digest):
-    """`run_cell` with the box stubbed, up to the first turn."""
+def _drive_run_cell(composer_digest, served=None):
+    """`run_cell` with the box stubbed, up to the first turn. The load event
+    records the declaration file's digest as it stands at the load, as the
+    admin does, or `served` where a test gives one."""
     saved = {n: getattr(g, n) for n in
              ("admin", "wait_socket", "gate_turn", "serving_device", "unit_invocation")}
     td = tempfile.mkdtemp()
@@ -148,9 +153,10 @@ def _drive_run_cell(composer_digest):
     def fake_admin(cfg, verb):
         steps.append(verb)
         if verb == "load":
+            digest = served if served is not None else g._sha256(decl)
             with open(trace, "a") as f:
                 f.write(json.dumps(_load(
-                    "r-cell", _file("alpha_loop.py", composer_digest))) + "\n")
+                    "r-cell", _file("alpha_loop.py", composer_digest), digest)) + "\n")
             return {"kind": "state"}
         return {"kind": "no_residency"}
 
@@ -189,6 +195,17 @@ def test_run_cell_refuses_before_a_turn_is_served():
     assert deposits == [], deposits
     # the finally still released the device
     assert steps[-1] == "unload", steps
+
+
+def test_run_cell_holds_each_load_to_the_declaration_it_wrote():
+    # #716 round six: the standalone entry point checked the loop and never
+    # the declaration, so a declaration changed between the rewrite and a
+    # load served another artifact or seed on both halves. Perturbation:
+    # restore the bare assert_loop in run_cell, and the cell is served.
+    outcome, report, steps, deposits = _drive_run_cell(DECLARED, served="e" * 64)
+    assert outcome == "returned", outcome
+    assert report["verdict"].startswith("the source load served another declaration"), report["verdict"]
+    assert report["turns"] == [] and deposits == [], (report["turns"], deposits)
 
 
 def test_run_cell_proceeds_on_the_declared_digest():

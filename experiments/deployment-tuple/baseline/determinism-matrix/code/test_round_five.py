@@ -260,13 +260,51 @@ def test_a_surplus_replay_turn_is_a_fault_not_a_divergence():
     # source did not is interleaved traffic. Perturbation: the old count
     # check folded into `all_match`, and it reads DIVERGED.
     class Surplus(Agent):
-        def gate_turn(self, cfg, text):
+        def gate_turn(self, cfg, text, timeout=None):
             close = Agent.gate_turn(self, cfg, text)
             if self.loads == 2 and sum(1 for e in self.runs[self.run] if e["kind"] == "turn.started") == 2:
                 Agent.gate_turn(self, cfg, "interleaved")
             return close
     rec = session(Surplus())
     assert rec["verdict"] == "the replay carries 1 turns the source did not: t-3", rec["verdict"]
+
+
+def drive_cell(agent, tmp, artifact="/m.gguf"):
+    """`run_cell` whole on the fake agent: the cell writes its declaration,
+    loads, serves, reloads, reissues and compares, and the report returns."""
+    decl = os.path.join(tmp, "karl.yaml")
+    with open(decl, "w") as fh:
+        fh.write(f"artifact: {artifact}\nseed: {SEED}\n")
+    cfg = {"box": "t", "agent": "karl", "declaration": decl, "trace": os.path.join(tmp, "trace"),
+           "gate_socket": "/s", "admin_bin": "/bin/true", "admin_config": tmp, "repo": tmp,
+           "build_flags": "x"}
+    names = ("admin", "wait_socket", "gate_turn", "await_turns", "newest_load", "serving_device",
+             "unit_invocation", "read_runs")
+    saved = {n: getattr(base, n) for n in names}
+    try:
+        for n in names[:-1]:
+            setattr(base, n, getattr(agent, n))
+        base.read_runs = lambda path, keep=None: ([], {})
+        return base.run_cell(cfg, {"name": "c", "precision": "q6", "artifact": artifact}, tmp, {}, {}, {})
+    finally:
+        for n, fn in saved.items():
+            setattr(base, n, fn)
+
+
+def test_the_standalone_entry_point_holds_both_loads_to_its_declaration():
+    # #716 round six: run_cell checked only the loop after each load. Both
+    # loads now go through load_held. Perturbation: restore the bare
+    # assert_loop at either site, and that half's case reads REPRODUCED.
+    import hashlib
+    for served, half in [(("e" * 64, None), "source"), ((None, "e" * 64), "replay")]:
+        with tempfile.TemporaryDirectory() as tmp:
+            digest = hashlib.sha256(f"artifact: /m.gguf\nseed: {SEED}\n".encode()).hexdigest()
+            both = tuple(digest if s is None else s for s in served)
+            report = drive_cell(Agent(served=both), tmp)
+            assert report["verdict"].startswith(f"the {half} load served another declaration"), report["verdict"]
+    with tempfile.TemporaryDirectory() as tmp:
+        digest = hashlib.sha256(f"artifact: /m.gguf\nseed: {SEED}\n".encode()).hexdigest()
+        assert drive_cell(Agent(served=(digest, digest)), tmp)["verdict"] == "REPRODUCED"
 
 
 if __name__ == "__main__":

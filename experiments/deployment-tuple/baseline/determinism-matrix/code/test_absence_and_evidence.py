@@ -25,7 +25,7 @@ class Editing(Agent):
         Agent.__init__(self, **kw)
         self.edit = edit
 
-    def gate_turn(self, cfg, text):
+    def gate_turn(self, cfg, text, timeout=None):
         close = Agent.gate_turn(self, cfg, text)
         self.edit(self.loads - 1, self.runs[self.run])
         return close

@@ -56,7 +56,7 @@ class Agent:
     def wait_socket(self, cfg):
         return True
 
-    def gate_turn(self, cfg, text):
+    def gate_turn(self, cfg, text, timeout=None):
         """One turn's trace events, written as the sink writes them, so the
         harness reads them back through its own `cut_turns`."""
         events = self.runs[self.run]
@@ -76,7 +76,7 @@ class Agent:
             events.append({"run": self.run, "turn": turn, "kind": kind, "wall_ms": wall, "payload": payload})
         return {"kind": "answered", "run": self.run}
 
-    def await_turns(self, trace, want, run):
+    def await_turns(self, trace, want, run, **kw):
         events = list(self.runs.get(run, []))
         return base.cut_turns(events), events
 

@@ -909,6 +909,40 @@ def loop_refusal(report, refused, half, log):
     return report
 
 
+def load_held(cfg, before, declaration_sha, half, rec, log=None, timeout=15.0):
+    """After a load stands, the loop that composed it and the declaration it
+    served are the session's. The loop is checked by `assert_loop` against the
+    config's `loop_sha256`. The declaration is checked
+    by the digest the load event records, which is the declaration file's
+    sha256, so the artifact path, the seed, the sampling knobs and every other
+    declared field are held per load. Answers True where both hold, and
+    otherwise sets the verdict and answers False. Shared by both entry
+    points, the matrix's `run_session` and this file's `run_cell`, so every
+    load either makes is held one way (#716 rounds two and six)."""
+    refused = assert_loop(cfg, cfg["trace"], before)
+    if refused:
+        loop_refusal(rec, refused, half, log or (lambda m: None))
+        return False
+    if declaration_sha is None:
+        return True
+    end, delay = time.time() + timeout, 0.02
+    while True:
+        run, event = newest_load(cfg["trace"])
+        if run is not None and run != before:
+            break
+        if time.time() >= end:
+            rec["verdict"] = f"no load event reached the trace for the {half} load"
+            return False
+        time.sleep(delay)
+        delay = min(delay * 1.5, 1.0)
+    served = (event.get("payload") or {}).get("declaration")
+    if served != declaration_sha:
+        rec["verdict"] = (f"the {half} load served another declaration:"
+                          f" declared {declaration_sha}, served {served}")
+        return False
+    return True
+
+
 def await_turns(trace_path, want, run_id, keep=4, timeout=None):
     """`run_id` once it carries `want` turns, or once time runs out.
 
@@ -1180,6 +1214,9 @@ def run_cell(cfg, cell, outdir, libraries, binaries, tools,
         return report
     with open(cfg["declaration"], "w") as f:
         f.write(swapped)
+    # The declaration as written, by the digest every load event records,
+    # which both of the cell's loads are held to (#716 round six).
+    declaration_sha = _sha256(cfg["declaration"])
 
     def step(verb):
         a = admin(cfg, verb)
@@ -1205,9 +1242,9 @@ def run_cell(cfg, cell, outdir, libraries, binaries, tools,
         # served through it**, per issue #426. A cell refused here deposits
         # no runs and no turns, only the refusal, so the report cannot be
         # read as a comparison.
-        refused = assert_loop(cfg, cfg["trace"], before)
-        if refused:
-            return loop_refusal(report, refused, "source", log)
+        if not load_held(cfg, before, declaration_sha, "source", report, log):
+            log(report["verdict"])
+            return report
 
         # **What served is read from the worker and not from the machine**,
         # per issue #370's third ask. Read after the socket stands, so the
@@ -1268,9 +1305,9 @@ def run_cell(cfg, cell, outdir, libraries, binaries, tools,
             return report
         # The reload is a second load and is checked as one: the loop file
         # can move between the two halves as easily as before the first.
-        refused = assert_loop(cfg, cfg["trace"], before)
-        if refused:
-            return loop_refusal(report, refused, "replay", log)
+        if not load_held(cfg, before, declaration_sha, "replay", report, log):
+            log(report["verdict"])
+            return report
 
         # **The reissue half binds its own devices and they are read too.**
         # A cell that compared a source on one card against a replay on
