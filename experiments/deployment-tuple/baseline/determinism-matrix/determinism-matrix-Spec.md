@@ -6,7 +6,7 @@
 **Document ID:** `determinism-matrix-Spec`
 **Parent:** `deployment-tuple-PRD`
 **Editorial:** Per the Working Rules.
-**Landing PR:** #LANDING
+**Landing PR:** #716
 
 ---
 

@@ -5,7 +5,7 @@
 **Date filed:** 2026-09-25
 **Document ID:** `deployment-tuple-PRD`
 **Editorial:** Per the Working Rules.
-**Landing PR:** #LANDING
+**Landing PR:** #716
 
 ---
 
