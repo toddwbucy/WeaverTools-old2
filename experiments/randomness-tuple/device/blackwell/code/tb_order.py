@@ -6,7 +6,7 @@
 # conforms: blackwell-probe-approval-in-root-custody
 # conforms: blackwell-probe-wait-verifies-when-the-state-moves
 # conforms: blackwell-probe-halt-is-evidence
-# conforms: blackwell-probe-root-receives-bytes-never-a-path
+# conforms: blackwell-probe-root-runs-no-operator-bytes
 # conforms: blackwell-probe-identity-bound-to-approved-stacks
 # conforms: blackwell-probe-refeed-completes-against-a-verified-source
 """TB sequencing, adapted from the W4a flock/atomic-state/driver-lease design.
@@ -39,6 +39,12 @@ REVIEW_SEAT = 'thinkpad-CC-WeaverTools-ReviewSeat'
 # by its own digest, and the state keeps that digest alone as a pointer.
 APPROVAL_ROOT = Path('/var/lib/weaver-tb/approval')
 APPROVAL_OWNER = 0
+# The one root program, tb_root.py installed by hand at a fixed root-owned
+# path after the operator checked its sha256 against the merged commit (the
+# ruling of 2026-09-27 on #698). The probe's sudoers line names this path and
+# nothing else: every privileged step enters here, and root is never handed
+# bytes or a path the operator's uid can write.
+ROOT_PROGRAM = '/usr/local/libexec/weaver-tb/tb-root'
 
 
 class Refused(RuntimeError):
@@ -275,7 +281,7 @@ class Order:
         record = approval['record']
         files = record['artifacts']
         required = {str(Path(__file__).resolve().parent / name) for name in
-                    ['tb_order.py', 'tb_payload.py', 'tb_driver.py', 'tb-operator.sh',
+                    ['tb_order.py', 'tb_payload.py', 'tb_root.py', 'tb_driver.py', 'tb-operator.sh',
                      'test_tb.py', 'golden.py', 'perturb.py', 'sections.py', 'prepare.py']}
         check('approval-coverage', required <= files.keys())
         check('artifact-hashes', all(Path(p).is_file() and sha(p) == h for p, h in files.items()))
@@ -501,34 +507,25 @@ def notice(step):
 
 
 def payload(state, step, log, *sink):
-    approval = publication(state.get('approval'))
-    source = Path(__file__).with_name('tb_payload.py')
-    data = source.read_bytes()
-    check('payload-hash', same(str(source.resolve()), approval['record']['payload']) and
-          same(hashlib.sha256(data).hexdigest(), approval['payload']['sha256']))
     with log.open('w') as out:
-        # Root receives the verified bytes themselves, never a path. A file
-        # the operator's UID can rename, any process of that UID can swap
-        # between the check and sudo's open, and that UID need not hold the
-        # sudo credential (#683 finding 17). Beside them it receives the step
-        # and the approval's digest, and takes the plan, the payload's digest
-        # and the artifact map from the root-owned record that digest names,
-        # never from this state file (679.5). A local re-feed's load also
-        # carries its source sink's recorded length and digest, which the
-        # payload snapshots the sink against.
-        return subprocess.run(['sudo', '/usr/bin/python3', '-I', '-c', data.decode(), step,
-                               state['approval'], *sink],
+        # Root is handed no bytes and no path the operator's uid can write:
+        # the step, the approval's digest and, for a local re-feed's load, its
+        # source sink's recorded length and digest. The root program finds that
+        # approval complete in root custody and executes its root-owned copy of
+        # the reviewed payload (#709 round four), which takes the plan and the
+        # artifact map from the same record, never from this state file.
+        return subprocess.run(['sudo', ROOT_PROGRAM, 'run', step, state['approval'], *sink],
                               stdin=subprocess.DEVNULL,
                               stdout=out, stderr=subprocess.STDOUT).returncode
 
 
 def approve(state_path, record, log):
     """`tb-operator.sh approve <record>`, the one privileged approval step
-    (679.5): the reviewed payload is handed to root, which reads the review
-    record and every artifact it names once, verifies each digest before its
-    first write, and snapshots the approval root-owned. On one box the
-    operator at the sudo prompt is the trust anchor, so this step checks
-    nothing root does not check again. The state learns only the digest root
+    (679.5): sudo runs the hand-installed root program, which reads the review
+    record and every artifact it names once, as data, verifies each digest
+    before its first write, and snapshots the approval root-owned. The trust
+    anchor is the operator's hash check of that program at install time, so
+    this step checks nothing root does not check again. The state learns only the digest root
     printed, and only once the public copy it names is root's and matches it
     and the record digest taken before sudo.
 
@@ -543,14 +540,13 @@ def approve(state_path, record, log):
         # under the first, would swap the plan beneath them, so a new approval
         # is a new state, refused here before root writes anything.
         check('one-approval-per-state', s.get('approval') is None)
-        data = Path(__file__).with_name('tb_payload.py').read_bytes()
         target = Path(record).resolve()
         # The record is hashed once, here, and that digest is what root holds
         # its own read to and what the approval is checked against after:
         # the target is never read again once root has run.
         record_sha = sha(target)
         with log.open('w') as out:
-            code = subprocess.run(['sudo', '/usr/bin/python3', '-I', '-c', data.decode(), 'approve', str(target), record_sha],
+            code = subprocess.run(['sudo', ROOT_PROGRAM, 'approve', str(target), record_sha],
                                   stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT).returncode
         check('approve-exit', code == 0)
         printed = [line.split(' ', 1)[1] for line in log.read_text().splitlines() if line.startswith('APPROVAL: ')]

@@ -8,7 +8,7 @@
 # conforms: blackwell-probe-approval-in-root-custody
 # conforms: blackwell-probe-wait-verifies-when-the-state-moves
 # conforms: blackwell-probe-halt-is-evidence
-# conforms: blackwell-probe-root-receives-bytes-never-a-path
+# conforms: blackwell-probe-root-runs-no-operator-bytes
 # conforms: blackwell-probe-operator-input-read-once
 # conforms: blackwell-probe-served-tree-locked-and-verified
 # conforms: blackwell-probe-model-in-custody-on-both-paths
@@ -42,6 +42,7 @@ import sections
 import tb_driver as driver
 import tb_order as order
 import tb_payload as payload
+import tb_root as rootprog
 
 
 def event(line, **fields):
@@ -538,37 +539,28 @@ print('WAITING',flush=True);o.wait('measure:B1-s451234785645-n1',timeout=10,poll
             if child.poll() is None:child.kill();child.wait()
             child.stdout.close();child.stderr.close()
 
-    def test_root_receives_the_verified_bytes_not_a_path(self):
-        # #683 finding 17: argv is sudo,python,-I,-c,SOURCE,STEP,APPROVAL.
-        # Whatever path sudo is handed, a process of the operator's UID can
-        # swap before root opens it; so the run below swaps any payload path
-        # it is given, and what root would execute must still be exactly the
-        # bytes whose digest the approval record holds (679.5).
-        source=Path(order.__file__).with_name('tb_payload.py');recorded=self.record['artifacts'][str(source.resolve())]
-        planted=self.root/'.payload-planted.py';planted.write_text('raise SystemExit("planted")\n')
+    def test_root_is_handed_no_operator_bytes(self):
+        # #683 finding 17, then #709 round four: sudo was handed the payload's
+        # bytes by -c, read from the operator-owned staging by operator-owned
+        # code, so a process of the operator's uid could hand root anything.
+        # Now sudo runs only the hand-installed root program, handed the step
+        # and the approval's digest: no bytes and no path the operator writes.
+        staged=Path(order.__file__).with_name('tb_payload.py')
         before=sorted(p.name for p in self.root.iterdir());seen=[]
-        def as_root(argv,**kw):
-            if argv[3]=='-c':executed=argv[4].encode()
-            else:Path(argv[3]).write_bytes(planted.read_bytes());executed=Path(argv[3]).read_bytes()
-            seen.append((argv,kw['stdin'],executed));return subprocess.CompletedProcess(argv,0)
-        with patch('tb_order.subprocess.run',side_effect=as_root):self.assertEqual(order.payload(self.state,'provision',self.root/'log'),0)
-        (argv,stdin,executed),=seen
-        self.assertEqual(hashlib.sha256(executed).hexdigest(),recorded)
+        def as_root(argv,**kw):seen.append((argv,kw['stdin']));return subprocess.CompletedProcess(argv,0)
+        with patch('tb_order.subprocess.run',side_effect=as_root),patch.object(Path,'read_bytes',side_effect=AssertionError('the coordinator reads no payload for root')):
+            self.assertEqual(order.payload(self.state,'provision',self.root/'log'),0)
+        (argv,stdin),=seen
         self.assertIs(stdin,subprocess.DEVNULL)
-        self.assertEqual(argv[:4],['sudo','/usr/bin/python3','-I','-c'])
-        self.assertEqual(argv[5:],['provision',self.state['approval']])
-        self.assertEqual([a for a in argv[5:] if os.path.exists(a)],[],'root is handed no path at all')
+        self.assertEqual(argv,['sudo',order.ROOT_PROGRAM,'run','provision',self.state['approval']])
+        self.assertEqual([a for a in argv[3:] if os.path.exists(a)],[],'root is handed no path at all')
+        self.assertNotIn(str(staged),argv)
         self.assertEqual(sorted(p.name for p in self.root.iterdir()),sorted(before+['log']))
-        # 679.5: a payload replaced after approval, with a matching digest
-        # written into the state where the review used to live, still refuses:
-        # the digest root and the coordinator hold it to is the approval's.
-        staged=self.root/'staged';staged.mkdir();(staged/'tb_payload.py').write_text('raise SystemExit("replaced")\n')
-        s=copy.deepcopy(self.state);s['review']=dict(status='PASS',artifacts={str(staged/'tb_payload.py'):order.sha(staged/'tb_payload.py')})
-        with patch.object(order,'__file__',str(staged/'tb_order.py')),patch('tb_order.subprocess.run') as run,self.assertRaisesRegex(order.Refused,'payload-hash'):
-            order.payload(s,'provision',self.root/'log')
-        run.assert_not_called()
-        self.publish(dict(self.record,artifacts={**self.record['artifacts'],str(source.resolve()):'f'*64}))
-        with self.assertRaisesRegex(order.Refused,'payload-hash'):order.payload(self.state,'provision',self.root/'log')
+        # A payload replaced in the staging, its digest written into the state
+        # where the review used to live, changes nothing root is handed.
+        s=copy.deepcopy(self.state);s['review']=dict(status='PASS',artifacts={str(staged):'f'*64})
+        with patch('tb_order.subprocess.run',side_effect=as_root):order.payload(s,'provision',self.root/'log')
+        self.assertEqual(seen[-1][0],argv)
 
     def test_sudo_receives_digest_recorded_at_approval(self):
         # #683 finding 2, since 679.5: a plan edited after approval reaches sudo
@@ -577,7 +569,7 @@ print('WAITING',flush=True);o.wait('measure:B1-s451234785645-n1',timeout=10,poll
         self.planpath.write_text(self.planpath.read_text().replace('"bravo"','"karl"'))
         self.assertNotEqual(order.sha(self.planpath),self.record['artifacts'][str(self.planpath)])
         seen=[]
-        def inspect(argv,**kw):seen.append(argv[5:]);return subprocess.CompletedProcess(argv,0)
+        def inspect(argv,**kw):seen.append(argv[3:]);return subprocess.CompletedProcess(argv,0)
         with patch('tb_order.subprocess.run',side_effect=inspect):order.payload(self.state,'provision',self.root/'log')
         self.assertEqual(seen,[['provision',self.state['approval']]])
 
@@ -764,6 +756,8 @@ class PayloadTests(unittest.TestCase):
         self.planpath=self.base/'plan';self.planpath.write_text('{}')
         for name,value in [('ROOT',self.root),('MODEL',self.model),('TRUSTED',self.base)]:
             p=patch.object(payload,name,value);p.start();self.addCleanup(p.stop)
+        for name,value in [('ROOT',self.root),('TRUSTED',self.base)]:
+            p=patch.object(rootprog,name,value);p.start();self.addCleanup(p.stop)
         p=patch('sys.argv',['payload',str(self.planpath),order.sha(self.planpath),'provision']);p.start();self.addCleanup(p.stop)
         self.user=SimpleNamespace(pw_uid=1000)
         # The install root as `approve` leaves it before provision: standing,
@@ -776,21 +770,26 @@ class PayloadTests(unittest.TestCase):
 
     CODE=b'# the payload bytes root runs\n'
 
-    def stand(self,p,code=None):
-        """An approval of plan p as `approve` leaves it, its plan copied
-        root-owned beside it, returning the digest the coordinator hands over."""
+    def stand(self,p,code=None,**changes):
+        """An approval of plan p as `approve` leaves it, complete: its plan and
+        the payload copied root-owned beside it, every file at its written
+        mode. Returns the digest the coordinator hands over."""
         data=json.dumps(p).encode();self.planpath.write_bytes(data)
         record=dict(status='PASS',hold=False,seat=order.REVIEW_SEAT,
                     reference='https://github.com/toddwbucy/WeaverTools/issues/698#issuecomment-1',
                     plan=str(self.planpath),payload='/staged/tb_payload.py',
                     artifacts={str(self.planpath):hashlib.sha256(data).hexdigest(),
                                '/staged/tb_payload.py':hashlib.sha256(code or self.CODE).hexdigest()})
-        return stand_approval(self.root/'approval',record,data)
+        digest=stand_approval(self.root/'approval',{**record,**changes},data)
+        directory=self.root/'approval'/digest;(directory/'tb_payload.py').write_bytes(code or self.CODE)
+        for name,mode in rootprog.FILES.items():(directory/name).chmod(mode)
+        directory.chmod(0o755);(self.root/'approval').chmod(0o755)
+        return digest
 
     @contextlib.contextmanager
     def as_root(self,code=None):
-        """Custody read as if this test's uid were root's, and the code running
-        the given bytes: a test cannot own a file as root or run under -c."""
+        """Custody read as if this test's uid were root's, in the payload and
+        the root program both: a test cannot own a file as root."""
         import stat as st
         def locked(path):
             e=os.lstat(path);return not st.S_ISLNK(e.st_mode) and e.st_uid==os.getuid() and not e.st_mode&0o022
@@ -801,7 +800,7 @@ class PayloadTests(unittest.TestCase):
                 if not st.S_ISDIR(e.st_mode) or e.st_uid not in (os.getuid(),0) or e.st_mode&0o022:return False
                 if d==payload.TRUSTED or d.parent==d:return d==payload.TRUSTED
                 d=d.parent
-        with patch.object(payload,'locked',side_effect=locked),patch.object(payload,'chain_custody',side_effect=chain),patch.object(payload,'own_code',return_value=code or self.CODE):
+        with patch.object(payload,'locked',side_effect=locked),patch.object(payload,'chain_custody',side_effect=chain),patch.object(rootprog,'locked',side_effect=locked),patch.object(rootprog,'chain_custody',side_effect=chain):
             yield
 
     def stacks(self):
@@ -1204,7 +1203,7 @@ class PayloadTests(unittest.TestCase):
             with self.as_root(code),patch('sys.argv',['payload',step,digest or pointer]),patch('tb_payload.os.geteuid',return_value=uid),patch.dict(os.environ,{'SUDO_UID':sudo}),patch('tb_payload.pwd.getpwnam',return_value=self.user),patch('tb_payload.provision'),patch('tb_payload.installed'),patch('tb_payload.answer'),patch('tb_payload.m1_reading',return_value=golden_reading()),contextlib.redirect_stdout(io.StringIO()):payload.main()
         invoke(p)
         for change,kw in [(lambda p:None,dict(uid=1000)),(lambda p:None,dict(digest='wrong')),(lambda p:None,dict(digest='0'*64)),
-                          (lambda p:None,dict(code=b'other code')),(lambda p:p.update(agent='karl'),{}),(lambda p:None,dict(sudo='9')),(lambda p:p['files'].update({str(self.planpath):'bad'}),{}),(lambda p:None,dict(step='unload:missing'))]:
+                          (lambda p:p.update(agent='karl'),{}),(lambda p:None,dict(sudo='9')),(lambda p:p['files'].update({str(self.planpath):'bad'}),{}),(lambda p:None,dict(step='unload:missing'))]:
             bad=copy.deepcopy(p);change(bad)
             with self.assertRaises(RuntimeError):invoke(bad,**kw)
         invoke(p,step='unload:B1-s7-n1')
@@ -1592,7 +1591,7 @@ class HoldLiftTests(unittest.TestCase):
 
     def test_root_is_handed_the_sink_after_the_step(self):
         seen=[]
-        def as_root(argv,**kw):seen.append(argv[5:]);return subprocess.CompletedProcess(argv,0)
+        def as_root(argv,**kw):seen.append(argv[3:]);return subprocess.CompletedProcess(argv,0)
         with patch('tb_order.subprocess.run',side_effect=as_root):order.payload(self.state,'load:own-x',self.root/'log','512','a'*64)
         self.assertEqual(seen,[['load:own-x',self.state['approval'],'512','a'*64]])
 
@@ -2040,17 +2039,17 @@ class ApprovalTests(unittest.TestCase):
         """Root's approve, handed the record digest the coordinator took
         before sudo: by default the record's own, as it stands."""
         path=record or self.recordfile
-        with self.pt.as_root(code or self.code),patch('tb_payload.os.geteuid',return_value=0),patch.dict(os.environ,{'SUDO_UID':'1000'}),patch('tb_payload.pwd.getpwnam',return_value=self.pt.user),contextlib.redirect_stdout(io.StringIO()) as out:
-            payload.approve(str(path),expected or order.sha(path))
+        with self.pt.as_root(code or self.code),patch('tb_root.os.geteuid',return_value=0),patch.dict(os.environ,{'SUDO_UID':'1000'}),patch('tb_root.pwd.getpwnam',return_value=self.pt.user),contextlib.redirect_stdout(io.StringIO()) as out:
+            rootprog.approve(str(path),expected or order.sha(path))
         return out.getvalue()
 
     def as_sudo(self,argv,stdout,**kw):
         """sudo as the coordinator calls it for approve, running root's step
         in process, a refusal answering as the payload's exit status does."""
-        self.assertEqual(argv[:4],['sudo','/usr/bin/python3','-I','-c'])
+        self.assertEqual(argv[:3],['sudo',order.ROOT_PROGRAM,'approve'])
         try:
-            with self.pt.as_root(self.code),patch('tb_payload.os.geteuid',return_value=0),patch.dict(os.environ,{'SUDO_UID':'1000'}),patch('tb_payload.pwd.getpwnam',return_value=self.pt.user),contextlib.redirect_stdout(stdout):
-                payload.approve(argv[6],argv[7])
+            with self.pt.as_root(self.code),patch('tb_root.os.geteuid',return_value=0),patch.dict(os.environ,{'SUDO_UID':'1000'}),patch('tb_root.pwd.getpwnam',return_value=self.pt.user),contextlib.redirect_stdout(stdout):
+                rootprog.approve(argv[3],argv[4])
         except RuntimeError as error:
             stdout.write(f'REFUSED: {error}\n');stdout.flush()
             return subprocess.CompletedProcess(argv,1)
@@ -2098,13 +2097,15 @@ class ApprovalTests(unittest.TestCase):
         self.assertEqual(self.approve().split()[1],first)
         self.assertEqual(self.approvals(),[first])
         self.assertEqual({f.name:(f.read_bytes(),f.stat().st_mtime_ns) for f in directory.iterdir()},before)
-        # What is adopted is checked as a reader checks it. Perturbation: drop
-        # approval-adopt and each of these is adopted.
+        # What is adopted is complete, every file checked (#709 round four),
+        # each change at the file's own mode. Perturbation: drop
+        # approval-complete from the scan and each of these is adopted.
         for name,change in [('approval.pub.json',b'{}'),('plan.json',b'changed'),('tb_payload.py',b'changed')]:
             with self.subTest(name=name):
-                kept=(directory/name).read_bytes();(directory/name).chmod(0o600);(directory/name).write_bytes(change)
-                with self.assertRaisesRegex(RuntimeError,'approval-adopt'):self.approve()
-                (directory/name).write_bytes(kept);(directory/name).chmod(0o644 if name=='approval.pub.json' else 0o600)
+                mode=rootprog.FILES[name];kept=(directory/name).read_bytes()
+                (directory/name).chmod(0o600);(directory/name).write_bytes(change);(directory/name).chmod(mode)
+                with self.assertRaisesRegex(RuntimeError,'approval-complete'):self.approve()
+                (directory/name).chmod(0o600);(directory/name).write_bytes(kept);(directory/name).chmod(mode)
         # Two complete approvals of one record is custody no approve made, and
         # neither is adopted. Perturbation: drop approval-once and one is.
         body=json.loads((directory/'approval.json').read_bytes());body['approved_at']=1
@@ -2119,17 +2120,17 @@ class ApprovalTests(unittest.TestCase):
     def test_a_partial_approval_refuses_by_name(self):
         # #709 round three: a crash mid-write leaves a `.pending-` directory
         # the run's own cleanup never reached. It is never adopted or written
-        # past, and refuses by name. Perturbation: drop approval-partial and
-        # the first refuses unnamed, the second is adopted past.
+        # past, and refuses by name. Perturbation: drop approval-complete from
+        # the scan and the first refuses unnamed, the second is adopted past.
         self.approve();before=self.approvals()
         pending=self.pt.root/'approval'/('.pending-'+order.sha(self.recordfile));pending.mkdir(mode=0o700)
         (pending/'plan.json').write_bytes(self.planfile.read_bytes())
-        with self.assertRaisesRegex(RuntimeError,'approval-partial'):self.approve()
+        with self.assertRaisesRegex(RuntimeError,'approval-complete'):self.approve()
         self.assertEqual(sorted(os.listdir(self.pt.root/'approval')),sorted(before+[pending.name]))
         shutil.rmtree(pending)
         # A digest-named directory whose record is missing is no approval either.
         broken=self.pt.root/'approval'/('d'*64);broken.mkdir();broken.chmod(0o755)
-        with self.assertRaisesRegex(RuntimeError,'approval-partial'):self.approve()
+        with self.assertRaisesRegex(RuntimeError,'approval-complete'):self.approve()
         broken.rmdir();self.assertEqual(self.approvals(),before)
 
     def test_a_record_moved_after_the_coordinator_hashed_it_refuses(self):
@@ -2177,24 +2178,22 @@ class ApprovalTests(unittest.TestCase):
             self.assertIn('approval-record-digest',log.read_text())
             self.assertIsNone(json.loads(statefile.read_text())['approval'])
 
-    def test_a_linked_or_malformed_record_or_other_code_refuses(self):
+    def test_a_linked_or_malformed_record_refuses(self):
         link=self.pt.base/'linked.json';link.symlink_to(self.recordfile)
         with self.assertRaisesRegex(RuntimeError,'approval-record'):self.approve(record=link)
         for change in [dict(hold=True),dict(status='FAIL'),dict(seat='coding seat'),dict(reference='#698'),dict(plan='/nowhere')]:
             self.write(dict(self.record,**change))
             with self.subTest(change=change),self.assertRaisesRegex(RuntimeError,'approval-record'):self.approve()
         self.write()
-        # The code approving is the code approved.
-        with self.assertRaisesRegex(RuntimeError,'approval-self'):self.approve(code=b'# other code\n')
         self.assertFalse(self.pt.root.exists())
 
     def test_a_failed_write_removes_what_the_run_made(self):
-        real=payload.write_new;calls=[]
+        real=rootprog.write_new;calls=[]
         def failing(path,data,mode):
             calls.append(path)
             if len(calls)==3:raise OSError('disk full')
             real(path,data,mode)
-        with patch('tb_payload.write_new',side_effect=failing),self.assertRaises(OSError):self.approve()
+        with patch('tb_root.write_new',side_effect=failing),self.assertRaises(OSError):self.approve()
         self.assertFalse(self.pt.root.exists(),'the root this run made is removed with the partial approval')
 
     def test_the_coordinator_records_only_a_verified_pointer(self):
@@ -2203,10 +2202,10 @@ class ApprovalTests(unittest.TestCase):
         statefile=self.pt.base/'state.json';order.atomic(statefile,dict(cursor=0,done={},approval=None))
         log=self.pt.base/'approve.log'
         def as_sudo(argv,stdout,**kw):
-            self.assertEqual(argv[:4],['sudo','/usr/bin/python3','-I','-c'])
-            self.assertEqual(argv[5:],['approve',str(self.recordfile.resolve()),order.sha(self.recordfile)])
-            with self.pt.as_root(self.code),patch('tb_payload.os.geteuid',return_value=0),patch.dict(os.environ,{'SUDO_UID':'1000'}),patch('tb_payload.pwd.getpwnam',return_value=self.pt.user),contextlib.redirect_stdout(stdout):
-                payload.approve(argv[6],argv[7])
+            self.assertEqual(argv[:3],['sudo',order.ROOT_PROGRAM,'approve'])
+            self.assertEqual(argv[3:],[str(self.recordfile.resolve()),order.sha(self.recordfile)])
+            with self.pt.as_root(self.code),patch('tb_root.os.geteuid',return_value=0),patch.dict(os.environ,{'SUDO_UID':'1000'}),patch('tb_root.pwd.getpwnam',return_value=self.pt.user),contextlib.redirect_stdout(stdout):
+                rootprog.approve(argv[3],argv[4])
             return subprocess.CompletedProcess(argv,0)
         with patch.object(order,'APPROVAL_ROOT',self.pt.root/'approval'),patch.object(order,'APPROVAL_OWNER',os.getuid()):
             with patch('tb_order.subprocess.run',side_effect=as_sudo):digest=order.approve(statefile,self.recordfile,log)
@@ -2233,8 +2232,8 @@ class ApprovalTests(unittest.TestCase):
         log=self.pt.base/'approve.log';asked=[]
         def as_sudo(argv,stdout,**kw):
             asked.append(argv)
-            with self.pt.as_root(self.code),patch('tb_payload.os.geteuid',return_value=0),patch.dict(os.environ,{'SUDO_UID':'1000'}),patch('tb_payload.pwd.getpwnam',return_value=self.pt.user),contextlib.redirect_stdout(stdout):
-                payload.approve(argv[6],argv[7])
+            with self.pt.as_root(self.code),patch('tb_root.os.geteuid',return_value=0),patch.dict(os.environ,{'SUDO_UID':'1000'}),patch('tb_root.pwd.getpwnam',return_value=self.pt.user),contextlib.redirect_stdout(stdout):
+                rootprog.approve(argv[3],argv[4])
             return subprocess.CompletedProcess(argv,0)
         with patch.object(order,'APPROVAL_ROOT',self.pt.root/'approval'),patch.object(order,'APPROVAL_OWNER',os.getuid()),patch('tb_order.subprocess.run',side_effect=as_sudo):
             with self.assertRaisesRegex(order.Refused,'one-approval-per-state'):order.approve(statefile,self.recordfile,log)
@@ -2278,17 +2277,15 @@ class ApprovalTests(unittest.TestCase):
         # The scan refuses anything standing that is not a complete approval,
         # so what the rename still finds is a name made during the run.
         (self.pt.root/'approval').mkdir(parents=True);self.pt.root.chmod(0o755);(self.pt.root/'approval').chmod(0o755)
-        real=payload.write_new;made=[]
+        real=rootprog.write_new;made=[]
         def appears(path,data,mode):
             real(path,data,mode)
             if path.name=='approval.json':
                 twin=path.parent.parent/hashlib.sha256(data).hexdigest();twin.mkdir();made.append(twin.name)
-        with patch('tb_payload.write_new',side_effect=appears),self.assertRaisesRegex(RuntimeError,'approval-new'):self.approve()
+        with patch('tb_root.write_new',side_effect=appears),self.assertRaisesRegex(RuntimeError,'approval-new'):self.approve()
         self.assertEqual(self.approvals(),made)
 
-    def test_root_reads_its_own_code_and_an_approval_by_name(self):
-        self.assertEqual(payload.own_code(b'/usr/bin/python3\0-I\0-c\0CODE\0provision\0'+b'a'*64+b'\0'),b'CODE')
-        with self.assertRaisesRegex(RuntimeError,'own-code'):payload.own_code(b'/usr/bin/python3\0tb_payload.py\0')
+    def test_root_reads_an_approval_by_name(self):
         digest=self.approve().split()[1]
         directory=self.pt.root/'approval'/digest
         with self.pt.as_root():
@@ -2299,10 +2296,102 @@ class ApprovalTests(unittest.TestCase):
             # A record that no longer states a passed, lifted review.
             held=stand_approval(self.pt.root/'approval',dict(self.record,hold=True))
             with self.assertRaisesRegex(RuntimeError,'approval-record'):payload.read_approval(held)
-        with self.pt.as_root(),patch('tb_payload.os.geteuid',return_value=0),patch.dict(os.environ,{'SUDO_UID':'1000'}):
-            for argv in [['payload','approve'],['payload','approve',str(self.recordfile)],['payload','approve',str(self.recordfile),'not-a-digest'],
-                         ['payload','approve',str(self.recordfile),order.sha(self.recordfile),'extra']]:
-                with self.subTest(argv=argv),patch('sys.argv',argv),self.assertRaisesRegex(RuntimeError,'approve-arguments'):payload.main()
+
+    def run_root(self,*argv,uid=0):
+        """The root program's main as sudo runs it, execv caught."""
+        with self.pt.as_root(),patch('tb_root.os.geteuid',return_value=uid),patch.dict(os.environ,{'SUDO_UID':'1000'}),patch('tb_root.pwd.getpwnam',return_value=self.pt.user),\
+             patch('sys.argv',['tb-root',*argv]),patch('tb_root.os.execv') as execv,contextlib.redirect_stdout(io.StringIO()):
+            rootprog.main()
+        return execv
+
+    def test_the_root_program_takes_only_its_two_verbs(self):
+        # #709 round four: every privileged step enters the hand-installed
+        # program by one of two verbs, and anything else refuses by name.
+        for argv in [['approve'],['approve',str(self.recordfile)],['approve',str(self.recordfile),'not-a-digest'],
+                     ['approve',str(self.recordfile),order.sha(self.recordfile),'extra']]:
+            with self.subTest(argv=argv),self.assertRaisesRegex(RuntimeError,'approve-arguments'):self.run_root(*argv)
+        for argv in [[],['frob','provision','a'*64],['run','provision'],['python3','-I','-c','code']]:
+            with self.subTest(argv=argv),self.assertRaisesRegex(RuntimeError,'known-verb'):self.run_root(*argv)
+        with self.assertRaisesRegex(RuntimeError,'root-program'):self.run_root('approve',str(self.recordfile),order.sha(self.recordfile),uid=1000)
+        self.assertFalse(self.pt.root.exists())
+
+    def test_run_executes_only_a_complete_approvals_root_copy(self):
+        # #709 round four: root runs the approval's root-owned copy of the
+        # reviewed payload with python3 -I, and only from an approval found
+        # complete. Perturbation: drop approval-complete from read_approval and
+        # the tampered copy, and the partial directory, are executed.
+        with self.assertRaisesRegex(RuntimeError,'approval-custody'):self.run_root('run','provision','a'*64)
+        digest=self.approve().split()[1];directory=self.pt.root/'approval'/digest;copy_path=directory/'tb_payload.py'
+        execv=self.run_root('run','load:own-x',digest,'512','b'*64)
+        execv.assert_called_once_with('/usr/bin/python3',['/usr/bin/python3','-I',str(copy_path),'load:own-x',digest,'512','b'*64])
+        # No approval of that digest: a run with no approval refuses.
+        with self.assertRaisesRegex(RuntimeError,'approval-complete'):self.run_root('run','provision','c'*64)
+        with self.assertRaisesRegex(RuntimeError,'approval-digest'):self.run_root('run','provision','../'+digest)
+        with self.assertRaisesRegex(RuntimeError,'run-arguments'):self.run_root('run','provision',digest,'512')
+        with self.assertRaisesRegex(RuntimeError,'run-arguments'):self.run_root('run','',digest)
+        # The root copy tampered: never executed.
+        kept=copy_path.read_bytes();copy_path.chmod(0o600);copy_path.write_bytes(b'import os\n')
+        with self.assertRaisesRegex(RuntimeError,'approval-complete'):execv=self.run_root('run','provision',digest)
+        copy_path.write_bytes(kept)
+        self.assertEqual(self.run_root('run','provision',digest).call_count,1)
+        # A complete approval whose record no longer states a passed, lifted
+        # review is no approval to run. Perturbation: drop approval-record from
+        # read_approval and it is executed.
+        plan=copy.deepcopy(self.pt.plan);plan['install_root']=str(self.pt.root)
+        for change in [dict(hold=True),dict(status='FAIL')]:
+            with self.subTest(change=change):
+                held=self.pt.stand(plan,**change)
+                with self.pt.as_root():self.assertTrue(rootprog.complete(self.pt.root/'approval'/held))
+                with self.assertRaisesRegex(RuntimeError,'approval-record'):self.run_root('run','provision',held)
+
+    def test_complete_checks_every_file_of_an_approval(self):
+        # #709 round four, P2: complete() held the directory and the private
+        # record only. Each case changes one file and must refuse, and each has
+        # its own perturbation in the condition that catches it.
+        digest=self.approve().split()[1];directory=self.pt.root/'approval'/digest
+        with self.pt.as_root():self.assertTrue(rootprog.complete(directory))
+        def case(name,act,undo):
+            with self.subTest(name):
+                act()
+                with self.pt.as_root():self.assertFalse(rootprog.complete(directory))
+                undo()
+                with self.pt.as_root():self.assertTrue(rootprog.complete(directory))
+        for f in rootprog.FILES:
+            keep=directory/f;aside=self.pt.base/('aside-'+f)
+            case(f'{f} missing',lambda keep=keep,aside=aside:shutil.move(keep,aside),lambda keep=keep,aside=aside:shutil.move(aside,keep))
+        extra=directory/'extra'
+        case('an extra file',lambda:extra.write_text('x'),lambda:extra.unlink())
+        pub=directory/'approval.pub.json';private=directory/'approval.json'
+        case('the public copy widened',lambda:pub.chmod(0o666),lambda:pub.chmod(0o644))
+        case('the private record opened',lambda:private.chmod(0o644),lambda:private.chmod(0o600))
+        kept=pub.read_bytes()
+        case('the public copy differs',lambda:(pub.chmod(0o600),pub.write_bytes(kept.replace(b'"version": 1',b'"version": 2')),pub.chmod(0o644)),
+             lambda:(pub.chmod(0o600),pub.write_bytes(kept),pub.chmod(0o644)))
+        # A FIFO in a copy's place, at the copy's mode: a read would block.
+        # Perturbation: drop S_ISREG and this case hangs until the sweep's timeout.
+        payload_copy=directory/'tb_payload.py';keep_payload=payload_copy.read_bytes()
+        def to_fifo():payload_copy.unlink();os.mkfifo(payload_copy,0o600);payload_copy.chmod(0o600)
+        def from_fifo():payload_copy.unlink();payload_copy.write_bytes(keep_payload);payload_copy.chmod(0o600)
+        case('a FIFO in the payload copy\'s place',to_fifo,from_fifo)
+        for f in ['plan.json','tb_payload.py']:
+            p=directory/f;keep=p.read_bytes()
+            case(f'{f} changed',lambda p=p:p.write_bytes(b'changed'),lambda p=p,keep=keep:p.write_bytes(keep))
+        twin=self.pt.base/'twin'
+        case('the payload copy has a second name',lambda:os.link(directory/'tb_payload.py',twin),lambda:twin.unlink())
+        linked=directory/'plan.json';keep_plan=linked.read_bytes()
+        def to_link():linked.unlink();(self.pt.base/'plan-target').write_bytes(keep_plan);linked.symlink_to(self.pt.base/'plan-target')
+        def from_link():linked.unlink();linked.write_bytes(keep_plan);linked.chmod(0o600)
+        case('a copy replaced by a link',to_link,from_link)
+        # Named by a digest that is not its record's, a crash's pending
+        # directory, and a directory opened to the group.
+        moved=directory.with_name('e'*64);directory.rename(moved)
+        with self.pt.as_root():self.assertFalse(rootprog.complete(moved))
+        moved.rename(directory)
+        pending=directory.with_name('.pending-'+'a'*64);pending.mkdir()
+        with self.pt.as_root():self.assertFalse(rootprog.complete(pending))
+        directory.chmod(0o775)
+        with self.pt.as_root():self.assertFalse(rootprog.complete(directory))
+        directory.chmod(0o755)
 
     def test_the_coordinator_refuses_what_it_cannot_verify(self):
         statefile=self.pt.base/'state.json';order.atomic(statefile,dict(cursor=0,done={},approval=None))

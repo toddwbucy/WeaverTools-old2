@@ -78,36 +78,70 @@ coverage, changed artifacts, changed receipts or a recorded refusal.
 ## Operator boundary and order
 
 Only the operator runs `next`, as the recorded operator uid, without wrapping it
-in sudo. The coordinator requests sudo internally and hands root the reviewed
-payload's verified bytes, never a path: it reads `tb_payload.py` once, checks
-those bytes against the approval's payload digest, and runs
-`sudo /usr/bin/python3 -I -c <those bytes> <step> <approval digest>` with stdin
-closed, capturing a transcript. A file the operator's UID can rename, any
-process of that UID can swap between a check and sudo's open, and that UID need
-not hold the sudo credential. **Any sudoers allowlist for the payload must match
-this `-c` form**, since there is no payload file to name. **Approval is in
-root custody**, on the ruling of 2026-09-26,
+in sudo. The coordinator requests sudo internally, and **sudo runs one program
+and nothing else**: `tb_root.py`, installed once by hand at
+`/usr/local/libexec/weaver-tb/tb-root`, on the ruling of 2026-09-27,
+https://github.com/toddwbucy/WeaverTools/issues/698#issuecomment-5852640576. A
+step runs as `sudo /usr/local/libexec/weaver-tb/tb-root run <step> <approval
+digest>` with stdin closed and a transcript captured. The root program finds
+that approval complete, every file of it checked, and executes the approval's
+root-owned copy of the reviewed payload with `python3 -I`. Root is never handed
+bytes or a path the operator's UID can write: a file that UID can rename, any
+process of that UID can swap between a check and root's open, and a program that
+checks itself proves nothing, since the swapped program skips the check.
+
+**Approval is in root custody**, on the ruling of 2026-09-26,
 https://github.com/toddwbucy/WeaverTools/issues/698#issuecomment-5851860966. The
 operator runs `bash handoffs/tb/tb-operator.sh approve <record>` on the review
-seat's published record, and root reads the record and every artifact it names
-once, checks each digest before its first write, copies the reviewed payload and
-plan root-owned under `/var/lib/weaver-tb/approval/<digest>/`, writes
+seat's published record. The coordinator hashes the record once and runs `sudo
+/usr/local/libexec/weaver-tb/tb-root approve <record> <record sha256>`. Root
+holds its read of the record to that digest, reads every artifact it names once,
+as data, checks each digest before its first write, copies the reviewed payload
+and plan root-owned under `/var/lib/weaver-tb/approval/<digest>/`, writes
 `approval.json` (0600) and `approval.pub.json` (0644), and prints the digest. It
-leaves nothing on any refusal. The coordinator hashes the record once before sudo
-and root holds its own read to that digest. A second approve of the same record
-adopts the approval root already made and writes nothing, so a coordinator that
-died after root committed recovers by running `approve` again. A partial
-approval a crash left refuses by name.
-The state keeps only that digest, as `approval`. Root reads the approval it
-names, holds its own code to the approval's payload digest, and parses the
-root-owned plan copy. The coordinator reads the public copy and takes the hold
-and the review's fields from it, never from the state. On one box the operator
-at the sudo prompt is the trust anchor: the snapshot closes the window between
-approval and `next` (#683 thread 24), and the window before approval closes only
-once the review seat has an identity of its own and signs its record, owed on
-#698. The payload uses
-Python isolated mode and no import from the working directory. No sudo is run by
-the probe driver. Notification failure never changes a successful step.
+leaves nothing on any refusal. A second approve of the same record adopts the
+approval root already made and writes nothing, so a coordinator that died after
+root committed recovers by running `approve` again. Anything in the approvals
+that is not a complete approval refuses by name. The state keeps only that
+digest, as `approval`. The payload parses the root-owned plan copy beside it.
+The coordinator reads the public copy and takes the hold and the review's fields
+from it, never from the state.
+
+**The trust anchor is the operator's hash check of the root program at install
+time**, the one program everything privileged goes through. The snapshot closes
+the window between approval and `next` (#683 thread 24). The window before
+approval closes only once the review seat has an identity of its own and signs
+its record, owed on #698. No sudo is run by the probe driver. Notification
+failure never changes a successful step.
+
+### Installing the root program, once
+
+The probe's sudoers entry names the installed path and nothing else. No
+`python3` entry remains, and no `-c` form is admitted:
+
+```
+OPERATOR ALL=(root) /usr/local/libexec/weaver-tb/tb-root
+```
+
+Install it from the merge that last changed `tb_root.py`, then check the
+installed copy, which only root can change, against the file at that commit.
+Compare the two digests by eye. They must be identical.
+
+```
+sudo install -d -o root -g root -m 0755 /usr/local/libexec/weaver-tb
+sudo install -o root -g root -m 0755 handoffs/tb/tb_root.py \
+  /usr/local/libexec/weaver-tb/tb-root
+sudo sha256sum /usr/local/libexec/weaver-tb/tb-root
+git show MERGE:experiments/randomness-tuple/device/blackwell/code/tb_root.py \
+  | sha256sum
+```
+
+`MERGE` is that merge commit. Hashing the installed copy rather than the staged
+one leaves no window between the check and the install, since a process of the
+operator's UID can swap the staged file but not the installed one. If the
+digests differ, remove the installed copy with `sudo rm` and stop. A later merge
+that changes `tb_root.py` is installed and checked the same way. Until the
+program is installed, every privileged step fails at sudo and nothing is run.
 
 Provisioning refuses a link anywhere in a stack before its first write, since a
 stack is copied by bytes, and each installed stack must then hold exactly the

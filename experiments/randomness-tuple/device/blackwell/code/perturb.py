@@ -8,7 +8,7 @@
 # conforms: blackwell-probe-approval-in-root-custody
 # conforms: blackwell-probe-wait-verifies-when-the-state-moves
 # conforms: blackwell-probe-halt-is-evidence
-# conforms: blackwell-probe-root-receives-bytes-never-a-path
+# conforms: blackwell-probe-root-runs-no-operator-bytes
 # conforms: blackwell-probe-operator-input-read-once
 # conforms: blackwell-probe-served-tree-locked-and-verified
 # conforms: blackwell-probe-model-in-custody-on-both-paths
@@ -86,7 +86,7 @@ def main():
         if base.returncode!=0:
             print('BASELINE FAILED: the unmodified suite does not pass; no mutation was run\n'+base.stderr[-1800:],file=sys.stderr)
             return 2
-        for name in ['tb_order.py','tb_payload.py','tb_driver.py']:
+        for name in ['tb_order.py','tb_payload.py','tb_root.py','tb_driver.py']:
             for line, label in guards(pinned[name].decode()):
                 for mode in ['removed','inverted']:
                     shutil.rmtree(target/'__pycache__',ignore_errors=True)
