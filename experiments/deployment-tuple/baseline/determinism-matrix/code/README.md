@@ -6,16 +6,18 @@ establish are `../determinism-matrix-Spec.md`'s. This page is how to run it on a
 ## What is here
 
 `determinism_matrix.py` drives the matrix and imports `confirm_cells.py`, the replay
-harness, from beside it. Both are byte-identical to their copies in the
-`weaver-experiments` tree at `d04da2a`, so a run from here is the same instrument as
-the runs that predate this directory. The three `test_*.py` files are that tree's
-tests of the two, also byte-identical. Each is a plain script and exits non-zero on
-the first failure:
+harness, from beside it. Both come from the `weaver-experiments` tree at `d04da2a`.
+`confirm_cells.py` is byte-identical to its copy there, and `determinism_matrix.py`
+carries two fixes of #716, named in the Spec's section 0, with a test holding that the
+path the 2026-09-27 runs took returns what it returned before. The `test_*.py` files are
+the tests of the two, three from that tree and `test_recorded_seed.py` from #716. Each
+is a plain script and exits non-zero on the first failure:
 
 ```
 python3 test_seed_schedule.py
 python3 test_loop_digest.py
 python3 test_provenance_close.py
+python3 test_recorded_seed.py
 ```
 
 Stdlib only. It needs the installed agent stack, one agent whose declaration it

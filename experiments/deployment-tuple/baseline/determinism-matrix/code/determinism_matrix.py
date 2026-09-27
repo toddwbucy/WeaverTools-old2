@@ -41,6 +41,7 @@ overnight run ends cleanly rather than mid-cell.
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import statistics
@@ -75,7 +76,31 @@ def parse_seed_schedule(text):
         raise ValueError("the seed schedule is empty")
     if len(set(seeds)) != len(seeds):
         raise ValueError("the seed schedule repeats a value")
+    if sweep_step(len(seeds), len(PROMPTS) * len(DEPTHS)) is None:
+        raise ValueError(f"a schedule of {len(seeds)} seeds cannot vary the seed between"
+                         " successive sessions and move every matrix cell's seed"
+                         " between sweeps at once")
     return seeds
+
+
+def sweep_step(n, cells):
+    """What each sweep adds to a matrix cell's seed index (#716 round one).
+
+    Within a sweep the index advances one per cell, so successive sessions
+    differ wherever the schedule holds two seeds or more. Across the sweep
+    boundary the last cell, at index `cells - 1`, meets the next sweep's
+    first, at index `step`, so the step must not be congruent to `cells - 1`.
+    And a step sharing no factor with the schedule's length carries every
+    cell through every seed over as many sweeps as there are seeds, so no
+    cell keeps one seed across sweeps. One, the step this matrix always used,
+    wherever it satisfies both, which is every length not dividing
+    `cells - 2`, and otherwise the smallest step that does. None where no
+    step can: one seed never varies, and two seeds over an even sweep cannot
+    alternate across the boundary and still move each cell."""
+    for step in range(1, n):
+        if math.gcd(step, n) == 1 and (cells - 1 - step) % n != 0:
+            return step
+    return None
 
 
 def with_declared_seed(declaration, seed):
@@ -89,8 +114,12 @@ def with_declared_seed(declaration, seed):
 
 def seed_for(schedule, iteration, cell_index):
     """Which seed a cell takes: rotated by cell and offset by sweep, so
-    over as many sweeps as there are seeds every cell meets every seed."""
-    return schedule[(cell_index + iteration - 1) % len(schedule)]
+    over as many sweeps as there are seeds every cell meets every seed, and
+    no two successive sessions share one, the sweep boundary included."""
+    step = sweep_step(len(schedule), len(PROMPTS) * len(DEPTHS))
+    if step is None:
+        raise ValueError(f"a schedule of {len(schedule)} seeds has no valid rotation")
+    return schedule[(cell_index + step * (iteration - 1)) % len(schedule)]
 
 # **The prompt set spans the draw's confidence, which is the axis that
 # matters.** Each carries the character it was chosen for, so a reader
@@ -210,6 +239,13 @@ def run_session(cfg, probe, depth, iteration, declared_seed=None):
                               f" {len(recorded)} seeds: {rec['recorded_seed']}")
             return rec
         rec["recorded_seed"] = recorded.pop()
+        # A record carrying no seed is the apparatus too (#716 round one):
+        # a source and a replay both missing it would agree on None and pass
+        # as one recorded seed, and every comparison after it would be read
+        # as a result.
+        if rec["recorded_seed"] is None:
+            rec["verdict"] = "the source turns carry no recorded seed"
+            return rec
         if declared_seed is not None and rec["recorded_seed"] != declared_seed:
             rec["verdict"] = (f"the declared seed did not reach the record:"
                               f" declared {declared_seed},"

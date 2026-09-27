@@ -137,9 +137,10 @@ A probe joins this table when its directory lands with its Spec, and a marker mo
 when a result lands in that probe's `results/`. The runs cited above that predate
 this tree are held in the `weaver-experiments` tree per Working Process section 5,
 and a rerun under a probe here is what brings each into this table. The determinism
-matrix deposits in that tree, olympus's from 2026-08-27 to 2026-09-08 and thinkpad's
-of 2026-08-27 and 2026-08-29, are the baseline probe's pre-tree runs, made by code
-byte-identical to what `baseline/determinism-matrix/code/` now holds.
+matrix deposits in that tree, olympus's from 2026-08-27 to 2026-09-08 and thinkpad's of
+2026-08-27 and 2026-08-29, are the baseline probe's pre-tree runs, made by earlier
+revisions of the code `baseline/determinism-matrix/code/` now holds, and each deposit
+names its revision by sha256 where its box facts record one.
 
 ## 4. What this document does not carry
 

@@ -19,12 +19,17 @@ what the probe's code does and claims, and it carries the two declarations every
 probe of the experiment shares: the tuple fields a run records, and the box facts a
 deposit carries beside its record.
 
-The code is `determinism_matrix.py` and the harness it imports, `confirm_cells.py`,
-each byte-identical to its copy in the `weaver-experiments` tree at `d04da2a`, where
-the matrix ran from 2026-08-27 until it moved here. Byte identity is what makes a run
-from this directory the same instrument as the runs that predate it. The two files
-keep their own docstrings and comments, and this document restates only what a reader
-needs to hold a result against.
+The code is `determinism_matrix.py` and the harness it imports, `confirm_cells.py`, from
+the `weaver-experiments` tree at `d04da2a`, where the matrix ran from 2026-08-27 until
+it moved here. `confirm_cells.py` is byte-identical to that copy.
+`determinism_matrix.py` differs by two fixes of pull request #716, a record carrying no
+seed made a fault and a seed rotation that never repeats across a sweep, and a test pins
+that on the path every session of the 2026-09-27 runs took, a recorded seed and no
+schedule, it returns the record the `d04da2a` file returns. A run from this directory is
+the same instrument as the two thinkpad runs of 2026-09-27, made from `d04da2a`. The
+deposits before them ran earlier revisions of the matrix, and each names its own by
+sha256 where its box facts record one. The two files keep their own docstrings and
+comments, and this document restates only what a reader needs to hold a result against.
 
 **Words.** The charter's cell is a card family a device probe runs on. This probe's
 code calls one combination of a prompt and a depth a cell, and in this document that
@@ -135,12 +140,13 @@ sha256 of its emission.
 `--seed-schedule`, a comma-separated list of distinct integers, the declaration's one
 `seed:` line is rewritten before each session. Both halves of a session read the same
 seed and successive sessions read different ones. The seed a matrix cell takes rotates
-by matrix cell and is offset by sweep, so over as many sweeps as the schedule has
-seeds every matrix cell meets every seed. A declaration carrying other than exactly
-one `seed:` line is refused. The declaration is restored when the run ends, by its
-clock or by an interrupt, and not by a hangup, per section 5. `--artifact` overrides
-the declaration's artifact for every session in the same way and is restored with
-it.
+by matrix cell and is offset by sweep, so over as many sweeps as the schedule has seeds
+every matrix cell meets every seed and no matrix cell keeps one seed from one sweep to
+the next. A schedule that cannot hold both properties with the sweep boundary, one seed
+or two, is refused, and so is a declaration carrying other than exactly one `seed:`
+line. The declaration is restored when the run ends, by its clock or by an interrupt,
+and not by a hangup, per section 5. `--artifact` overrides the declaration's artifact
+for every session in the same way and is restored with it.
 
 **A session whose seed the record does not bear out is a fault, not a verdict.** The
 source turns must carry one recorded seed, `sampling.seed` on each `model.request`,
