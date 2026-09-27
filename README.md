@@ -165,8 +165,10 @@ that read the set back as one motion, and the process documents the corpus
 governs itself by - and the graph has been built from that corpus, with the set
 ratified on 2026-08-04. Ratification is mechanical: the documents carry their
 nodes and edges in a fixed notation, and the graph is generated from them
-rather than maintained beside them. Code arrives next, each source file citing
-the assertions it conforms to and accruing into the same graph as it merges.
+rather than maintained beside them. Code has since been built against it. On the
+operator's ruling of 2026-09-27 the graph and its upkeep are deferred to release,
+and until then review against the Spec sections a pull request names is the
+conformance check.
 
 ## Reading the corpus
 

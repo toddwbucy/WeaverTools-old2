@@ -111,9 +111,10 @@ landed without it moving - `spawn.rs`, `record.rs`, `failure.rs` and
 `replay.rs` - and `src/tools.rs` having been listed as blocked while the
 granted tool result of section 6 fills it.
 
-**The loop files under `dev_python/` owe conformance headers**, Python being a
-supported unit since the operator's ruling of 2026-09-17, **and a header here
-would have no assertion to cite.** The blade is a compile pin held in
+**The loop files under `dev_python/` would owe conformance headers**, Python being
+a supported unit since the operator's ruling of 2026-09-17 and the header rule
+suspended until release since 2026-09-27, **and a header here would have no
+assertion to cite.** The blade is a compile pin held in
 `engine.rs`, the crossing is loop 0's and cited at `lifecycle.rs`, and the
 filesystem boundary this section argues is cited from the framework side at
 `src/bin/worker/main.rs`, which is where a reader establishes a claim about what
@@ -122,8 +123,8 @@ arriving by the same path any builder's does, so what it shows is the seat it
 composes against rather than a claim it holds. Minting an assertion to close the
 reading would convert an honest absence into a documented enforcement. The
 condition on which a header lands here is an assertion whose instrument is a
-loop file, and `census.py` is where the standing reading is taken rather than
-here.
+loop file, and review is where the standing reading is taken rather than here,
+the census having retired on 2026-09-27.
 
 **`src/classify.rs` leaves the listing, and the disagreement that leaves behind
 is named rather than settled here.** No such file exists and the label seam's
@@ -1646,8 +1647,8 @@ result constructible from exactly one source, and a harness-side execution
 path that must stay open cannot be closed by the type system, so the in-loop
 construction path and the enforcement are incompatible and the enforcement
 was chosen. Whether the gate spawns tool processes or tools are provisioned
-as peers is the tool workflow's election and the finding rules on neither;
-what is settled is only which side of the loop's membrane the tool sits on.
+as peers is the tool workflow's election and the finding rules on neither.
+What is settled is only which side of the loop's membrane the tool sits on.
 
 **The granted tool result closes the loop at the type level, per the audit of
 issue #116, run 2026-08-17 with the reversal act landed.** The audit's
@@ -2184,7 +2185,7 @@ does not admit, and a message that will not render. The inner arm is the
 recorder declining the write on a message the door passed. The case does not
 distinguish them, per the charter's reasoning that the case carries what the
 harness consumes and all four mean the same thing for the turn and the
-residency; the account does, naming the refused role and block on the first
+residency. The account does, naming the refused role and block on the first
 arm and the recorder's own failure on the second. **The load is not refused
 on any of them**, the seated prefix being the operator's declaration and a
 run that has already bracketed not dying on a record it could not write, and
@@ -2543,9 +2544,7 @@ to: harness-undecodable-names-its-detail
 while section 3 argued the one case correctly on its own page, so the identifier
 moved, with its two source headers and the doc comment that names it, rather
 than the enum moving to meet the slug. The old spelling stands in the audit of
-2026-09-13, which is a dated record of a reading and not a citation, and in
-`process/gates/test_grounds_parity.py`, whose live-token list the rename moved
-and whose comment says why.
+2026-09-13, which is a dated record of a reading and not a citation.
 
 ```graph
 node: harness-fault-below-the-exchange-layer
@@ -2771,10 +2770,10 @@ left to section 1's layout. They cross because the mechanism and its author are
 two crates by the charter's own division rather than because a header reached for
 the wrong slug, and the second edge is what makes that checkable from the graph
 rather than by noticing a prefix. **No instrument compares a citation's slug
-against the crate of the file carrying it**, `grounds_parity.py` reading the
-asserting crates and not the citing one, so a later crossing is found by a reader
-and not by a gate. The reading that would close that is owed to
-`act-20-census-readings` of issue #569.
+against the crate of the file carrying it**, so a later crossing is found by a
+reader and not by a gate. The reading that would have closed that was
+`act-20-census-readings` of issue #569, which closed under the ruling of
+2026-09-27.
 
 **`weaver-types-Spec` section 5 files three owings against this document, and
 all three now carry a record.** The truncation half of the pair test has been

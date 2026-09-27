@@ -59,7 +59,7 @@ if normal:
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("python3 (the census gate prerequisite) runs");
+        .expect("python3 (the deploy script's prerequisite) runs");
     check
         .stdin
         .take()
@@ -79,7 +79,7 @@ if normal:
 /// **One library and this instrument are the complete target set.** Cargo's
 /// metadata sees every implicit and explicit target, including build scripts.
 /// Python's standard JSON parser reads it without adding a Rust dependency,
-/// and Python3 is already required by the repository's census gate.
+/// and Python3 is already required by the repository's deploy script.
 /// Perturbations: add build.rs or src/bin/x.rs; either adds a forbidden target.
 #[test]
 fn the_one_target_is_a_library() {
@@ -123,7 +123,7 @@ if targets != expected:
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("python3 (the census gate prerequisite) runs");
+        .expect("python3 (the deploy script's prerequisite) runs");
     check
         .stdin
         .take()

@@ -1,6 +1,6 @@
 # WeaverTools Working Process
 
-**Version:** v0.33, 2026-09-22. Companion to the Working Rules, the Document
+**Version:** v0.34, 2026-09-27. Companion to the Working Rules, the Document
 Format, and the Handoff Format. The apex says what we are building. The Working
 Rules say how we write. The Document Format says what shape a document takes. The
 Handoff Format says what shape a batch takes when it moves between seats. This says
@@ -10,8 +10,10 @@ moves.
 This document is the boot prompt for every fresh session on this project, in either
 seat. Read it first. Section 7 says where the work currently sits on the map.
 
-Phase three is ratified, 2026-08-04, gates H1 through H6 in force per section 6.
-Code merges against them and against nothing invented at review time.
+Phase three opened 2026-08-04, and gates H1 through H5 are in force per section 6.
+H6 retired on the operator's ruling of 2026-09-27, which defers the knowledge graph
+and its upkeep to release. Code merges against the gates and against nothing
+invented at review time.
 
 ## 1. Standing rules
 
@@ -61,7 +63,7 @@ caught it.
 **The tree form writes an archive and never extracts.** Two earlier forms of this line
 did, and each failed differently: `| tar -x` extracts relative to the current
 directory, so run from the repository root it recreates the directory the ruling
-deleted, and a reader who then commits has undone the rule by following the citation;
+deleted, and a reader who then commits has undone the rule by following the citation.
 `| tar -x -C /tmp/<dir>` fixed that and then exited 2 whenever the destination did not
 already exist. **`git archive -o` is one command and needs no destination directory**,
 and what it does not do is unpack: nothing appears at `<path>` in the working tree, so
@@ -85,11 +87,13 @@ file. A commit cannot drift. **The rule is every archive**, `docs/archive/` incl
 a record of a decision is not a second copy of the thing decided, and the carve-out
 made on that ground was overturned the day it was made.
 
-**The rule has two halves and neither is a substitute for the other.** `census.py`'s
-`archive_directories` reading holds the tree at zero, per H6. `.hadesignore` excludes
-the pattern from the ingest, for the window between a directory appearing and someone
-acting on the finding. A rule naming today's instance is the same mistake as deleting
-today's instance, so both halves match a family of spellings rather than one.
+**The rule has two halves and neither is a substitute for the other.** Review holds
+the tree at zero, an archive directory in a diff being a finding, since the census
+that read the tracked set for it retired on 2026-09-27. `.hadesignore` excludes the
+pattern from the ingest, for the window between a directory appearing and someone
+acting on the finding, and it is dormant with the graph until release. A rule naming
+today's instance is the same mistake as deleting today's instance, so both halves
+match a family of spellings rather than one.
 
 ## 2. Document states
 
@@ -152,6 +156,13 @@ carried. **The set-level-only half of that sentence is retired**, per the ruling
 established, and clearing its gates is how it shows that. After ratification a
 document does not change, and a change found necessary during implementation is not a
 patch. Coding stops and the work re-enters authoring.
+
+**Ratification is suspended until release**, on the operator's ruling of 2026-09-27
+recorded in section 6. No document is ratified meanwhile and none is un-ratified: a
+header reading RATIFIED stands as the record of its act and is not maintained. A
+merged document that disagrees with the code changes by edit, in the same act as the
+code, under H1's write-time rule, and coding does not stop for a re-entry. The
+paragraphs below record how ratification ran and are the rule it resumes under.
 
 **A charter ratifies on its own**, per the operator's ruling of 2026-08-23. A crate
 that has been chartered and has cleared its gates is ratified, and **the set is
@@ -271,7 +282,7 @@ flag, or a latency the substrate happens to provide has taken a Spec's material 
 a contract, which is this gate's own case read one level finer.
 
 **The failure mode is vocabulary rather than subject, which is why it needs stating
-separately.** A custody obligation genuinely belongs in a contract, so the gate reads
+separately.** A custody obligation belongs in a contract, so the gate reads
 clean on the question it was written to ask and the defect passes. What is at the
 wrong level is the wording: **"sets close-on-exec at the fork" names a flag where
 "does not permit a child process to inherit the handle" names the obligation.** The
@@ -377,6 +388,14 @@ take contracts. The other edge kinds are structure and carry none.
 
 ## 5. Phase two, graph
 
+**Phase two is suspended until release**, on the operator's ruling of 2026-09-27.
+The HADES graph and every rebuild, ratification, and the closing checklist below
+wait for release, and no rebuild is owed on document movement meanwhile. HADES is
+not part of this project until then, and it returns at release as a lookup and a
+diff of documents against code. Code is checked against the Spec directly in the
+meantime, by section 6's conformance gate. The rest of this section is the record of
+how the phase ran and the rule it resumes under.
+
 Produces the knowledge graph as a standing artifact, and performs ratification. A
 HADES database is stood up from the merged documents, which are already structured to
 graph cleanly, with the edges and vocabulary present.
@@ -398,8 +417,8 @@ conformance query and a graph does.
 **A workspace and a knowledge graph are not the same unit.** The operator's ruling of
 2026-09-13. More than one tree feeds one graph, each on its own schedule, and ingest
 is per workspace - so a tree joins when it is ready to be read rather than when the
-graph is built. Three are named: this repository, which is the instrument and what the
-instrument is; `weaver-experiments`, which is what was run on it; and the paper drafts
+graph is built. Three are named. This repository is the instrument and what the
+instrument is, `weaver-experiments` is what was run on it, and the paper drafts come
 later.
 
 **The reason is that the trees answer to different clocks.** Every gate in section 4
@@ -426,9 +445,9 @@ carrying that probe's Spec, its `code/` and its `results/`. The Spec and the cod
 answer to the gate's clock and are read like a crate's, and `results/` holds dated
 records the gates and the ingest never read. A Spec belongs to any code that requires
 one, a crate's or a probe's. The Document Format's section 2 carries the container
-and section 3 the kinds, the census reads every document under `experiments/`
-outside a `results/`, the charter and each probe's Spec among them, and every probe's
-`code/`, and `.hadesignore` excludes `results/` alone. The first experiment is
+and section 3 the kinds, review reads every document under `experiments/` outside a
+`results/`, the charter and each probe's Spec among them, and every probe's `code/`,
+and `.hadesignore` excludes `results/` alone. The first experiment is
 `experiments/randomness-tuple/`, and its first probe is `device/blackwell/`.
 
 ### Closing checklist
@@ -493,7 +512,9 @@ rather than deferring it.
 ## 6. Phase three, coding
 
 Ratified by the operator, 2026-08-04, all five gates and the three cells below.
-**H6 joined them on 2026-09-11**, the first gate added since.
+**H6 joined them on 2026-09-11**, the first gate added since, **and retired on
+2026-09-27** with the graph, on the ruling recorded under the conformance gate
+below.
 The entry gate held until that date: no crate code was written until this section
 ratified and phase two closed, because a gate invented while looking at a diff is a
 gate shaped by that diff. Both conditions are met, phase two's close reading as
@@ -502,25 +523,31 @@ record, and the gates are in force.
 
 The gates:
 
-**H1, authorization.** No code without a ratified spec. Behavior in a diff that traces
+**H1, authorization.** No code without a merged Spec. Behavior in a diff that traces
 to no spec clause is out of scope and returns to phase one rather than being argued at
 review.
+
+**H1 is applied as documents are written**, on the operator's ruling of 2026-09-27.
+Where code and a Spec disagree, the act decides which of the two is wrong, changes
+that one in the same act, and moves on. A contract is part of the Spec under the
+same rule, and a contract change reaches every party to it in the same act.
 
 **H2, dependency conformance.** The crate's Cargo dependency list matches its position
 in the graph. Every Cargo edge is a declared `floor-link` or a `seam` tagged `link`,
 since the Document Format rules that a pair governed by a contract is a seam and never
 also a floor link. No dependency on a sibling. The parent edge is domain membership and
 appears in no Cargo file, since nesting carries domain rather than dependency. Checked
-against the graph, mechanically. **A dev-dependency is outside this edge set**, on the
-operator's ruling of 2026-09-22 that closed the `weaver-state` to `weaver-trace` cell
-of #586 and #590: it is test scaffolding, admitted on the condition that the crate's
-production code imports nothing from it, a condition the crate's own manifest
-instrument watches. The edge set is stated by dependency kind and not by manifest
-section: every dependency of the normal or build kind is a production edge, wherever
-the manifest declares it, in a target-qualified table, behind a feature, or under a
-rename alike, and only the dev kind is exempt. The mechanization above reads cargo's
-dependency kinds and not the manifest's text. A dev-dependency that production code
-reaches is the undeclared edge this gate exists to refuse.
+against the charters' records by review while the graph is deferred to release. **A
+dev-dependency is outside this edge set**, on the operator's ruling of 2026-09-22 that
+closed the `weaver-state` to `weaver-trace` cell of #586 and #590: it is test
+scaffolding, admitted on the condition that the crate's production code imports nothing
+from it, a condition the crate's own manifest instrument watches. The edge set is stated
+by dependency kind and not by manifest section: every dependency of the normal or build
+kind is a production edge, wherever the manifest declares it, in a target-qualified
+table, behind a feature, or under a rename alike, and only the dev kind is exempt. The
+mechanization above reads cargo's dependency kinds and not the manifest's text. A
+dev-dependency that production code reaches is the undeclared edge this gate exists to
+refuse.
 
 **H3, seam conformance.** The seam is exercised against the contract's failure cases
 and not only its success path. A contract that names a refusal and a build that cannot
@@ -531,31 +558,31 @@ the contract's vocabulary clause names, at the definition site the clause names,
 local redefinition of the same shape.
 
 **H5, advisory pass.** The architecture seat reviews the diff against the PRD, the
-contract, the spec, and the graph, and returns advice in the standard shape. The
+contract, and the spec, and returns advice in the standard shape. The
 implementation seat holds the merge call and answers the advice in its decision.
 
-**H6, the census.** `python3 process/gates/census.py`, run wherever clippy and fmt
-are run: before the first review pass and again after the rework, a fix being an
-act that can regress what it is fixing. **It counts what the other gates
-structurally cannot see**, each of them verifying an artifact against itself while
-none compares a claim in a document to a fact in code. **The rule is that no defect
-is new, not that every number is zero**, the checked-in baseline being the backlog
-and a deliberate increase a sentence in the act that takes it. **A new
-`tag: perturbation` node is cited by code in the same act, or its enforcement-table
-row is marked owed**; issue #558 is the backlog of the ones that are neither.
-Landed on the operator's ruling of 2026-09-11, after drift in `weaver-trace-Spec`
-stood three weeks and was found by accident. **The backlog is paused, not the gate**,
-on the operator's ruling of 2026-09-26, after three overnight acts showed the gate
-generating work for itself: acts that exist to clear the backlog stop, the
-no-new-defect rule stands, every new unit carries its header and every new
-perturbation its citation, and the baseline holds where it is.
+**The conformance gate**, on the operator's ruling of 2026-09-27, which retired H6
+and the census with it. Every pull request body carries a line naming what it builds:
 
-**`archive_directories` joined the reading on 2026-09-13** and is the instrument for
-section 1's archive rule. It is the one metric that is not a claim measured against a
-fact, and it lives here because the census is the only gate that reads the tracked
-set. **Its baseline is zero and stays zero**, which makes it the exception to the
-no-defect-is-new rule above: an increase is not a backlog entry to be taken with a
-sentence, it is the rule being broken.
+    Implements: <Spec> <sections>
+
+The Planner's grade gives each named section one verdict. **Conforms**: the code does
+what the section says. **Drifted**: the code departs from the section, and the code
+is fixed. **Better way**: the code found a better shape than the section, and the
+Spec changes in the same pull request, a design-level change going to the operator.
+**Spec gap**: the section is silent on what the code does, and the Spec is extended,
+a new capability being the operator's ruling. The Planner also greps the Spec for
+other claims about the items the pull request changes, since a section named is not
+the only place a Spec speaks.
+
+**What the ruling suspends until release**: the graph and every rebuild, ratification,
+phase two's checklist, the census, and H6's header rule. Existing assertion records
+and existing `conforms:` headers stay in place and are not maintained, and no new
+record or header is required. The census, its fixture and its baseline left the tree
+in the act that landed the ruling, git being the archive. What it keeps: H1 as above,
+the editorial rules, the separation of PRD, contract and Spec, precise vocabulary
+across crates, and the instruments, being tests, compile pins, perturbation, clippy
+and Codex review.
 
 **The seat reviews twice, and the second pass reviews the rework.** Answering a
 review is itself an act: on 2026-09-11 it introduced a real defect in three pull
@@ -578,8 +605,9 @@ found thirty items landed and never ticked across eleven epics, which is the dri
 this rule stops. `CLAUDE.md`'s pull request path carries the same rule with the
 invocation, and this section owns it.
 
-The three cells, settled with the ratification. H2 runs as a review query against
-the graph for now, a build script being a later mechanization of the same check.
+The three cells, settled with the ratification. H2 runs as a review read of the
+charters' records against the manifests while the graph is deferred to release, a
+build script being a later mechanization of the same check.
 H1's mechanical bar is the Spec's own instruments: the doctests, compile pins, and
 perturbation tests land with the code they pin, with clippy and fmt as the floor.
 
@@ -654,13 +682,20 @@ them.** Measured 2026-08-23: the device suite passes, `cargo clippy --workspace
 --all-targets` reports six warnings, and `cargo fmt --all --check` reports a hundred
 and thirty-nine diffs. A floor stated and unmet reads to a later seat as a floor that
 was never meant, so either the tree rises to it or the bar is rewritten to what the
-work actually holds. That ruling is the operator's and is not taken here.
+work holds. That ruling is the operator's and is not taken here.
 A failing H3 case files as a known gap with a named owner rather than blocking
 merge, for the loop 0 act only, because the bare-minimum milestone does not wait
 on refusal-path coverage - and the gaps are named at filing so the exception does
 not become the permanent state. After loop 0, a failing H3 case blocks merge.
 
 ## 7. Current position
+
+**Where the work sits as of 2026-09-27.** The knowledge graph and its upkeep are
+deferred to release, on the operator's ruling of that date recorded in section 6:
+review against the named Spec sections is the conformance check, the census and H6
+are retired, and ratification and phase two wait for release. HADES is not part of
+this project until then. The graph paragraphs below are the record of the phase as
+it ran, and none of them owes work before release.
 
 The set was ratified set-wide on 2026-08-04 per the operator's ruling recorded in
 section 5, and **charters have ratified on their own since 2026-08-23**, so the set
@@ -706,25 +741,23 @@ and `weaver-spu`'s per-family `taps_readout` and `taps_column` are what
 stand between it and them, each owed its neutrality demonstration on the
 engine that would serve it, per issue #212.
 
-**The graph was rebuilt 2026-08-08 from `98c8713`** and stands at 293 nodes and
-426 edges in 19 `wt_` collections under the named graph `corpus_graph`. The census
-below verified on that build. Two earlier builds preceded it, 2026-08-06 from
-`96c40bb` and 2026-08-04 from `0426ef5`, and each was a drop-and-rebuild rather
-than an upsert, which is checklist item 1's audit trail as far as it has been
-recorded. **A rebuild is owed on document movement even where the census does not
-move.** The 2026-08-08 rebuild found the record set almost unchanged across 28
-document commits, two assertions retagged and none added or removed, while 138 of
-242 assertions pointed at a line the document no longer held. A count check would
-have reported that graph healthy, so a matching census is not evidence a rebuild
-can be skipped. Document movement since `98c8713` had added three `draws` edges by
-2026-08-10, and the state leg's papers of 2026-08-18 and 2026-08-19 have
-since added a crate node, its parent and seam edges, a contract with its
-parties, draws, and four term definitions, and three assertion records, so
-the stated expectation of 293 nodes and 429 edges is withdrawn as stale.
-The next rebuild derives its expected census from a fresh pass over the
-merged set before it runs, stated as numbers at that pass per this
-section's own discipline, and HADES remains down meanwhile, so the rebuild
-is owed and not runnable.
+**The graph was rebuilt 2026-08-08 from `98c8713`** and stood at 293 nodes and 426 edges
+in 19 `wt_` collections under the named graph `corpus_graph`. The census below verified
+on that build. Two earlier builds preceded it, 2026-08-06 from `96c40bb` and 2026-08-04
+from `0426ef5`, and each was a drop-and-rebuild rather than an upsert, which is
+checklist item 1's audit trail as far as it has been recorded. **A rebuild was owed on
+document movement even where the census did not move**, until the graph was deferred to
+release on 2026-09-27. The 2026-08-08 rebuild found the record set almost unchanged
+across 28 document commits, two assertions retagged and none added or removed, while 138
+of 242 assertions pointed at a line the document no longer held. A count check would
+have reported that graph healthy, so a matching census is not evidence a rebuild can be
+skipped. Document movement since `98c8713` had added three `draws` edges by 2026-08-10,
+and the state leg's papers of 2026-08-18 and 2026-08-19 have since added a crate node,
+its parent and seam edges, a contract with its parties, draws, and four term
+definitions, and three assertion records, so the stated expectation of 293 nodes and 429
+edges is withdrawn as stale. The next build, at release, derives its expected census
+from a fresh pass over the merged set before it runs, stated as numbers at that pass per
+this section's own discipline.
 
 The floor probe of 2026-08-04 is the evidence the entry into code rested on: a
 commissioned session with no repository access rebuilt both floor crates from the
@@ -924,8 +957,8 @@ gated and whose results are dated records outside the gates.
 **Where the work sat as of 2026-09-13.** `experiments/` left this repository for the
 `weaver-experiments` tree under section 5's ruling of that date, with its history, and
 every archive directory left under section 1's. The paragraph on the experiment
-directory below was written about #404 and about a directory that no longer stands
-here; it is kept because the reporting defect it names is unfixed and travels with the
+directory below was written about #404 and about a directory that no longer stands here,
+and it is kept because the reporting defect it names is unfixed and travels with the
 runs.
 
 **Where the work sat as of 2026-09-02.** The seat is using the framework
@@ -955,8 +988,8 @@ has grown past it and the disclosure that stood here named only the state leg's 
 review assertions of 2026-08-19, which is node growth and cannot account for an edge
 moving at all. The act of 2026-09-16 that gave the four replay claims a second
 asserting crate moved the edge count by four and is the case in point. The absolute
-pair is owed to the pre-rebuild pass named above, and no figure stands here in the
-meantime, a wrong number being worse for a detector than none.
+pair waits for the pre-build pass at release named above, and no figure stands here
+in the meantime, a wrong number being worse for a detector than none.
 
 **What replaces it is a check that does not go stale: the edge census exceeds the node
 census by one for each crate beyond the first that holds a claim, which is the sum

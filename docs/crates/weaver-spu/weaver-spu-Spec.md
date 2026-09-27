@@ -132,9 +132,10 @@ takes the walk rather than trusting them.
     kernels/transformer.cu      the salvaged kernels, section 10
     kernels/PROVENANCE.md       what crossed and what has not
 
-**`kernels/transformer.cu` owes a conformance header and the verbatim carry is
-what it owes it under**, CUDA being a supported unit since the operator's ruling
-of 2026-09-17. **No act may write that header while the carry stands**, and the
+**`kernels/transformer.cu` would owe a conformance header and the verbatim carry
+is what it would owe it under**, CUDA being a supported unit since the operator's
+ruling of 2026-09-17 and the header rule suspended until release since
+2026-09-27. **No act may write that header while the carry stands**, and the
 reason rather than the reading is what this row states: the file crosses verbatim
 under section 10's claim, `kernels/PROVENANCE.md` records the hash that makes the
 claim checkable, and an edit adding a header falsifies the very assertion the
@@ -142,8 +143,8 @@ header would cite. That file carries the rest of it. The header the kernel does
 carry is the previous program's and resolves to nothing here, and which assertion
 the kernel should cite is a question for this Spec at the act that takes the
 kernels off the verbatim carry. The obligation is therefore reported rather than
-exempted, an exemption being a hole where a reading is an answer, and `census.py`
-is where its standing is read rather than here.
+exempted, an exemption being a hole where a reading is an answer, and review is
+where its standing is read rather than here.
 
 **`src/bin/classify.rs` is a second `[[bin]]` target, and `spu-one-binary` above
 reads as one.** The manifest declares two, and section 11 states the second in
@@ -446,7 +447,7 @@ Both were transcribed from a text search that could not tell a citation from a
 read.
 
 **The per-target check caught both on its first run, where a crate-wide union
-could not.** That name is genuinely read by `loaded.rs`, so the union was
+could not.** That name is read by `loaded.rs`, so the union was
 satisfied while the mapping was false in two rows. This is why the assertion is
 per target rather than over the crate.
 
@@ -1950,7 +1951,7 @@ is the request's member and not the measurement's**, per the ruling of
 was read off the answer, which is the sampling values' own ground for sitting
 where they sit, and the earlier text listing it in both boxes was one fact in
 two places with no authority named, the defect G5 files. The code and
-`weaver-trace-PRD` section 3 already carried it this way; this clause catches
+`weaver-trace-PRD` section 3 already carried it this way, and this clause catches
 up to them. The harness
 carries both opaque, neither assembled from members it would parse the splice
 to read.

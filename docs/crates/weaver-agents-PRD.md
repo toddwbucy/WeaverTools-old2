@@ -967,8 +967,10 @@ reserved today is a guess about a design that has not been written.
 
 A merged document changes by being edited. A ratified document does not change at
 all, and a change found necessary after ratification returns the work to authoring
-rather than being patched in place. The three states and their transitions belong
-to the Working Process, section 2, and are not restated here.
+rather than being patched in place. **Ratification is suspended until release**, on
+the operator's ruling of 2026-09-27, so until then a document that disagrees with
+the code is edited in the same act as the code. The three states and their
+transitions belong to the Working Process, section 2, and are not restated here.
 
 No amendment banners. No supersession notices. No citations into retired
 documents. No obligations patched inline because their referent was withdrawn.
@@ -1013,14 +1015,21 @@ and Working Process sections 5 and 7 and `CLAUDE.md` carry the same retirement,
 landed in the same act. What the graph holds is a reading and is not stated in a
 charter.
 
+**The graph is deferred to release**, on the operator's ruling of 2026-09-27, and
+until then the conformance check is review of the code against the Spec sections a
+pull request names, per Working Process section 6. HADES returns at release as a
+lookup and a diff of documents against code.
+
 **The devices below are not retired by it.** The graph indexes them and does not
-replace them. The PRD to Spec to contract to code chain is enforced by the six
-devices below.
+replace them. The PRD to Spec to contract to code chain is enforced by the devices
+below, the first suspended until release and the sixth retired by the ruling of
+2026-09-27.
 
 What enforces:
 
 1. **Conformance trace headers in source**, carrying the code to assertion to
-   document chain.
+   document chain. **Suspended until release**: existing headers stay and are not
+   maintained, and no new header is required.
 2. **Compile-time pins** for invariants that are type properties. A runtime
    test structurally cannot pin the absence of a trait implementation.
 3. **Perturbation-verified tests** for invariants that are behaviors. Always
@@ -1032,9 +1041,9 @@ What enforces:
 5. **Clippy at deny-warnings**, which became a gate on the operator's ruling of
    2026-09-06. Working Process section 6 and `CLAUDE.md` state its place and its
    invocation, and this section does not.
-6. **The census**, `process/gates/census.py`, which is H6 on the operator's
-   ruling of 2026-09-11. Working Process section 6 states its rule, and this
-   section does not.
+6. **The census**, which was H6 from the operator's ruling of 2026-09-11 and
+   **retired on 2026-09-27**. Working Process section 6 states the conformance
+   gate that stands in its place, and this section does not.
 
 The last two arrived after the first four and are appended rather than sorted in,
 because device 3 is cited by its ordinal elsewhere in this corpus and renumbering
