@@ -442,35 +442,58 @@ class was the developer, and the work rightly faced them. Using the framework
 raises the development purpose one level, to the operator and the user, and
 what they meet is not a crate but a suite.
 
-The shape: **WeaverTools** is the suite, which is this repository. Inside it
-**weaver-agents** is a domain, the organism and its framework, holding the agent
-crates. Beside that domain and outside its boundary sit the consumers,
-**weaver-web**, the frontend for admin and gate, and **weaver-analysis**, which
-consumes a trace and drives a replay. A shared semantic store and a post-training
-leg are directions rather than crates.
+**The suite moves up a level**, on the operator's ruling of 2026-09-27. **WeaverTools**
+names the suite and no longer this repository: HADES, weaver-agents, weaver-web,
+weaver-analysis, and whatever joins them. This repository becomes **weaver-agents**, the
+name of the domain it already holds, so the repository and its domain root carry one
+name and no second spelling stands one letter from it.
 
-**The rebrand is retired as unnecessary, 2026-08-23, and not merely deferred.** It
-existed because `WeaverTools` named two things at once, a repository and the whole
-around it, and a word naming two things has to be split. The operator's ruling
-removes the ambiguity from the other side: **the repository is the suite**, so the
-word names one thing and there is nothing left to rename. `weaver-agents` is a
-domain root carried by the graph as a parent edge per crate and checked by G3. It is
-not a repository, not a package, and not a crate-name prefix - a prefix scheme was
-considered and retired on the ground that it would be a second source of truth for a
-fact the edges already carry, and the one string no gate validates.
+**The ruling of 2026-08-23 that retired the rebrand is overturned**, and its reason is
+recorded here rather than deleted. It held because the repository was the suite. That
+stopped being true when weaver-web left the tree on 2026-09-26 and HADES was counted a
+member, being a repository of its own. One tree had also become a limit on the work, the
+frontend waiting on the backend because both moved through one queue.
 
-An earlier form of this section held a three-act rename sequence and said the
-rebrand was deliberately deferred. **Both are withdrawn**, displaced by the ruling of
-2026-08-23, and the paragraph is rewritten rather than deleted so the reason survives
-its plan.
+**The rename is triggered by an event and not scheduled.** weaver-web is already out.
+weaver-analysis stays in the tree while the feedback loop is worth more than the
+separation, uncoupled and held that way: it depends on no `weaver-*` crate, and an act
+that adds one is refused at review. Its extraction is the moment this repository takes
+the name weaver-agents.
 
-Each consumer already has its door, which is why the shape costs the corpus
-nothing today. weaver-web builds on the two external contracts the ruling of
-2026-08-01 wrote for exactly this party, `weaver-gate-world-contract` and
-`weaver-admin-operator-contract`, pages an outside consumer builds against
-and nothing else, on the consumer's own compute per the live-view ruling.
-weaver-analysis reaches the same way, consuming a trace an operator holds and
-never touching weights.
+**The agent keeps two doors and gains no others.** weaver-gate carries the data plane
+and weaver-admin the management plane, at `weaver-gate-world-contract` and
+`weaver-admin-operator-contract`. Each door gets a network connector outside it, a
+client of that door's socket rather than anything the agent listens to: `web-con`
+outside the gate and `admin-con` outside admin. They are separate clients, separately
+credentialed. Consumers talk to the connectors and never to the agent, so the agent's
+surface stays at two however many consumers and tools stand up. The connectors live in
+this repository and outside the weaver-agents domain, as weaver-analysis does, and each
+has its own planning session.
+
+**This repository stops at the connectors.** Each connector's Spec is its network
+interface, and that interface is what the repository publishes. weaver-web is its own
+repository and builds against those Specs and nothing deeper, so frontend and backend
+move at once from the day a connector's Spec merges, the frontend against a stub that
+answers it. A change to a connector's interface changes what an outside team builds
+against, and it moves with the care a contract takes.
+
+**Credentials are issued on the server and dropped into a client's configuration**, and
+without one a client cannot talk to a connector. There is one credential per client per
+connector, so weaver-analysis, once it leaves, holds two. The server keeps a record of
+what it issued and revokes one credential without touching another, and a credential
+file never enters a repository. **A connector authenticates and never authorizes.** It
+passes a verified principal across the door, and weaver-gate and weaver-admin decide
+what that principal may do, so authorization stays inside the agent where custody
+already lives and the door contracts carry the principal. HADES's per-principal identity
+work answers the same question, and one model across the suite is the aim.
+
+Each consumer reaches the agent through a connector, and the shape costs the corpus one
+amendment: the principal both door contracts will carry. The connectors carry the two
+external contracts the ruling of 2026-08-01 wrote for exactly this party,
+`weaver-gate-world-contract` and `weaver-admin-operator-contract`, and a consumer builds
+against the connectors' Specs on its own compute per the live-view ruling.
+weaver-analysis reaches the same way, consuming a trace an operator holds and never
+touching weights.
 
 **A post-training leg is a direction and not a consumer.** The clause that kept
 the native path alive is what it would stand on, a program that intends training
