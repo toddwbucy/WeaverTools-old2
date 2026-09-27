@@ -48,17 +48,17 @@ privileged step acts on a copy of a fact held by another party without checking
 it against evidence it verified itself, as a rule of that probe's custody.
 
 The tree moved. `weaver-web` left the repository with PR #689 for
-`WeaverTools_Project/weaver-web/`, so the workspace is eleven crates and the
-deploy builds the whole workspace with no exclusion. The probe's code and Spec
-live under `experiments/randomness-tuple/device/blackwell/`, and the parts of
-its hold-lift that needed no ruling landed with #693 and #695. The hold itself
-stands until the privileged approval step lands, per the Spec's section 5. `weaver-trace` gained `recall` (#692) and
-`message.restored` (#702), the diagnostic replay crosses a flush and an
-elision and refuses a record that does not account for its model's input
-(#694, #701), a restore from a branch carries its inherited conversation
-(#705), and a task's verdict is a trace kind carried on the analysis summary
-(#707, #708). The test suites stopped leaking temporary directories (#704), except
-the SPU's `weaver-spu-residency` file, which is olympus's to guard.
+`WeaverTools_Project/weaver-web/`, so the workspace is eleven crates and the deploy
+builds the whole workspace with no exclusion. The probe's code and Spec live under
+`experiments/randomness-tuple/device/blackwell/`, and the parts of its hold-lift
+that needed no ruling landed with #693 and #695. The hold itself stands until the
+privileged approval step lands, per the Spec's section 5. `weaver-trace` gained
+`recall` (#692) and `message.restored` (#702), the diagnostic replay crosses a flush
+and an elision and refuses a record that does not account for its model's input
+(#694, #701), a restore from a branch carries its inherited conversation (#705), and
+a task's verdict is a trace kind carried on the analysis summary (#707, #708). The
+test suites stopped leaking temporary directories (#704), except the SPU's
+`weaver-spu-residency` file, which is olympus's to guard.
 
 The ledger moved. The candle chain's items left #639 for two epics on
 2026-09-26: #699, the native engine's toolchain, and #698, the
@@ -137,6 +137,6 @@ the census pause. Nothing here asks olympus to touch HADES.
     Gates run and their result
       none  a reading act
     Asked of the receiving seat
-      steps 1 to 7 in order, step 6 on the operator's authorization, one pull
-      request for step 5, one for step 6 if
-      the deploy scripts need a change, and a report of the measurements
+      steps 1 to 7 in order, step 6 on the operator's authorization, one
+      pull request for step 5, one for step 6 if the deploy scripts need a
+      change, and a report of the measurements
