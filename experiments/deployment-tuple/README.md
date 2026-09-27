@@ -1,9 +1,9 @@
-# randomness-tuple - Charter
+# deployment-tuple - Charter
 
 **Status:** MERGED. In `main` and the source of truth.
 
 **Date filed:** 2026-09-25
-**Document ID:** `randomness-tuple-PRD`
+**Document ID:** `deployment-tuple-PRD`
 **Editorial:** Per the Working Rules.
 **Landing PR:** #685
 
@@ -11,7 +11,7 @@
 
 ## 0. What this document is
 
-The charter of the randomness-tuple experiment: the hypothesis that a deployment's
+The charter of the deployment-tuple experiment: the hypothesis that a deployment's
 output is reproducible exactly when six declared fields are held, and that each of
 the six moves bits when it alone is varied. It is the primary document of the
 experiment and carries no parent, per the operator's rulings of 2026-09-25 recorded at
@@ -20,12 +20,12 @@ Working Process section 5. It registers the tuple as the chapter declares it (Bu
 already shows and what is still owed, and says which probe answers for each. The
 probes carry their own Specs and code beneath the arm they belong to, and this
 document states no rule that code conforms to. Its filename is the README a reader
-opens first and its Document ID is the charter's, `randomness-tuple-PRD`, per
+opens first and its Document ID is the charter's, `deployment-tuple-PRD`, per
 Document Format section 3, and the experiment node below is the one record it
 authors.
 
 ```graph
-node: randomness-tuple
+node: deployment-tuple
 kind: experiment
 ```
 

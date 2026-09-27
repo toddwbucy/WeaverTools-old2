@@ -50,7 +50,7 @@ it against evidence it verified itself, as a rule of that probe's custody.
 The tree moved. `weaver-web` left the repository with PR #689 for
 `WeaverTools_Project/weaver-web/`, so the workspace is eleven crates and the deploy
 builds the whole workspace with no exclusion. The probe's code and Spec live under
-`experiments/randomness-tuple/device/blackwell/`, and the parts of its hold-lift
+`experiments/deployment-tuple/device/blackwell/`, and the parts of its hold-lift
 that needed no ruling landed with #693 and #695. The hold itself stands until the
 privileged approval step lands, per the Spec's section 5. `weaver-trace` gained
 `recall` (#692) and `message.restored` (#702), the diagnostic replay crosses a flush
@@ -62,7 +62,7 @@ test suites stopped leaking temporary directories (#704), except the SPU's
 
 The ledger moved. The candle chain's items left #639 for two epics on
 2026-09-26: #699, the native engine's toolchain, and #698, the
-randomness-tuple experiment arm by arm, each row on #639 annotated with its
+deployment-tuple experiment arm by arm, each row on #639 annotated with its
 new home, the annotations on #639 and #679 carrying the audit of that date.
 
 ## What olympus does on Monday, in order

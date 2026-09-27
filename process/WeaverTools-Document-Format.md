@@ -183,7 +183,7 @@ reads a crate's units, and its `results/`, which holds the
 dated records the probe produces and which no gate and no ingest reads, on the
 two-clocks reason that section 5 of the Working Process states. The mirror rule does
 not reach it, since the documents and the code share one tree rather than two. The
-first experiment is `experiments/randomness-tuple/`, its first arm `device/`, and its
+first experiment is `experiments/deployment-tuple/`, its first arm `device/`, and its
 first probe `device/blackwell/`.
 
 **The project documents sit outside `docs/` rather than under it.** Working Process
