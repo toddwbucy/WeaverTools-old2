@@ -2,7 +2,7 @@
 
 **Version:** v0.3, 2026-09-26. Written from the thinkpad Planner seat for the
 olympus seat, for its return on 2026-09-29 once the HADES service is locked
-down. Draft for the operator's review, untracked until the operator lands it.
+down. Landed on main on the operator's word of 2026-09-26.
 v0.1 said the SPU's pins had not moved, and the candle repin of PR #706 made
 that false the same evening. v0.3 carries the probe rulings of the same night.
 
