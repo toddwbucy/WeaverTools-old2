@@ -143,8 +143,8 @@ header would cite. That file carries the rest of it. The header the kernel does
 carry is the previous program's and resolves to nothing here, and which assertion
 the kernel should cite is a question for this Spec at the act that takes the
 kernels off the verbatim carry. The obligation is therefore reported rather than
-exempted, an exemption being a hole where a reading is an answer, and review is
-where its standing is read rather than here.
+exempted, an exemption being a hole where a reading is an answer, and until release
+nothing reads its standing, the census that read it having retired on 2026-09-27.
 
 **`src/bin/classify.rs` is a second `[[bin]]` target, and `spu-one-binary` above
 reads as one.** The manifest declares two, and section 11 states the second in

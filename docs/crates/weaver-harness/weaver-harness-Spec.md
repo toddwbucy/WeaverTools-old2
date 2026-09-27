@@ -123,8 +123,8 @@ arriving by the same path any builder's does, so what it shows is the seat it
 composes against rather than a claim it holds. Minting an assertion to close the
 reading would convert an honest absence into a documented enforcement. The
 condition on which a header lands here is an assertion whose instrument is a
-loop file, and review is where the standing reading is taken rather than here,
-the census having retired on 2026-09-27.
+loop file, and until release the headers stand unmaintained and nothing reads
+them, the census that read them having retired on 2026-09-27.
 
 **`src/classify.rs` leaves the listing, and the disagreement that leaves behind
 is named rather than settled here.** No such file exists and the label seam's

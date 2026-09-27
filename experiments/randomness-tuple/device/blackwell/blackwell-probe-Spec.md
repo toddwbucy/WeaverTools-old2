@@ -29,8 +29,8 @@ claim's instrument in the suite.
 It is written from the code as it stood after sixteen review passes on pull request
 #683 and from the registration on issues #511 and #679. The code lands in `code/`
 beside this document with #683, which moves it there and cites the assertion
-records declared here from its file headers with `conforms:` lines, read at review
-as a crate's units are. Results, when a leg has run, sit in
+records declared here from its file headers with `conforms:` lines, which stand
+unmaintained and are read by nothing until release. Results, when a leg has run, sit in
 `results/`, dated and read by no gate.
 What the probe measures and why is the charter's and is restated in sections 1
 through 3 only as far as the code enforces it. How the seams it drives behave is the
