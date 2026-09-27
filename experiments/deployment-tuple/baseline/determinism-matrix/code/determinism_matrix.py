@@ -131,20 +131,11 @@ def seed_for(schedule, iteration, cell_index):
 # artifact's bytes are read at both ends of the run, and the exit gate counts
 # every field. Batch composition is one by construction and is recorded, not
 # verified: the record carries nothing a second caller would change.
-SEED_VALUE = re.compile(r"^[ \t]*seed:(.*)$", re.M)
 
 
-def standing_seed(declaration):
-    """The one seed the declaration holds, read whether or not a schedule
-    stands, so a session without one is held to it as a scheduled one is."""
-    values = SEED_VALUE.findall(declaration)
-    if len(values) != 1:
-        raise ValueError(f"the declaration carries {len(values)} seed lines, not one")
-    try:
-        value = base.yaml_scalar(values[0])
-    except ValueError as e:
-        raise ValueError(f"the declaration's seed: {e}") from None
-    return base.seed_value(value, "the declaration's seed")
+# The declaration's seed, read as a scalar within the sampler's u64 by the
+# one reader both entry points share (#716 round eight).
+standing_seed = base.declaration_seed
 
 
 def hours_value(hours):
@@ -160,7 +151,7 @@ def hours_value(hours):
 def session_seed(schedule, standing, iteration, cell_index):
     """The seed a session is declared under: the schedule's where one stands,
     and otherwise the declaration's own."""
-    return seed_for(schedule, iteration, cell_index) if schedule else standing
+    return seed_for(schedule, iteration, cell_index) if schedule is not None else standing
 
 
 def artifact_of(declaration):
@@ -179,31 +170,6 @@ def weights(path):
         except OSError as e:
             return {"artifact": {"path": path, "unreadable": base._why(e)}}
     return read
-
-
-# Every load either entry point makes goes through one held check, which
-# lives in confirm_cells beside the loop check it extends (#716 round six).
-load_held = base.load_held
-
-
-def load_device(cfg, half, rec):
-    """The devices this half's load bound, read from the worker's journal by
-    the load's own unit invocation as soon as it stands (#716 rounds three
-    and five). A read at the end of the run cannot stand in for this: on a
-    box whose journal keeps minutes, most of a run is gone by its close. And
-    a time window cannot either: a fast reload or a trailing journal holds
-    the previous load inside any slack. A load whose invocation or device
-    cannot be read, or which names none, is a fault. Answers the devices and
-    the invocation, or (None, None) with the session's verdict set."""
-    seen, invocation = base.load_devices(cfg)
-    if invocation is None:
-        rec["verdict"] = f"the {half} load's unit invocation could not be read: {json.dumps(seen)}"
-        return None, None
-    if not (isinstance(seen, dict) and seen.get("devices")):
-        rec["verdict"] = (f"the {half} load's serving device could not be read under"
-                          f" invocation {invocation}: {json.dumps(seen)}")
-        return None, None
-    return seen["devices"], invocation
 
 
 def run_binding(results):
@@ -305,14 +271,13 @@ def entropies_of(turn):
 
 
 def run_session(cfg, probe, depth, iteration, declared_seed=None, declaration_sha=None):
-    """One matrix cell: serve, unload, reload, reissue, compare.
-
-    The agent is left unloaded whichever path this takes, so a cell that
-    fails does not hold the device against the next one. Where a seed
-    schedule stands, `declared_seed` is what the declaration was rewritten
-    to before this cell, and the record's own `sampling.seed` is read back
-    beside it: a session whose record does not carry the seed it was
-    declared under is an apparatus fault and never a result.
+    """One matrix cell: serve, unload, reload, reissue, compare, by the one
+    session verification both entry points share (`confirm_cells.
+    verify_session`, #716 round eight). This builds the matrix cell's texts
+    and its record and formats the compared turns, and verifies nothing of
+    its own. The agent is left unloaded whichever path this takes, and an
+    unattended run records a raise as the session's verdict rather than
+    dying on it.
     """
     key, character, text = probe
     rec = {"probe": key, "character": character, "depth": depth,
@@ -323,204 +288,28 @@ def run_session(cfg, probe, depth, iteration, declared_seed=None, declaration_sh
     # The probe sits last, so its ordinal is the depth and everything
     # before it is the state the depth exists to build.
     texts = [FILLER] * (depth - 1) + [text]
-
     try:
-        base.admin(cfg, "unload")
-        before = base.newest_load(cfg["trace"])[0]
-        if base.admin(cfg, "load").get("kind") != "state":
-            rec["verdict"] = "load refused"
-            return rec
-        if not base.wait_socket(cfg):
-            rec["verdict"] = "gate socket never stood"
-            return rec
-        if not load_held(cfg, before, declaration_sha, "source", rec):
-            return rec
-        source_devices, source_invocation = load_device(cfg, "source", rec)
-        if source_devices is None:
-            return rec
-
-        source_runs = set()
-        for t in texts:
-            close = base.gate_turn(cfg, t)
-            if close.get("kind") != "answered":
-                rec["verdict"] = f"source turn not answered: {close.get('kind')}"
-                return rec
-            source_runs.add(close.get("run"))
-
-        # The closes name the run, so the wait is on that run rather than on
-        # whichever is newest: a wait on the newest is satisfied by the
-        # previous cell's run, which carries the same turn count at this
-        # depth, and the reissue would compare against a stale record.
-        if len(source_runs) != 1 or None in source_runs:
-            rec["verdict"] = "the source turns did not share one run"
-            return rec
-        source_run = source_runs.pop()
-        rec["source_run"] = source_run
-        source_turns, _ = base.await_turns(cfg["trace"], depth, source_run)
-        if len(source_turns) != depth:
-            rec["verdict"] = f"expected {depth} source turns, found {len(source_turns)}"
-            return rec
-        # An incomplete turn is refused by name before anything is read from
-        # it, the harness keeping it rather than dropping it (#716 round three).
-        broken = next((st for st in source_turns if st["incomplete"]), None)
-        if broken:
-            rec["verdict"] = (f"source {broken['turn']} is incomplete:"
-                              f" {', '.join(broken['incomplete'])}")
-            return rec
-        # **The seed the record carries is read back, never assumed.** The
-        # declared seed rides every `model.request` as `sampling.seed`, per
-        # the trace's shape, and the falsifier of Run 1 is about whether
-        # that value reaches the sampler, which is a question the deposit
-        # can only ask if the value it declared is the value it recorded.
-        recorded = {base.pointer(t["payload"]["model.request"], "/sampling/seed")
-                    for t in source_turns}
-        if len(recorded) != 1:
-            # One run, one declared seed: turns recorded under different
-            # seeds are the apparatus, schedule or no schedule.
-            rec["recorded_seed"] = sorted(recorded, key=str)
-            rec["verdict"] = (f"the source turns were recorded under"
-                              f" {len(recorded)} seeds: {rec['recorded_seed']}")
-            return rec
-        rec["recorded_seed"] = recorded.pop()
-        # A record carrying no seed is the apparatus too (#716 round one):
-        # a source and a replay both missing it would agree on None and pass
-        # as one recorded seed, and every comparison after it would be read
-        # as a result.
-        if rec["recorded_seed"] is None:
-            rec["verdict"] = "the source turns carry no recorded seed"
-            return rec
-        if declared_seed is not None and rec["recorded_seed"] != declared_seed:
-            rec["verdict"] = (f"the declared seed did not reach the record:"
-                              f" declared {declared_seed},"
-                              f" recorded {rec['recorded_seed']}")
-            return rec
-
-        base.admin(cfg, "unload")
-        before = base.newest_load(cfg["trace"])[0]
-        if base.admin(cfg, "load").get("kind") != "state":
-            rec["verdict"] = "reload refused"
-            return rec
-        if not base.wait_socket(cfg):
-            rec["verdict"] = "gate socket never stood after reload"
-            return rec
-        if not load_held(cfg, before, declaration_sha, "replay", rec):
-            return rec
-        replay_devices, replay_invocation = load_device(cfg, "replay", rec)
-        if replay_devices is None:
-            return rec
-        rec["invocations"] = [source_invocation, replay_invocation]
-        # The reload is its own unit invocation, or it never happened and the
-        # replay's device read is the source's.
-        if replay_invocation == source_invocation:
-            rec["verdict"] = f"the reload is the load's own invocation {source_invocation}"
-            return rec
-        # Both halves on one binding, or the comparison is across silicon.
-        if replay_devices != source_devices:
-            rec["verdict"] = (f"source and replay did not bind the same devices:"
-                              f" {json.dumps(source_devices)} against {json.dumps(replay_devices)}")
-            return rec
-        rec["devices"] = source_devices
-
-        # Reissued from the record rather than from this script's
-        # constants, because the record is the artifact under test.
-        runs_seen = set()
-        for st in source_turns:
-            close = base.gate_turn(cfg, st["text"])
-            if close.get("kind") != "answered":
-                rec["verdict"] = f"reissue {st['turn']} closed {close.get('kind')}"
-                return rec
-            runs_seen.add(close.get("run"))
-        if len(runs_seen) != 1 or None in runs_seen or source_run in runs_seen:
-            rec["verdict"] = "reissues did not land in one fresh run"
-            return rec
-        replay_run = runs_seen.pop()
-        rec["replay_run"] = replay_run
-
-        replay_all, _ = base.await_turns(
-            cfg["trace"], len(source_turns), replay_run)
-        if not replay_all:
-            rec["verdict"] = f"the closes named run {replay_run}, absent from the trace"
-            return rec
-        # **A short replay read is the sink, not the model.** It reaches its
-        # own verdict rather than DIVERGED, which is the strongest negative
-        # this harness emits and means the model did not reproduce. The two
-        # must not share a word in an unattended run, and a sink one turn
-        # behind is exactly the shape this harness was fixed for.
-        if len(replay_all) < len(source_turns):
-            rec["verdict"] = (
-                f"replay read short: expected {len(source_turns)} turns,"
-                f" found {len(replay_all)} - the record is incomplete"
-            )
-            return rec
-        broken = next((rt for rt in replay_all if rt["incomplete"]), None)
-        if broken:
-            rec["verdict"] = (f"replay {broken['turn']} is incomplete:"
-                              f" {', '.join(broken['incomplete'])}")
-            return rec
-        # **The replay's seed is read back like the source's.** Both halves
-        # load from one declaration, so a replay recorded under another seed
-        # is the apparatus and not the model, and the sampling-knobs check
-        # below would otherwise report it as DIVERGED.
-        replay_seeds = {base.pointer(t["payload"]["model.request"], "/sampling/seed")
-                        for t in replay_all}
-        rec["replay_recorded_seed"] = (replay_seeds.pop() if len(replay_seeds) == 1
-                                       else sorted(replay_seeds, key=str))
-        if rec["replay_recorded_seed"] != rec["recorded_seed"]:
-            rec["verdict"] = (f"the replay was recorded under another seed:"
-                              f" source {rec['recorded_seed']},"
-                              f" replay {rec['replay_recorded_seed']}")
-            return rec
-        replay_by = {t["turn"]: t for t in replay_all}
-
-        all_match = True
-        for st in source_turns:
-            rt = replay_by.get(st["turn"])
-            # A source turn the replay does not carry is the record and not
-            # the model, and so is a check either side carries no value for:
-            # both are faults, never DIVERGED and never a match (#716 round
-            # three).
-            if rt is None:
-                rec["verdict"] = f"the replay carries no {st['turn']}"
-                return rec
-            checks = base.compare_turn(st, rt)
-            why = base.unobserved(checks)
-            if why:
-                rec["verdict"] = f"{st['turn']}: {why}"
-                return rec
-            matched = all(c["match"] for c in checks)
-            all_match = all_match and matched
-            # The emission's digest rides beside the verdict so a reading
-            # across sessions, which is what a varied seed is read by, needs
-            # no second walk of the trace: two sessions of one probe under
-            # two seeds diverged or did not by their digests alone.
-            emission = base.pointer(st["payload"]["model.output"], "/emission")
-            rec["turns"].append({
-                "turn": st["turn"],
-                "is_probe": st["text"] == text,
-                "matched": matched,
-                "failed_checks": [c["check"] for c in checks if not c["match"]],
-                "entropy": entropies_of(st),
-                "source_ms": base.whole_ms(st),
-                "replay_ms": base.whole_ms(rt),
-                "emission_sha256": hashlib.sha256(
-                    json.dumps(emission, sort_keys=True).encode()).hexdigest(),
-            })
-        # A replay carrying turns the source did not is interleaved traffic:
-        # the record, never the model, so a fault and not a divergence, and
-        # never a match however well the shared turns agree (#716 round five,
-        # the surplus-turn item on #698).
-        surplus = sorted({t["turn"] for t in replay_all} - {st["turn"] for st in source_turns})
-        if len(replay_all) != len(source_turns) or surplus:
-            rec["verdict"] = (f"the replay carries {len(replay_all) - len(source_turns)} turns"
-                              f" the source did not: {', '.join(surplus)}")
-            return rec
-        rec["verdict"] = "REPRODUCED" if all_match else "DIVERGED"
-        return rec
+        pairs, _ = base.verify_session(cfg, texts, rec, declared_seed, declaration_sha)
     except Exception as exc:  # an unattended run records rather than dies
         rec["verdict"] = f"error: {type(exc).__name__}: {exc}"
         return rec
-    finally:
-        base.admin(cfg, "unload")
+    for st, rt, checks in pairs:
+        # The emission's digest rides beside the verdict so a reading across
+        # sessions, which is what a varied seed is read by, needs no second
+        # walk of the trace.
+        emission = base.pointer(st["payload"]["model.output"], "/emission")
+        rec["turns"].append({
+            "turn": st["turn"],
+            "is_probe": st["text"] == text,
+            "matched": all(c["match"] for c in checks),
+            "failed_checks": [c["check"] for c in checks if not c["match"]],
+            "entropy": entropies_of(st),
+            "source_ms": base.whole_ms(st),
+            "replay_ms": base.whole_ms(rt),
+            "emission_sha256": hashlib.sha256(
+                json.dumps(emission, sort_keys=True).encode()).hexdigest(),
+        })
+    return rec
 
 
 def main():
@@ -555,6 +344,9 @@ def main():
     with open(args.config) as f:
         cfg = json.load(f)
     try:
+        if not args.outdir:
+            raise ValueError("--outdir is empty")
+        base.config_values(cfg)
         base.loop_digest(cfg)
     except ValueError as e:
         refuse(str(e))
@@ -574,11 +366,11 @@ def main():
     # from it so the two overrides compose rather than overwrite each other.
     standing = original
     try:
-        if args.artifact:
+        if args.artifact is not None:
             standing = base.with_artifact(original, args.artifact)
         # A declaration without exactly one seed line is not one the
         # schedule can vary, refused with the operator's file untouched.
-        if schedule:
+        if schedule is not None:
             with_declared_seed(standing, schedule[0])
         # The declaration's own seed and artifact, read on every path so a
         # run without a schedule holds them too.
@@ -630,9 +422,9 @@ def main():
 
     log(f"matrix start, deadline in {args.hours}h, "
         f"{len(PROMPTS)} prompts x {len(DEPTHS)} depths")
-    if schedule:
+    if schedule is not None:
         log(f"declared seed schedule: {schedule}")
-    if args.artifact or schedule:
+    if args.artifact is not None or schedule is not None:
         # The operator's declaration, kept until the run has restored it.
         with open(pending, "x") as fh:
             fh.write(original)
@@ -644,7 +436,7 @@ def main():
         # same reason: `ldd` missing raises, hashing 142 MiB can be
         # interrupted, and either one outside the `try` would leave the
         # declaration holding this run's artifact.
-        if args.artifact:
+        if args.artifact is not None:
             with open(cfg["declaration"], "w") as fh:
                 fh.write(standing)
         opening_spu = base._resolve_spu(cfg)
@@ -673,7 +465,7 @@ def main():
                         break
                     declared_seed = session_seed(schedule, seed, iteration, cell_index)
                     declaration_sha = standing_sha
-                    if schedule:
+                    if schedule is not None:
                         with open(cfg["declaration"], "w") as fh:
                             fh.write(with_declared_seed(standing, declared_seed))
                         declaration_sha = base._sha256(cfg["declaration"])
@@ -693,7 +485,7 @@ def main():
                     for t in rec["turns"]:
                         if t.get("is_probe") and t.get("entropy"):
                             ent = f" H_mean={t['entropy']['mean']}"
-                    seed_note = f" seed={declared_seed}" if schedule else ""
+                    seed_note = f" seed={declared_seed}" if schedule is not None else ""
                     log(f"i{iteration} {probe[0]}/d{depth}: "
                         f"{rec['verdict']} ({rec['seconds']}s){ent}{seed_note}")
                     with open(os.path.join(args.outdir, "matrix.jsonl"), "a") as fh:
@@ -704,7 +496,7 @@ def main():
         # Restored only where this run swapped it: rewriting unconditionally
         # would turn an unrelated edit made during the run into a silent
         # revert of the operator's own declaration.
-        if args.artifact or schedule:
+        if args.artifact is not None or schedule is not None:
             with open(cfg["declaration"], "w") as fh:
                 fh.write(original)
             os.unlink(pending)

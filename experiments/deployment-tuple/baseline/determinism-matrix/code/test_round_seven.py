@@ -11,7 +11,7 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import determinism_matrix as dm  # noqa: E402
-from test_recorded_seed import Reloading, run_main  # noqa: E402
+from test_recorded_seed import CFG, Reloading, run_main  # noqa: E402
 
 base = dm.base
 U64_MAX = 2 ** 64 - 1
@@ -103,7 +103,7 @@ def test_a_refused_run_makes_no_outdir():
         with open(decl, "w") as fh:
             fh.write(f"artifact: /m.gguf\nseed: {U64_MAX + 1}\n")
         path = os.path.join(tmp, "config.json")
-        json.dump({"agent": "karl", "declaration": decl, "trace": "unused"}, open(path, "w"))
+        json.dump(dict(CFG, declaration=decl), open(path, "w"))
         out = os.path.join(tmp, "new")
         argv = sys.argv
         try:
@@ -130,10 +130,11 @@ def test_the_cells_refuse_at_preflight_and_write_nothing():
         with tempfile.TemporaryDirectory() as tmp:
             decl = os.path.join(tmp, "karl.yaml")
             with open(decl, "w") as fh:
-                fh.write("artifact: /m.gguf\n")
+                fh.write("artifact: /m.gguf\nseed: 7\n")
             out = os.path.join(tmp, "out")
-            cfg = dict({"box": "thinkpad", "declaration": decl,
-                        "cells": [{"name": "q8", "precision": "q8", "artifact": "/m.gguf"}]}, **change)
+            cfg = dict(CFG, box="thinkpad", declaration=decl,
+                       cells=[{"name": "q8", "precision": "q8", "artifact": "/m.gguf"}])
+            cfg.update(change)
             path = os.path.join(tmp, "config.json")
             json.dump(cfg, open(path, "w"))
             called, saved, argv = [], base.admin, sys.argv

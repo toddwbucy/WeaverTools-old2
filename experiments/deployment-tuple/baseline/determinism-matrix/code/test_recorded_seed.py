@@ -13,7 +13,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import determinism_matrix as dm  # noqa: E402
 
 base = dm.base
-CFG = {"trace": "unused", "agent": "karl"}
+# Every key the config must carry, the fake agent reading none of them.
+CFG = {"trace": "unused", "agent": "karl", "gate_socket": "/unused.sock", "admin_bin": "/unused/admin",
+       "admin_config": "/unused/config", "repo": "/unused/repo"}
 SEED = 451234785645
 DECLARATION = "d" * 64
 LOOP = "1" * 64
@@ -279,7 +281,7 @@ def test_a_divergence_still_reads_as_one():
     agent = Agent()
     real = agent.gate_turn
 
-    def drifting(cfg, text):
+    def drifting(cfg, text, timeout=None):
         close = real(cfg, text)
         if agent.loads == 2:
             output = [e for e in agent.runs[agent.run] if e["kind"] == "model.output"][-1]

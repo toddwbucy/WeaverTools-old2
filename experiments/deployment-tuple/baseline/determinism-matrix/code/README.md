@@ -11,9 +11,9 @@ carry the fixes of #716, named in the Spec's section 0, with a test holding that
 path the 2026-09-27 runs took every verdict, seed and turn is what it was before, the
 fields that move named: the declared seed and the device each load logged. The
 `test_*.py` files are the tests of the two, three from that tree and
-`test_recorded_seed.py`, `test_absence_and_evidence.py`, `test_round_five.py` and
-`test_round_seven.py` from #716. Each is a plain script and exits non-zero on the first
-failure:
+`test_recorded_seed.py`, `test_absence_and_evidence.py`, `test_round_five.py`,
+`test_round_seven.py` and `test_round_eight.py` from #716. Each is a plain script and
+exits non-zero on the first failure:
 
 ```
 python3 test_seed_schedule.py
@@ -23,6 +23,7 @@ python3 test_recorded_seed.py
 python3 test_absence_and_evidence.py
 python3 test_round_five.py
 python3 test_round_seven.py
+python3 test_round_eight.py
 ```
 
 Stdlib only. It needs the installed agent stack, one agent whose declaration it
@@ -66,8 +67,8 @@ python3 determinism_matrix.py --config <deposit>/config.json \
   --outdir <scratch> --hours 0.03
 ```
 
-Its `summary.json` names the worker, SPU and gate binaries and every engine library
-by sha256. They must be the ones the box facts name, and the faults must be zero.
+Its `summary.json` names the worker, SPU and gate binaries and every engine library by
+sha256. They must be the ones the box facts name, and its `errors` must be zero.
 
 **Record the journal's retention**, `journalctl --disk-usage` and the oldest entry
 `journalctl -o short | head -1`, in the box facts. The harness reads each load's device
@@ -114,10 +115,10 @@ OUT=<deposit>
   kill $D $K ) < /dev/null &
 ```
 
-**If the ticket lapses** the run does not stop: each session records `load refused`
-and the run goes on until its hours are spent, the refusals counted as faults apart
-from the verdicts. Typing `sudo -v` at the same prompt restores it for the next
-session.
+**If the ticket lapses** the run does not stop: each session records `load refused` and
+the run goes on until its hours are spent, the refusals counted under the summary's
+`errors` apart from the verdicts. Typing `sudo -v` at the same prompt restores it for
+the next session.
 
 **Keep the terminal open and the box awake and on power.** Closing the terminal sends
 a hangup that kills the run before it writes `summary.json`, and a suspend stops the

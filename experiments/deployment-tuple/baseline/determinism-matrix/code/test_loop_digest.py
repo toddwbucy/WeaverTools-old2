@@ -141,7 +141,7 @@ def _drive_run_cell(composer_digest, served=None):
     trace = _trace(td, [_load("r-old", _file("alpha_loop.py", DECLARED))])
     decl = os.path.join(td, "k.yaml")
     with open(decl, "w") as f:
-        f.write("artifact: a\n")
+        f.write("artifact: a\nseed: 7\n")
     out = os.path.join(td, "out")
     os.makedirs(out)
     cfg = {"box": "t", "agent": "karl", "declaration": decl, "trace": trace,

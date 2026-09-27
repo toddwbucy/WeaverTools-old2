@@ -13,7 +13,7 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import determinism_matrix as dm  # noqa: E402
-from test_recorded_seed import SEED, Agent, Reloading, run_main, session  # noqa: E402
+from test_recorded_seed import CFG, SEED, Agent, Reloading, run_main, session  # noqa: E402
 
 base = dm.base
 BOUNDARY = "ggml_cuda_init: found 1 CUDA devices (Total VRAM: 24075 MiB):"
@@ -151,7 +151,7 @@ def test_the_cells_deposit_and_backup_refuse_an_earlier_run():
         with tempfile.TemporaryDirectory() as tmp:
             decl = os.path.join(tmp, "karl.yaml")
             with open(decl, "w") as fh:
-                fh.write("artifact: /m.gguf\n")
+                fh.write(f"artifact: /m.gguf\nseed: {SEED}\n")
             if stand == "BACKUP":
                 with open(decl + ".pre-cells", "w") as fh:
                     fh.write("x")
@@ -160,7 +160,7 @@ def test_the_cells_deposit_and_backup_refuse_an_earlier_run():
                     fh.write("x")
             cfg = os.path.join(tmp, "config.json")
             with open(cfg, "w") as fh:
-                json.dump({"box": "thinkpad", "declaration": decl, "cells": []}, fh)
+                json.dump(dict(CFG, box="thinkpad", declaration=decl, cells=[{"name": "q8", "precision": "q8", "artifact": "/m.gguf"}]), fh)
             called = []
             saved, argv = base.admin, sys.argv
             try:

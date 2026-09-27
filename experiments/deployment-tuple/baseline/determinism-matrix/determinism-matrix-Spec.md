@@ -138,8 +138,9 @@ carrying a compared kind twice, a source turn the replay does not carry, a check
 record carries no value for, source or replay turns split across runs or short of the
 depth, a replay read short, a seed mismatch under section 4, or an exception. A replay
 read short is the sink one turn behind and is kept apart from DIVERGED, which is the
-strongest negative the harness emits. Faults are counted apart from both verdicts, so a
-run's divergence count is never inflated by sessions that were not compared.
+strongest negative the harness emits. Faults are counted apart from both verdicts, as
+the summary's `errors`, so a run's divergence count is never inflated by sessions that
+were not compared.
 
 **Each session's record** carries the prompt, its character, the depth, the sweep,
 both run identities, the declared and recorded seeds, the verdict and the wall time,
@@ -186,19 +187,25 @@ that load by its unit's InvocationID and never by a time window, which a fast re
 a trailing journal holds the previous load inside. Both halves of a session are on one
 binding under two invocations, and no invocation recurs in a run. A journal kept by size
 holds minutes, so a read at the close would miss most of a run. The window read at the
-close is kept as a record and not counted. The summary carries these with the counts:
-sessions, reproduced, diverged, faults, the verdicts by prompt character and by declared
-seed, and the first twenty divergences and faults.
+close is kept as a record and not counted. The summary carries these as `weights`,
+`engine_libraries`, `weaver_binaries`, `toolchain` and `serving_device`, the window read
+as `serving_device_journal_window`, and the counts as `sessions`, `reproduced`,
+`diverged` and `errors`, the faults, with the verdicts by prompt character and by
+declared seed as `by_character` and `by_seed`, the schedule as `declared_seed_schedule`,
+and the first twenty divergences and faults as `diverged_detail` and `error_detail`. The
+keys are the ones the earlier deposits' summaries carry.
 
 **Every load is held to the session's declaration and loop.** Each load event records
 the digest of the declaration it served, the sha256 of the declaration file, and the
 loop that composed it. After each half's load stands the harness holds the first to the
 declaration the session wrote, which holds the artifact path, the seed, the sampling
 knobs and every other declared field per load, and where the config names `loop_sha256`
-it holds the second to that digest. The check is one function, `load_held` in
-`confirm_cells.py`, and every load either entry point makes goes through it: the
-matrix's two per session and the cross-precision protocol's two per cell. A config
-naming no loop leaves the loop unchecked.
+it holds the second to that digest. **Every check a session makes is one function**,
+`verify_session` in `confirm_cells.py`: the load, declaration, loop and device holds,
+the recorded seed, absence, the comparison and the surplus. Both entry points call it,
+the matrix's `run_session` and the cross-precision protocol's `run_cell`, and neither
+verifies anything outside it, so a check cannot hold on one path and be missing from the
+other. A config naming no loop leaves the loop unchecked.
 
 **Each tuple field the probe holds, and how:**
 

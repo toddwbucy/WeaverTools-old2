@@ -281,6 +281,41 @@ def seed_value(text, where):
     return value
 
 
+SEED_KEY = re.compile(r"^[ \t]*seed:(.*)$", re.M)
+
+
+def declaration_seed(declaration):
+    """The one seed the declaration holds, read as a YAML scalar and held to
+    the sampler's u64, whichever entry point reads it (#716 round eight)."""
+    values = SEED_KEY.findall(declaration)
+    if len(values) != 1:
+        raise ValueError(f"the declaration carries {len(values)} seed lines, not one")
+    try:
+        value = yaml_scalar(values[0])
+    except ValueError as e:
+        raise ValueError(f"the declaration's seed: {e}") from None
+    return seed_value(value, "the declaration's seed")
+
+
+# The config keys each entry point reads, and the optional ones. A key is a
+# value or absent: an empty string reads as neither, and a test of its truth
+# would take it for absent and guess in its place (#716 round eight).
+CONFIG_KEYS = ("agent", "declaration", "gate_socket", "trace", "admin_bin", "admin_config", "repo")
+OPTIONAL_KEYS = ("spu_bin", "loop_sha256", "build_flags")
+
+
+def config_values(cfg, required=CONFIG_KEYS):
+    """Every required key a non-empty string and every optional key, where
+    present, the same, refused by name at preflight."""
+    for key in required:
+        if not isinstance(cfg.get(key), str) or not cfg[key]:
+            raise ValueError(f"the config's {key} {cfg.get(key)!r} is not a non-empty string")
+    for key in OPTIONAL_KEYS:
+        if key in cfg and (not isinstance(cfg[key], str) or not cfg[key]):
+            raise ValueError(f"the config's optional {key} {cfg[key]!r} is present and empty or not a string")
+    return cfg
+
+
 def loop_digest(cfg):
     """The config's `loop_sha256`, absent or 64 lowercase hex digits: a
     digest of another shape can match no load, and every session would be
@@ -372,7 +407,7 @@ def _resolve_spu(cfg):
     from an older deploy sitting there would be hashed confidently under the
     field whose whole purpose is to say whether two boxes run one build.
     """
-    if cfg.get("spu_bin"):
+    if cfg.get("spu_bin") is not None:
         return cfg["spu_bin"], "config spu_bin"
     # **Skipped rather than joined against nothing.** `os.path.join("", name)`
     # is a bare relative name read against the launch directory, so a file
@@ -975,6 +1010,176 @@ def load_held(cfg, before, declaration_sha, half, rec, log=None, timeout=15.0):
     return True
 
 
+def verify_session(cfg, texts, rec, declared_seed, declaration_sha,
+                   step=None, log=None, turn_timeout=600, require_completed=False):
+    """**The one session verification**, shared by both entry points: the
+    matrix's `run_session` and this file's `run_cell` call it, and neither
+    verifies anything outside it (#716 round eight). Three checks the matrix
+    made had each gone missing from the standalone path in turn, the
+    declaration digest, then the recorded seed, and one function is what
+    stops a fourth.
+
+    It serves `texts`, unloads, reloads, reissues the turns from the record
+    and compares them. It holds each half's load to the session's
+    declaration, loop and device, the recorded seed to `declared_seed`, the
+    replay's seed to the source's, absence as a named fault, and every
+    CHECKS field. It sets `rec["verdict"]`, a named fault or REPRODUCED or
+    DIVERGED, and the run, seed, device and invocation fields it read, and
+    answers the compared turns as `(source, replay, checks)` with the
+    evidence the caller deposits or records. It raises what it does not
+    expect, and each caller decides whether a raise is a verdict. The agent
+    is unloaded whichever way it leaves."""
+    step = step or (lambda verb: admin(cfg, verb))
+    log = log or (lambda m: None)
+    pairs = []
+    evidence = {"source_events": [], "replay_events": [], "source_read": None, "replay_read": None}
+
+    def fault(message):
+        rec["verdict"] = message
+        log(message)
+        return pairs, evidence
+
+    def hold_load(half):
+        """One half's load: the load itself, its socket, its declaration and
+        loop, and its device read by its own unit invocation."""
+        before = newest_load(cfg["trace"])[0]
+        if step("load").get("kind") != "state":
+            return "load refused" if half == "source" else "reload refused"
+        if not wait_socket(cfg):
+            return "gate socket never stood" if half == "source" else "gate socket never stood after reload"
+        if not load_held(cfg, before, declaration_sha, half, rec, log):
+            return rec["verdict"]
+        seen, invocation = load_devices(cfg)
+        evidence[f"{half}_read"] = seen
+        log(f"{half} devices: {json.dumps(seen)}")
+        if invocation is None:
+            return f"the {half} load's unit invocation could not be read: {json.dumps(seen)}"
+        if not (isinstance(seen, dict) and seen.get("devices")):
+            return (f"the {half} load's serving device could not be read under"
+                    f" invocation {invocation}: {json.dumps(seen)}")
+        return seen["devices"], invocation
+
+    def seed_of(turns):
+        seeds = {pointer(t["payload"]["model.request"], "/sampling/seed") for t in turns}
+        return seeds.pop() if len(seeds) == 1 else sorted(seeds, key=str)
+
+    try:
+        step("unload")  # whatever held the device before this session
+        held = hold_load("source")
+        if isinstance(held, str):
+            return fault(held)
+        source_devices, source_invocation = held
+
+        log("serving the source turns")
+        source_runs = set()
+        for text in texts:
+            close = gate_turn(cfg, text, timeout=turn_timeout)
+            if close.get("kind") != "answered":
+                return fault(f"source turn not answered: {close.get('kind')}")
+            source_runs.add(close.get("run"))
+        # The closes name the run, so the wait is on that run rather than on
+        # whichever is newest, which the previous session's run can satisfy.
+        if len(source_runs) != 1 or None in source_runs:
+            return fault("the source turns did not share one run")
+        source_run = source_runs.pop()
+        rec["source_run"] = source_run
+        source_turns, evidence["source_events"] = await_turns(cfg["trace"], len(texts), source_run)
+        if len(source_turns) != len(texts):
+            return fault(f"expected {len(texts)} source turns, found {len(source_turns)}")
+        broken = next((st for st in source_turns if st["incomplete"]), None)
+        if broken:
+            return fault(f"source {broken['turn']} is incomplete: {', '.join(broken['incomplete'])}")
+        if require_completed:
+            for st in source_turns:
+                finish = pointer(st["payload"].get("model.output"), "/finish")
+                if finish != "completed":
+                    return fault(f"source {st['turn']} finished {finish!r} rather than"
+                                 " completed - a capped turn is a defective specimen"
+                                 " and the cell fails rather than records")
+        # **The seed the record carries is read back, never assumed**: one
+        # seed, present, and the one the session was declared under.
+        recorded = seed_of(source_turns)
+        rec["recorded_seed"] = recorded
+        if isinstance(recorded, list):
+            return fault(f"the source turns were recorded under {len(recorded)} seeds: {recorded}")
+        if recorded is None:
+            return fault("the source turns carry no recorded seed")
+        if declared_seed is not None and recorded != declared_seed:
+            return fault(f"the declared seed did not reach the record:"
+                         f" declared {declared_seed}, recorded {recorded}")
+
+        step("unload")
+        held = hold_load("replay")
+        if isinstance(held, str):
+            return fault(held)
+        replay_devices, replay_invocation = held
+        rec["invocations"] = [source_invocation, replay_invocation]
+        # The reload is its own unit invocation, or it never happened and the
+        # replay's device read is the source's.
+        if replay_invocation == source_invocation:
+            return fault(f"the reload is the load's own invocation {source_invocation}")
+        # Both halves on one binding, or the comparison is across silicon.
+        if replay_devices != source_devices:
+            return fault(f"source and replay did not bind the same devices:"
+                         f" {json.dumps(source_devices)} against {json.dumps(replay_devices)}")
+        rec["devices"] = source_devices
+
+        # Reissued from the record rather than from the caller's texts,
+        # because the record is the artifact under test.
+        log("reissuing from the record")
+        runs_seen = set()
+        for st in source_turns:
+            close = gate_turn(cfg, st["text"], timeout=turn_timeout)
+            if close.get("kind") != "answered":
+                return fault(f"reissue {st['turn']} closed {close.get('kind')}")
+            runs_seen.add(close.get("run"))
+        if len(runs_seen) != 1 or None in runs_seen or source_run in runs_seen:
+            return fault("reissues did not land in one fresh run")
+        replay_run = runs_seen.pop()
+        rec["replay_run"] = replay_run
+        replay_all, evidence["replay_events"] = await_turns(cfg["trace"], len(source_turns), replay_run)
+        if not replay_all:
+            return fault(f"the closes named run {replay_run}, absent from the trace")
+        # A short replay read is the sink one turn behind, not the model, and
+        # never shares a word with DIVERGED.
+        if len(replay_all) < len(source_turns):
+            return fault(f"replay read short: expected {len(source_turns)} turns,"
+                         f" found {len(replay_all)} - the record is incomplete")
+        broken = next((rt for rt in replay_all if rt["incomplete"]), None)
+        if broken:
+            return fault(f"replay {broken['turn']} is incomplete: {', '.join(broken['incomplete'])}")
+        # Both halves load one declaration, so a replay under another seed is
+        # the apparatus, which the knobs check would otherwise read DIVERGED.
+        rec["replay_recorded_seed"] = seed_of(replay_all)
+        if rec["replay_recorded_seed"] != recorded:
+            return fault(f"the replay was recorded under another seed:"
+                         f" source {recorded}, replay {rec['replay_recorded_seed']}")
+
+        replay_by = {t["turn"]: t for t in replay_all}
+        all_match = True
+        for st in source_turns:
+            rt = replay_by.get(st["turn"])
+            # A source turn the replay does not carry is the record, and so is
+            # a check either side carries no value for.
+            if rt is None:
+                return fault(f"the replay carries no {st['turn']}")
+            checks = compare_turn(st, rt)
+            why = unobserved(checks)
+            if why:
+                return fault(f"{st['turn']}: {why}")
+            pairs.append((st, rt, checks))
+            all_match = all_match and all(c["match"] for c in checks)
+        # A replay carrying turns the source did not is interleaved traffic.
+        surplus = sorted({t["turn"] for t in replay_all} - {st["turn"] for st in source_turns})
+        if len(replay_all) != len(source_turns) or surplus:
+            return fault(f"the replay carries {len(replay_all) - len(source_turns)} turns"
+                         f" the source did not: {', '.join(surplus)}")
+        rec["verdict"] = "REPRODUCED" if all_match else "DIVERGED"
+        return pairs, evidence
+    finally:
+        step("unload")
+
+
 def await_turns(trace_path, want, run_id, keep=4, timeout=None):
     """`run_id` once it carries `want` turns, or once time runs out.
 
@@ -1249,6 +1454,13 @@ def run_cell(cfg, cell, outdir, libraries, binaries, tools,
     # The declaration as written, by the digest every load event records,
     # which both of the cell's loads are held to (#716 round six).
     declaration_sha = _sha256(cfg["declaration"])
+    # The seed the cell's declaration holds, which its record must bear out,
+    # as the matrix's must (#716 round eight).
+    try:
+        declared_seed = declaration_seed(swapped)
+    except ValueError as e:
+        report["verdict"] = f"the cell's declaration carries no seed to hold: {e}"
+        return report
 
     def step(verb):
         a = admin(cfg, verb)
@@ -1256,243 +1468,44 @@ def run_cell(cfg, cell, outdir, libraries, binaries, tools,
         log(f"{verb}: {json.dumps(a)}")
         return a
 
-    # The finally below guarantees the cell never leaves an agent
-    # holding the device, whichever return path it takes.
-    try:
-        step("unload")  # whatever held the device before this cell
-        # The device read below is bound to the load's own unit invocation,
-        # not to a time window, which a fast reload or a trailing journal
-        # can hold the previous load inside (#716 round five).
-        before = newest_load(cfg["trace"])[0]
-        if step("load").get("kind") != "state":
-            report["verdict"] = "load refused"
-            return report
-        if not wait_socket(cfg):
-            report["verdict"] = "gate socket never stood"
-            return report
-        # **The loop that composed this load is checked before a turn is
-        # served through it**, per issue #426. A cell refused here deposits
-        # no runs and no turns, only the refusal, so the report cannot be
-        # read as a comparison.
-        if not load_held(cfg, before, declaration_sha, "source", report, log):
-            log(report["verdict"])
-            return report
-
-        # **What served is read from the worker and not from the machine**,
-        # per issue #370's third ask. Read after the socket stands, so the
-        # load has reached the point of binding a device rather than merely
-        # having been asked to.
-        source_read, source_invocation = load_devices(cfg)
-        report["metadata"]["serving_device"]["source"] = source_read
-        log(f"source devices: "
-            f"{json.dumps(report['metadata']['serving_device']['source'])}")
-
-        log("serving the source turns")
-        source_runs = set()
-        for text in texts:
-            close = gate_turn(cfg, text, timeout=turn_timeout)
-            log(f"close {close.get('kind')} turn {close.get('turn')}")
-            if close.get("kind") != "answered":
-                report["verdict"] = f"source turn not answered: {close}"
-                return report
-            source_runs.add(close.get("run"))
-
-        # The closes name the run, so the wait is on that run and not on
-        # whichever is newest, per the seat's finding of 2026-08-27.
-        if len(source_runs) != 1 or None in source_runs:
-            report["verdict"] = (
-                "the source turns did not share one run: "
-                f"{sorted(map(str, source_runs))}"
-            )
-            return report
-        source_run = source_runs.pop()
-        source_turns, source_events = await_turns(
-            cfg["trace"], len(texts), source_run)
-        if len(source_turns) != len(texts):
-            report["verdict"] = (
-                f"expected {len(texts)} source turns, found {len(source_turns)}")
-            return report
-        broken = next((st for st in source_turns if st["incomplete"]), None)
-        if broken:
-            report["verdict"] = (f"source {broken['turn']} is incomplete:"
-                                 f" {', '.join(broken['incomplete'])}")
-            return report
-        if require_completed:
-            for st in source_turns:
-                finish = pointer(st["payload"].get("model.output"), "/finish")
-                if finish != "completed":
-                    report["verdict"] = (
-                        f"source {st['turn']} finished {finish!r} rather than"
-                        " completed - a capped turn is a defective specimen"
-                        " and the cell fails rather than records")
-                    return report
-
-        step("unload")
-        before = source_run
-        if step("load").get("kind") != "state":
-            report["verdict"] = "reload refused"
-            return report
-        if not wait_socket(cfg):
-            report["verdict"] = "gate socket never stood after reload"
-            return report
-        # The reload is a second load and is checked as one: the loop file
-        # can move between the two halves as easily as before the first.
-        if not load_held(cfg, before, declaration_sha, "replay", report, log):
-            log(report["verdict"])
-            return report
-
-        # **The reissue half binds its own devices and they are read too.**
-        # A cell that compared a source on one card against a replay on
-        # another and called it REPRODUCED would be the olympus A6000 error
-        # relocated to the second half, per finding 3 of the olympus seat.
-        # A disagreement fails the cell rather than being recorded and
-        # passed over: the comparison the cell exists to make is not
-        # between these two runs.
-        replay_read, replay_invocation = load_devices(cfg)
-        report["metadata"]["serving_device"]["replay"] = replay_read
-        report["metadata"]["invocations"] = [source_invocation, replay_invocation]
-        # The reload is its own unit invocation, or the replay was never
-        # reloaded and its device read is the source's.
-        if source_invocation is not None and source_invocation == replay_invocation:
-            report["verdict"] = f"the reload is the load's own invocation {source_invocation}"
-            return report
-        src = report["metadata"]["serving_device"]["source"]
-        rep = report["metadata"]["serving_device"]["replay"]
-        log(f"replay devices: {json.dumps(rep)}")
-        # **Equality is not enough, because absence is equal to itself.** An
-        # earlier draft compared the two and passed when they matched, so a
-        # box whose journal this user cannot read produced `unreadable`
-        # twice, compared equal, and sailed through the gate - the
-        # wrong-device defect invisible again on exactly the boxes the gate
-        # was added for. The gate asks for positive evidence from both
-        # halves first and compares only then.
-        #
-        # A cell that names no device is failed rather than recorded. This
-        # driver exists to compare runs across silicon, and per issue #370 a
-        # run record omitting the device cannot support that comparison, so
-        # a CPU-only box gets a plain refusal here rather than a deposit
-        # that looks complete and answers nothing.
-        for half, seen in (("source", src), ("replay", rep)):
-            if not isinstance(seen, dict) or "unreadable" in seen:
-                report["verdict"] = (
-                    f"the {half} load's serving device could not be read: "
-                    f"{json.dumps(seen)}")
-                return report
-            if not seen.get("devices"):
-                report["verdict"] = (
-                    f"the {half} load named no CUDA device, so this cell "
-                    "cannot support a cross-silicon comparison: "
-                    f"{json.dumps(seen)}")
-                return report
-        if src != rep:
-            report["verdict"] = (
-                "source and replay did not bind the same devices: "
-                f"{json.dumps(src)} against {json.dumps(rep)}")
-            return report
-
-        # Reissue byte-exact, from the record rather than from this
-        # script's constants: the record is the artifact under test.
-        # Every close must be answered and every close must name one
-        # fresh run - a refusal or a split across runs ends the cell
-        # rather than comparing against the wrong record.
-        log("reissuing from the record")
-        runs_seen = set()
-        for st in source_turns:
-            close = gate_turn(cfg, st["text"], timeout=turn_timeout)
-            log(f"reissue {st['turn']} -> {close.get('kind')}")
-            if close.get("kind") != "answered":
-                report["verdict"] = f"reissue {st['turn']} closed {close.get('kind')}"
-                return report
-            runs_seen.add(close.get("run"))
-        if len(runs_seen) != 1 or None in runs_seen or source_run in runs_seen:
-            report["verdict"] = f"reissues did not land in one fresh run: {sorted(map(str, runs_seen))}"
-            return report
-        replay_run = runs_seen.pop()
-
-        replay_all, replay_events = await_turns(
-            cfg["trace"], len(source_turns), replay_run)
-        if not replay_all:
-            report["verdict"] = (
-                f"the closes named run {replay_run} but the trace does not carry"
-                " it - sink lag or a different sink"
-            )
-            return report
-        replay_turns = {t["turn"]: t for t in replay_all}
-        if len(replay_all) != len(source_turns):
-            log(f"turn count differs: source {len(source_turns)} replay {len(replay_all)}")
-
-        # A short replay read is the sink rather than the model, and it
-        # reaches its own verdict rather than being folded into a mismatch.
-        if len(replay_all) < len(source_turns):
-            report["verdict"] = (
-                f"replay read short: expected {len(source_turns)} turns,"
-                f" found {len(replay_all)} - the record is incomplete"
-            )
-            return report
-        broken = next((rt for rt in replay_all if rt["incomplete"]), None)
-        if broken:
-            report["verdict"] = (f"replay {broken['turn']} is incomplete:"
-                                 f" {', '.join(broken['incomplete'])}")
-            return report
-        all_match = True
-        for st in source_turns:
-            rt = replay_turns.get(st["turn"])
-            # A source turn the replay does not carry is the record, not the
-            # model, and an unobserved check is the same (#716 round three).
-            if rt is None:
-                report["verdict"] = f"the replay carries no {st['turn']}"
-                return report
-            checks = compare_turn(st, rt)
-            why = unobserved(checks)
-            if why:
-                report["verdict"] = f"{st['turn']}: {why}"
-                return report
-            ok = all(c["match"] for c in checks)
-            all_match &= ok
-            m = st["payload"]["model.measurement"]
-            report["turns"].append({
-                "turn": st["turn"],
-                "reproduced": ok,
-                "checks": checks,
-                "tokens_in": len(m.get("input_tokens", [])),
-                "tokens_out": len(m.get("entropies", [])),
-                "source_ms": whole_ms(st),
-                "replay_ms": whole_ms(rt) if rt else None,
-            })
-            log(f"{st['turn']}: {'MATCH' if ok else 'DIVERGED: ' + ', '.join(c['check'] for c in checks if not c['match'])}")
-
-        report["source_run"] = source_run
-        report["replay_run"] = replay_run
-        # A replay carrying turns the source did not is interleaved traffic:
-        # the record, never the model, so a fault and not a divergence, and
-        # never a match however well the shared turns agree (#716 round five,
-        # the surplus-turn item on #698).
-        surplus = sorted({t["turn"] for t in replay_all} - {st["turn"] for st in source_turns})
-        if len(replay_all) != len(source_turns) or surplus:
-            report["verdict"] = (f"the replay carries {len(replay_all) - len(source_turns)} turns"
-                              f" the source did not: {', '.join(surplus)}")
-            return report
-        report["verdict"] = "REPRODUCED" if all_match else "NOT REPRODUCED"
-
-        # **Deposited from a fresh read rather than from the snapshots the
-        # comparison used.** Those were taken the moment `cut_turns` was
-        # satisfied, which on the source side is before its unload, so a
-        # deposit made from them holds a run with no closing event and a
-        # consumer cannot tell from the file that the run ended cleanly. The
-        # comparison is unaffected either way and this costs one read a cell.
-        _, whole = read_runs(cfg["trace"], keep=6)
-        for label, run in (("source", source_run), ("replay", replay_run)):
-            run_events = whole.get(run) or (
-                source_events if label == "source" else replay_events)
-            with open(os.path.join(outdir, f"cell-{name}-{label}.ndjson"), "w") as f:
-                for e in run_events:
-                    f.write(json.dumps(e) + "\n")
+    # **Verified by the one function both entry points share**, and nothing
+    # here verifies anything of its own: this records, names and deposits.
+    pairs, evidence = verify_session(cfg, texts, report, declared_seed, declaration_sha,
+                                     step=step, log=log, turn_timeout=turn_timeout,
+                                     require_completed=require_completed)
+    report["metadata"]["serving_device"]["source"] = evidence["source_read"]
+    report["metadata"]["serving_device"]["replay"] = evidence["replay_read"]
+    if "invocations" in report:
+        report["metadata"]["invocations"] = report["invocations"]
+    for st, rt, checks in pairs:
+        ok = all(c["match"] for c in checks)
+        m = st["payload"]["model.measurement"]
+        report["turns"].append({
+            "turn": st["turn"],
+            "reproduced": ok,
+            "checks": checks,
+            "tokens_in": len(m.get("input_tokens", [])),
+            "tokens_out": len(m.get("entropies", [])),
+            "source_ms": whole_ms(st),
+            "replay_ms": whole_ms(rt),
+        })
+        log(f"{st['turn']}: {'MATCH' if ok else 'DIVERGED: ' + ', '.join(c['check'] for c in checks if not c['match'])}")
+    if report["verdict"] not in ("REPRODUCED", "DIVERGED"):
         return report
-    finally:
-        # Whichever path returned, the cell never leaves its artifact
-        # holding the device. After an ordinary finish this answers
-        # no_residency, which is harmless and recorded.
-        step("unload")
+    # The cross-precision protocol's name for a divergence, which its
+    # earlier deposits carry.
+    if report["verdict"] == "DIVERGED":
+        report["verdict"] = "NOT REPRODUCED"
+    # **Deposited from a fresh read rather than from the snapshots the
+    # comparison used**, which on the source side were taken before its
+    # unload, so a deposit from them would hold a run with no closing event.
+    _, whole = read_runs(cfg["trace"], keep=6)
+    for label, run in (("source", report["source_run"]), ("replay", report["replay_run"])):
+        run_events = whole.get(run) or evidence[f"{label}_events"]
+        with open(os.path.join(outdir, f"cell-{name}-{label}.ndjson"), "w") as f:
+            for e in run_events:
+                f.write(json.dumps(e) + "\n")
+    return report
 
 
 def stale_outputs(outdir, names, pattern=None):
@@ -1528,12 +1541,18 @@ def main():
     # anything (#716 round seven): the names that become filenames, each
     # cell's artifact against the declaration, and the loop digest.
     try:
+        if not args.outdir:
+            raise ValueError("--outdir is empty")
+        config_values(cfg, CONFIG_KEYS + ("box",))
+        if not isinstance(cfg.get("cells"), list) or not cfg["cells"]:
+            raise ValueError(f"the config's cells {cfg.get('cells')!r} is not a non-empty list")
         loop_digest(cfg)
         for what, name in [("box", cfg["box"])] + [("cell name", c["name"]) for c in cfg["cells"]]:
             if not isinstance(name, str) or SAFE_NAME.fullmatch(name) is None:
                 raise ValueError(f"the {what} {name!r} is not a name a deposit file can carry")
         with open(cfg["declaration"]) as f:
             standing = f.read()
+        declaration_seed(standing)
         for c in cfg["cells"]:
             with_artifact(standing, c["artifact"])
     except ValueError as e:

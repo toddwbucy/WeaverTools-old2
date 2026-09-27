@@ -100,7 +100,7 @@ def _drive_main(die_second_cell=False, swap_libs=False):
         td = tempfile.mkdtemp()
         decl = os.path.join(td, "k.yaml")
         with open(decl, "w") as f:
-            f.write("artifact: a\n")
+            f.write("artifact: a\nseed: 7\n")
         cfgp = os.path.join(td, "c.json")
         with open(cfgp, "w") as f:
             json.dump({"box": "t", "declaration": decl, "repo": ".",
