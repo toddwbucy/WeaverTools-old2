@@ -227,26 +227,27 @@ to: blackwell-probe-falsifier-halts-after-unload
 
 ## 4. The order of operations
 
-**One command, one state file, three seats.** The operator runs `next` and nothing
-else, never under sudo, per `Order.operator`, and the payload refuses a `next` whose
-invoking uid is not the plan's recorded operator, under its `operator` guard. The
-state file `tb-state.json` carries the cursor over a schedule the plan determines:
-`provision`, then for each leg `start`, and for each job `load`, `measure`, `unload`
-and `settle`, then `finish`, and after the last leg `report` and `review`. Each step
-names its seat. The operator owns `provision`, `load` and `unload`. The coding seat
-owns `start`, `measure`, `settle`, `finish` and `report`. The review seat owns
-`review`, which is its own edit of the state file under the coordinator's lock and
-never a command of this program. Approval is no step of the schedule: it is the review
-seat's record, snapshotted root-owned when the operator runs `approve`, per section 5. A
-step out of order, by the wrong seat, or already recorded is refused under `step-order`,
-`seat` and `not-repeated`, and every step first re-verifies every earlier receipt
-against its recorded digest under `prior-success` and `prior-evidence`. **A free run's
-`measure` receipt also holds its sink as it stood at the run's `turn.closed`**, the
-path, the length of the prefix through that line and that prefix's digest, recorded by
-the driver under the coordinator's lock as of 2026-09-26 (#679 item 1). A local
-re-feed's `load` is handed that length and digest beside the plan, and refuses under
-`source-sink-recorded` where the source run's receipt holds no well-formed sink at the
-path its job names.
+**One command, one state file, three seats.** The operator runs `next` and nothing else,
+never under sudo, per `Order.operator`, and the payload refuses a `next` whose invoking
+uid is not the plan's recorded operator, under its `operator` guard. The state file
+`tb-state.json` carries the cursor over a schedule the plan determines: `provision`,
+then for each leg `start`, and for each job `load`, `measure`, `unload` and `settle`,
+then `finish`, and after the last leg `report` and `review`. Each step names its seat.
+The operator owns `provision`, `load` and `unload`. The coding seat owns `start`,
+`measure`, `settle`, `finish` and `report`. The review seat owns `review`, which is its
+own edit of the state file under the coordinator's lock and never a command of this
+program, its receipt naming the state's approval as every receipt does. Approval is no
+step of the schedule: it is the review seat's record, snapshotted root-owned when the
+operator runs `approve`, per section 5. A step out of order, by the wrong seat, or
+already recorded is refused under `step-order`, `seat` and `not-repeated`, and every
+step first re-verifies every earlier receipt against its recorded digest, and against
+the approval it names, which must be the state's, under `prior-success`,
+`prior-approval` and `prior-evidence`. **A free run's `measure` receipt also holds its
+sink as it stood at the run's `turn.closed`**, the path, the length of the prefix
+through that line and that prefix's digest, recorded by the driver under the
+coordinator's lock as of 2026-09-26 (#679 item 1). A local re-feed's `load` is handed
+that length and digest beside the plan, and refuses under `source-sink-recorded` where
+the source run's receipt holds no well-formed sink at the path its job names.
 
 **Approval gates every step and is not this program's to grant.** `next` waits while the
 state records no approval. Once one is recorded, every step reads it from the root-owned
@@ -349,7 +350,10 @@ record it has approved before, and a refusal leaves nothing behind, under
 `approval-self`, `approval-artifacts` and `approval-new`. **The state keeps that digest
 and nothing else about approval**, as `approval`, a pointer the coordinator records only
 once the public copy it names is root's and matches, under `approve-exit`,
-`approve-printed` and `approve-record`. The hold and the review's fields are the
+`approve-printed` and `approve-record`. **A new approval means a new state**: the
+pointer is set once, a second `approve` against a state holding one refuses before root
+is asked, under `one-approval-per-state`, and every receipt records the approval it ran
+under, so no run carries evidence of two. The hold and the review's fields are the
 record's. `halt` and `cursor` stay the operator's by design: a halt is the operator's
 right, and the cursor selects a step whose every earlier receipt is verified.
 
@@ -653,13 +657,13 @@ coordinator's: `schema`, `agent`, `stacks-distinct`, `isolated-root`, `tuple`,
 `rulings`, `arm-order`, `job-identities`, `job-types`, `control-schedule`,
 `own-refeeds`, `source-order`, `device-sources`, `device-traces`,
 `device-selections-distinct`, `kernel-schedule`, `approval-digest`, `approval-custody`,
-`approval-record`, `approval-coverage`,
-`artifact-hashes`, `halt`, `plan-snapshot`, `manifest-coverage`, `manifest-hashes`,
-`identity-evidence`, `identity-inputs`, `identity-binds-stacks`, `identity-recomputed`,
-`cursor`, `prior-success`, `prior-evidence`, `step-order`, `seat`, `not-repeated`,
-`driver-live`, `driver-owner`, `no-live-driver`, `report-evidence`, `payload-hash`,
-`payload-exit`, `payload-receipt`, `wait-owner`, `wait-order`, `wait-deadline`,
-`source-sink-recorded`, `approve-exit`, `approve-printed`, `approve-record`,
+`approval-record`, `approval-coverage`, `artifact-hashes`, `halt`, `plan-snapshot`,
+`manifest-coverage`, `manifest-hashes`, `identity-evidence`, `identity-inputs`,
+`identity-binds-stacks`, `identity-recomputed`, `cursor`, `prior-success`,
+`prior-approval`, `prior-evidence`, `step-order`, `seat`, `not-repeated`, `driver-live`,
+`driver-owner`, `no-live-driver`, `report-evidence`, `payload-hash`, `payload-exit`,
+`payload-receipt`, `wait-owner`, `wait-order`, `wait-deadline`, `source-sink-recorded`,
+`one-approval-per-state`, `approve-exit`, `approve-printed`, `approve-record`,
 `approve-record-named`, `no-record-outside-approve` and `operator-not-root`. The
 payload's: `root-payload`, `approve-arguments`, `own-code`, `approval-record`,
 `approval-root`, `approval-once`, `approval-self`, `approval-artifacts`, `approval-new`,
@@ -731,9 +735,9 @@ reads each citation from `code/`.
 | `blackwell-probe-falsifier-halts-after-unload` | perturbation, `pair-falsifier`, `own-refeed-falsifier`, `control-falsifier`, `changed-seed-prediction` |
 | `blackwell-probe-one-command-one-seat-per-step` | perturbation, `step-order`, `seat`, `not-repeated`, `driver-owner`, `operator-not-root`, `driver-not-root` |
 | `blackwell-probe-approval-gates-every-step` | perturbation, `approval-digest`, `approval-custody`, `approval-record`, `approval-coverage`, `artifact-hashes`, `plan-snapshot`, `manifest-coverage`, `manifest-hashes`, `halt` |
-| `blackwell-probe-approval-in-root-custody` | perturbation, `approval-record`, `approval-root`, `approval-once`, `approval-self`, `approval-artifacts`, `approval-new`, `approval-digest`, `approval-custody`, `own-code`, `approve-arguments`, `approve-exit`, `approve-printed`, `approve-record`, the tampered-artifact, flipped-state, replaced-payload and second-approve tests |
+| `blackwell-probe-approval-in-root-custody` | perturbation, `one-approval-per-state`, `prior-approval`, `approval-record`, `approval-root`, `approval-once`, `approval-self`, `approval-artifacts`, `approval-new`, `approval-digest`, `approval-custody`, `own-code`, `approve-arguments`, `approve-exit`, `approve-printed`, `approve-record`, the tampered-artifact, flipped-state, replaced-payload and second-approve tests |
 | `blackwell-probe-wait-verifies-when-the-state-moves` | perturbation, `wait-owner`, `wait-order`, `wait-deadline` and the state-moves test |
-| `blackwell-probe-halt-is-evidence` | perturbation, `prior-success`, `prior-evidence`, `payload-exit`, `payload-receipt`, `cursor` |
+| `blackwell-probe-halt-is-evidence` | perturbation, `prior-success`, `prior-approval`, `prior-evidence`, `payload-exit`, `payload-receipt`, `cursor` |
 | `blackwell-probe-root-receives-bytes-never-a-path` | perturbation, `payload-hash`, `plan-hash`, `root-payload`, `fixed-root-agent`, `operator` |
 | `blackwell-probe-operator-input-read-once` | perturbation, `snapshot-hash`, `source-file-hash`, `source-run-selected`, `reader-approved`, `source-trace`, `receipt-present`, `receipt-digest` |
 | `blackwell-probe-served-tree-locked-and-verified` | perturbation, `stack-no-symlinks`, `stack-file-coverage`, `installed-no-symlinks`, `installed-stack-custody`, `installed-stack-coverage`, `installed-stack-hash`, `served-directory-custody`, `root-chain-custody` |

@@ -153,8 +153,11 @@ review`. **The review is the review seat's own edit of the state file, never a
 command of this program**, and approval is the operator's `approve` of the
 review seat's record. Holding the coordinator lock
 (`flock handoffs/tb-evidence/tb-state.lock`), the review seat records
-`done.review` as `{status: SUCCESS, path, sha256}` naming its review evidence and
-advances `cursor` by one. `next` then prints `COMPLETE`.
+`done.review` as `{status: SUCCESS, path, sha256, approval}` naming its review
+evidence and the state's approval digest, as every receipt does, and advances
+`cursor` by one. A receipt naming another approval refuses every later step. A new
+approval means a new state, and `approve` refuses a state that already holds one.
+`next` then prints `COMPLETE`.
 
 The same verb takes TB-d or TB-k only when due. This is documentation for after
 approval, not a request to run it now. The driver appends `probe.jsonl`, preserves

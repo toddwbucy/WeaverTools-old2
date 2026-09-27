@@ -332,6 +332,9 @@ class Order:
         for step, _ in schedule(plan)[:s['cursor']]:
             done = s.get('done', {}).get(step, {})
             check('prior-success', done.get('status') == 'SUCCESS')
+            # Every receipt names the approval it ran under, and a state runs
+            # under one: a receipt of another approval is no step of this run.
+            check('prior-approval', same(done.get('approval'), s.get('approval')))
             check('prior-evidence', Path(done['path']).is_file() and sha(done['path']) == done['sha256'])
 
     def guard(self, s, plan, requested, seat):
@@ -346,7 +349,7 @@ class Order:
             check('driver-owner', same(s.get('driver', {}).get('pid'), os.getpid()))
 
     def finish(self, s, step, evidence, sink=None):
-        done = dict(status='SUCCESS', path=str(evidence), sha256=sha(evidence))
+        done = dict(status='SUCCESS', path=str(evidence), sha256=sha(evidence), approval=s['approval'])
         # A free run's measure receipt also holds its sink as it stood at the
         # run's turn.closed: the prefix through that line, by length and
         # digest, which a later re-feed of that run is snapshotted against.
@@ -528,6 +531,10 @@ def approve(state_path, record, log):
     order = Order(state_path)
     with order.locked():
         s = order.read()
+        # A state runs under one approval. A second, once steps may have run
+        # under the first, would swap the plan beneath them, so a new approval
+        # is a new state, refused here before root writes anything.
+        check('one-approval-per-state', s.get('approval') is None)
         data = Path(__file__).with_name('tb_payload.py').read_bytes()
         target = Path(record).resolve()
         with log.open('w') as out:

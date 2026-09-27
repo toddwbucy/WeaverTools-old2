@@ -203,7 +203,7 @@ class Fixture(unittest.TestCase):
         for step,_ in order.schedule(self.plan)[:self.state['cursor']]:
             p = self.root / (step.replace(':','-') + '.log')
             p.write_text('success\n')
-            self.state['done'][step] = dict(status='SUCCESS', path=str(p), sha256=order.sha(p))
+            self.state['done'][step] = dict(status='SUCCESS', path=str(p), sha256=order.sha(p), approval=self.state['approval'])
         self.state['driver'] = dict(pid=os.getpid(), ticks=order.ticks(os.getpid()))
         self.save()
 
@@ -431,10 +431,37 @@ class Fixture(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as out:self.o.operator()
         self.assertEqual(out.getvalue(),'WAITING ON: review seat - review\n')
 
+    def test_a_receipt_of_another_approval_is_no_step_of_this_run(self):
+        # #709 round one: previous() held a receipt's status and bytes but not
+        # the approval it ran under, so evidence of two approvals could sit in
+        # one run. Every receipt names its approval, and every step, the
+        # report and COMPLETE among them, refuses one not the state's.
+        # Perturbation: drop prior-approval and each case here passes.
+        p=self.root/'start.json';p.write_text('{}')
+        self.due('start:TB0');self.state['driver']=None;self.save();self.o.coding('start:TB0',p)
+        self.assertEqual(self.o.read()['done']['start:TB0']['approval'],self.state['approval'])
+        other=stand_approval(self.approvals,dict(self.record,reference=self.record['reference']+'0'))
+        report=self.root/'report.json';report.write_text('{}')
+        for step,value in [('provision',other),('provision',None),('finish:TB-k',other)]:
+            with self.subTest(step=step,value=value):
+                self.due('report');self.state['driver']=None
+                if value is None:del self.state['done'][step]['approval']
+                else:self.state['done'][step]['approval']=value
+                self.save()
+                with self.assertRaisesRegex(order.Refused,'prior-approval'):self.o.previous(self.state,self.plan)
+                with self.assertRaisesRegex(order.Refused,'prior-approval'):self.o.coding('report',report)
+                self.assertNotIn('report',self.o.read()['done'])
+        steps=order.schedule(self.plan);self.due(steps[-1][0])
+        review=self.root/'review.log';review.write_text('PASS\n')
+        self.state['done']['review']=dict(status='SUCCESS',path=str(review),sha256=order.sha(review),approval=other)
+        self.state['cursor']=len(steps);self.save()
+        with contextlib.redirect_stdout(io.StringIO()) as out,self.assertRaisesRegex(order.Refused,'prior-approval'):self.o.operator()
+        self.assertNotIn('COMPLETE',out.getvalue())
+
     def test_next_reports_completion_after_the_review(self):
         steps=order.schedule(self.plan);self.due(steps[-1][0])
         p=self.root/'review.log';p.write_text('PASS\n')
-        self.state['done']['review']=dict(status='SUCCESS',path=str(p),sha256=order.sha(p));self.state['cursor']=len(steps);self.save()
+        self.state['done']['review']=dict(status='SUCCESS',path=str(p),sha256=order.sha(p),approval=self.state['approval']);self.state['cursor']=len(steps);self.save()
         with contextlib.redirect_stdout(io.StringIO()) as out:self.o.operator()
         self.assertTrue(out.getvalue().startswith('COMPLETE:'))
         self.assertNotIn('refusals',self.o.read())
@@ -1496,7 +1523,7 @@ class HoldLiftTests(unittest.TestCase):
         # the sink at the close: the state's copy is held to it.
         result=self.root/'run.json';order.atomic(result,dict(name=source,sink=sink))
         def record(state_copy,evidence=result):
-            self.state['done'][f'measure:{source}']=dict(status='SUCCESS',path=str(evidence),sha256=order.sha(evidence),sink=state_copy)
+            self.state['done'][f'measure:{source}']=dict(status='SUCCESS',path=str(evidence),sha256=order.sha(evidence),sink=state_copy,approval=self.state['approval'])
             self.state['halt']=None;self.save()
         # Perturbation: drop the hex check and "g"*64 reaches root.
         for fault in [dict(sink,path='/elsewhere/trace.ndjson'),dict(sink,length=0),dict(sink,length='512'),dict(sink,sha256='short'),
@@ -1523,12 +1550,12 @@ class HoldLiftTests(unittest.TestCase):
         # Perturbation: compare them with == again and this reaches root.
         with self.subTest('the result records 512.0 and the state 512'):
             order.atomic(result,dict(name=source,sink=dict(sink,length=512.0)))
-            self.state['done'][f'measure:{source}']=dict(status='SUCCESS',path=str(result),sha256=order.sha(result),sink=sink)
+            self.state['done'][f'measure:{source}']=dict(status='SUCCESS',path=str(result),sha256=order.sha(result),sink=sink,approval=self.state['approval'])
             self.state['halt']=None;self.save()
             with self.assertRaisesRegex(order.Refused,'source-sink-recorded'),contextlib.redirect_stdout(io.StringIO()):self.o.operator(runner=runner)
         with self.subTest('the state copy differs from the result'):
             order.atomic(result,dict(name=source,sink=sink))
-            self.state['done'][f'measure:{source}']=dict(status='SUCCESS',path=str(result),sha256=order.sha(result),sink=other)
+            self.state['done'][f'measure:{source}']=dict(status='SUCCESS',path=str(result),sha256=order.sha(result),sink=other,approval=self.state['approval'])
             self.state['halt']=None;self.save()
             with self.assertRaisesRegex(order.Refused,'source-sink-recorded'),contextlib.redirect_stdout(io.StringIO()):self.o.operator(runner=runner)
         # The result's bytes change between previous()'s check and the read
@@ -1537,7 +1564,7 @@ class HoldLiftTests(unittest.TestCase):
         # its bytes (`if True else None`) and this passes to root.
         with self.subTest('the result changed after previous() read it'):
             order.atomic(result,dict(name=source,sink=sink))
-            self.state['done'][f'measure:{source}']=dict(status='SUCCESS',path=str(result),sha256=order.sha(result),sink=sink)
+            self.state['done'][f'measure:{source}']=dict(status='SUCCESS',path=str(result),sha256=order.sha(result),sink=sink,approval=self.state['approval'])
             self.state['halt']=None;self.save()
             real=order.Order.previous
             def then_changed(o,s,plan):
@@ -2080,6 +2107,26 @@ class ApprovalTests(unittest.TestCase):
             self.assertIsNone(json.loads(statefile.read_text())['approval'])
             def failed(argv,stdout,**kw):return subprocess.CompletedProcess(argv,1)
             with patch('tb_order.subprocess.run',side_effect=failed),self.assertRaisesRegex(order.Refused,'approve-exit'):order.approve(statefile,self.recordfile,log)
+
+    def test_a_second_approve_against_a_state_refuses_with_the_pointer_unchanged(self):
+        # #709 round one: a second valid approve replaced the pointer beneath a
+        # run already under way, swapping its plan. A state runs under one
+        # approval, so a second refuses before root is asked for anything.
+        # Perturbation: drop one-approval-per-state and root is asked, and the
+        # pointer moves to the second approval.
+        first=stand_approval(self.pt.root/'approval',self.record)
+        evidence=self.pt.base/'provision.log';evidence.write_text('SUCCESS: provision\n')
+        state=dict(cursor=1,done={'provision':dict(status='SUCCESS',path=str(evidence),sha256=order.sha(evidence),approval=first)},approval=first)
+        statefile=self.pt.base/'state.json';order.atomic(statefile,state);before=statefile.read_bytes()
+        log=self.pt.base/'approve.log';asked=[]
+        def as_sudo(argv,stdout,**kw):
+            asked.append(argv)
+            with self.pt.as_root(self.code),patch('tb_payload.os.geteuid',return_value=0),patch.dict(os.environ,{'SUDO_UID':'1000'}),patch('tb_payload.pwd.getpwnam',return_value=self.pt.user),contextlib.redirect_stdout(stdout):
+                payload.approve(argv[6])
+            return subprocess.CompletedProcess(argv,0)
+        with patch.object(order,'APPROVAL_ROOT',self.pt.root/'approval'),patch.object(order,'APPROVAL_OWNER',os.getuid()),patch('tb_order.subprocess.run',side_effect=as_sudo):
+            with self.assertRaisesRegex(order.Refused,'one-approval-per-state'):order.approve(statefile,self.recordfile,log)
+        self.assertEqual((asked,statefile.read_bytes()),([],before))
 
     def test_the_state_file_says_nothing_about_approval(self):
         # After approval, the state's own fields flipped to FAIL and held change
