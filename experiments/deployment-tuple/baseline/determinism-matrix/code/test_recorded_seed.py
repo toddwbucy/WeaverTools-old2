@@ -289,10 +289,10 @@ def test_the_weights_are_the_artifacts_bytes():
         path = os.path.join(tmp, "model.gguf")
         with open(path, "wb") as fh:
             fh.write(b"weights")
-        reading = dm.weights(path)(CFG)
+        reading = base.weights(path)(CFG)
         assert reading["artifact"]["sha256"] == base._sha256(path)
         assert base.is_reading(reading)
-        missing = dm.weights(path + ".gone")(CFG)
+        missing = base.weights(path + ".gone")(CFG)
         assert not base.is_reading(missing)
     assert dm.artifact_of("model-binding:\n  artifact: /opt/m.gguf\n  devices: [0]\n") == "/opt/m.gguf"
     for bad in ("devices: [0]\n", "artifact: /a\nartifact: /b\n"):

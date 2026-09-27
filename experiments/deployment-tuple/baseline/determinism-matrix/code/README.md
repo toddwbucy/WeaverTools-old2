@@ -12,9 +12,9 @@ path the 2026-09-27 runs took every verdict, seed and turn is what it was before
 fields that move named: the declared seed and the device each load logged. The
 `test_*.py` files are the tests of the two, three from that tree and
 `test_recorded_seed.py`, `test_absence_and_evidence.py`, `test_round_five.py`,
-`test_round_seven.py`, `test_round_eight.py`, `test_round_nine.py` and
-`test_round_ten.py` from #716. Each is a plain script and exits non-zero on the first
-failure:
+`test_round_seven.py`, `test_round_eight.py`, `test_round_nine.py`, `test_round_ten.py`
+and `test_round_eleven.py` from #716. Each is a plain script and exits non-zero on the
+first failure:
 
 ```
 python3 test_seed_schedule.py
@@ -27,6 +27,7 @@ python3 test_round_seven.py
 python3 test_round_eight.py
 python3 test_round_nine.py
 python3 test_round_ten.py
+python3 test_round_eleven.py
 ```
 
 Stdlib only. It needs the installed agent stack, one agent whose declaration it
@@ -92,7 +93,8 @@ and on a box keeping minutes that is the tail of a run.
 
 **Exit 0 means every session reproduced and every field the run holds held.** The
 weights, the engine libraries, the binaries and the toolchain must read the same at the
-start and the end, the serving device must be one binding for the whole run, and every
+start and the end, the weights at each cell's start and end for the cross-precision
+protocol, the serving device must be one binding for the whole run, and every
 session must bear out its declared seed and serve its declared declaration. Anything
 less exits 1, and the log names the fields that did not hold. Both entry points exit
 on the one verdict, `run_verdict`, so the cross-precision protocol holds the same

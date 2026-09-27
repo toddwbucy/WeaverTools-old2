@@ -161,17 +161,6 @@ def artifact_of(declaration):
     return base.declared_artifact(declaration)
 
 
-def weights(path):
-    """A provenance reader for the weights field: the artifact by sha256, or a
-    note saying why it could not be read."""
-    def read(cfg):
-        try:
-            return {"artifact": {"path": path, "sha256": base._sha256(path)}}
-        except OSError as e:
-            return {"artifact": {"path": path, "unreadable": base._why(e)}}
-    return read
-
-
 # **The prompt set spans the draw's confidence, which is the axis that
 # matters.** Each carries the character it was chosen for, so a reader
 # grading a failure can see what the turn was meant to be rather than
@@ -325,7 +314,11 @@ def main():
     try:
         # The files the run opens, the declaration among them, checked as
         # the run will use them (#716 round nine).
-        original = base.run_files(cfg, rewrites)
+        # The bytes read here are the declaration the run holds: the
+        # restore writes them back and the loads are held to their digest,
+        # the disk never re-read and trusted (#716 round eleven).
+        held = base.run_files(cfg, rewrites)
+        original = held.decode()
         # `standing` is the declaration this run works from: the operator's
         # own, or the artifact-swapped one, and the seed rewrite per session
         # starts from it so the two overrides compose rather than overwrite
@@ -358,10 +351,11 @@ def main():
     # cannot read, or a stack reading the exit could never count held, is
     # refused here rather than failing every session or the run's exit.
     try:
-        weights_open = weights(artifact)(cfg)
+        weights_open = base.weights(artifact)(cfg)
         if not base.is_reading(weights_open):
             raise ValueError(f"the artifact cannot be read: {json.dumps(weights_open)}")
         opening = base.opening_readings(cfg)
+        base.held_declaration(cfg, held)
     except ValueError as e:
         refuse(str(e))
     libraries, binaries, tools = (opening[k] for k in base.STACK_WINDOW)
@@ -387,20 +381,22 @@ def main():
         log(f"declared seed schedule: {schedule}")
     if rewrites:
         # The operator's declaration, kept until the run has restored it.
-        with open(pending, "x") as fh:
-            fh.write(original)
+        with open(pending, "xb") as fh:
+            fh.write(held)
     try:
         # **The swap itself is inside the cleanup scope**: opening the file
         # for writing truncates it before the write, so a write that fails
         # outside the `try` would leave the operator's declaration empty
         # with nothing to restore it. The stack and the weights were read at
         # preflight, before anything was written.
+        # The declaration the run holds, by the digest every load event
+        # records: the bytes read at preflight, or the artifact override's
+        # bytes as written, never a read of the file back.
+        standing_sha = hashlib.sha256(held).hexdigest()
         if args.artifact is not None:
-            with open(cfg["declaration"], "w") as fh:
-                fh.write(standing)
-        # The declaration as it stands on disk, by the digest every load
-        # event records, once the run's own artifact override is written.
-        standing_sha = base._sha256(cfg["declaration"])
+            with open(cfg["declaration"], "wb") as fh:
+                fh.write(standing.encode())
+            standing_sha = hashlib.sha256(standing.encode()).hexdigest()
         log(f"weights: {json.dumps(weights_open)}")
         log(f"declaration: sha256 {standing_sha}, seed {seed}")
         log(f"engine libraries: {json.dumps(libraries)}")
@@ -451,8 +447,8 @@ def main():
         # would turn an unrelated edit made during the run into a silent
         # revert of the operator's own declaration.
         if rewrites:
-            with open(cfg["declaration"], "w") as fh:
-                fh.write(original)
+            with open(cfg["declaration"], "wb") as fh:
+                fh.write(held)
             os.unlink(pending)
         base.admin(cfg, "unload")
 
@@ -550,7 +546,7 @@ def main():
     tools = close(base.toolchain, tools, "toolchain", essence=whole)
     # The weights field, the artifact's bytes, read like the stack at both
     # ends (#716 round two).
-    weights_at_close = close(weights(artifact), weights_open, "weights")
+    weights_at_close = close(base.weights(artifact), weights_open, "weights")
 
     try:
         bindings = base.device_bindings(cfg, run_started)

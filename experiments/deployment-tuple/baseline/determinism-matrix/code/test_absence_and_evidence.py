@@ -210,8 +210,8 @@ def test_a_run_is_never_held_by_default():
     # the windows alone, or test `all()` over no sessions, and a case passes.
     one = [{"verdict": "REPRODUCED", "devices": CARD}]
     assert base.run_verdict([], HELD) == (False, ["serving_device"])
-    assert base.run_verdict(one, {}) == (True, list(base.STACK_WINDOW))
-    assert base.run_verdict(one, {"toolchain": {"status": "unchanged"}}) == (True, ["engine_libraries", "weaver_binaries"])
+    assert base.run_verdict(one, {}) == (True, list(base.REQUIRED_WINDOWS))
+    assert base.run_verdict(one, {"toolchain": {"status": "unchanged"}}) == (True, ["weights", "engine_libraries", "weaver_binaries"])
     assert base.run_verdict(one, dict(HELD, toolchain={"status": "varied"})) == (True, ["toolchain"])
     assert base.run_verdict(one, HELD) == (True, [])
 

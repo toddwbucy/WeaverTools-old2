@@ -39,7 +39,6 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import socket
 import stat
 import subprocess
@@ -410,7 +409,8 @@ def run_files(cfg, rewrites):
     backup's directory writable. The admin binary is a regular file with an
     execute bit, since it runs under `sudo`, and the repository is a
     directory. The trace and the gate socket stand only once a load has, and
-    each is awaited where it is read."""
+    each is awaited where it is read. Answers the declaration's bytes, which
+    the run keeps and holds the disk to."""
     decl = cfg["declaration"]
     openable(decl, "declaration", "r+b" if rewrites else "rb")
     directory = os.path.dirname(os.path.abspath(decl))
@@ -425,8 +425,17 @@ def run_files(cfg, rewrites):
         raise ValueError(f"the config's admin_bin {cfg['admin_bin']} is not an executable file")
     if not os.path.isdir(cfg["repo"]):
         raise ValueError(f"the config's repo {cfg['repo']} is not a directory")
-    with open(decl) as f:
+    with open(decl, "rb") as f:
         return f.read()
+
+
+def held_declaration(cfg, held):
+    """The declaration on disk is still the bytes the run read at preflight,
+    or the refusal (#716 round eleven). The run keeps what it read and holds
+    the disk to it, never re-reading and trusting the file."""
+    if _sha256(cfg["declaration"]) != hashlib.sha256(held).hexdigest():
+        raise ValueError(f"the declaration {cfg['declaration']} changed on disk after the"
+                         " run read it at preflight")
 
 
 def opening_readings(cfg):
@@ -705,6 +714,19 @@ def _sha256(path):
         for chunk in iter(lambda: f.read(1 << 20), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def weights(path):
+    """A provenance reader for the weights field: the artifact by sha256, or a
+    note saying why it could not be read. Both entry points read it at the
+    two ends of their window, the matrix's run and each cell (#716 round
+    eleven)."""
+    def read(cfg):
+        try:
+            return {"artifact": {"path": path, "sha256": _sha256(path)}}
+        except OSError as e:
+            return {"artifact": {"path": path, "unreadable": _why(e)}}
+    return read
 
 
 def weaver_binaries(cfg, spu=None):
@@ -1188,7 +1210,8 @@ def verify_session(cfg, texts, rec, declared_seed, declaration_sha,
     **Every exception is a verdict here, on both paths** (#716 round ten): a
     raise is the apparatus fault `error: <type>: <message>`, and an interrupt
     is the fault `interrupted`, on which the caller's loop stops. The agent
-    is unloaded whichever way it leaves."""
+    is unloaded whichever way it leaves, and a raise from that unload is
+    recorded the same way."""
     step = step or (lambda verb: admin(cfg, verb))
     log = log or (lambda m: None)
     pairs = []
@@ -1240,10 +1263,13 @@ def verify_session(cfg, texts, rec, declared_seed, declaration_sha,
         return seeds[0], None
 
     try:
+        # The loads are held to the digest of the bytes written, never to a
+        # read of the file back (#716 round eleven).
         if declaration is not None:
-            with open(cfg["declaration"], "w") as fh:
-                fh.write(declaration)
-            declaration_sha = _sha256(cfg["declaration"])
+            data = declaration.encode()
+            with open(cfg["declaration"], "wb") as fh:
+                fh.write(data)
+            declaration_sha = hashlib.sha256(data).hexdigest()
         step("unload")  # whatever held the device before this session
         held = hold_load("source")
         if isinstance(held, str):
@@ -1364,7 +1390,21 @@ def verify_session(cfg, texts, rec, declared_seed, declaration_sha,
     except Exception as exc:  # an unattended run records rather than dies
         return fault(f"error: {type(exc).__name__}: {exc}")
     finally:
-        step("unload")
+        # **The closing unload is guarded too** (#716 round eleven): a raise
+        # here left `verify_session` past both clauses above and lost the
+        # session's record. An interrupt makes the session `interrupted`,
+        # and any other raise is a fault, the first fault standing where the
+        # session already had one.
+        try:
+            step("unload")
+        except KeyboardInterrupt:
+            rec["verdict"] = INTERRUPTED
+            log(f"{INTERRUPTED} at the closing unload")
+        except Exception as exc:  # the device may still be held
+            said = f"error: {type(exc).__name__}: {exc} (the closing unload)"
+            if rec.get("verdict") in ("REPRODUCED", "DIVERGED", None):
+                rec["verdict"] = said
+            log(said)
 
 
 def await_turns(trace_path, want, run_id, keep=4, timeout=None):
@@ -1536,10 +1576,8 @@ def cell_metadata(cfg, cell, libraries, binaries, tools, texts=None):
     # exists and take every remaining cell with it, which is the class of
     # defect the rest of this act removes: a metadata read is not a reason a
     # run does not happen.
-    try:
-        artifact_sha = _sha256(cell["artifact"])
-    except OSError as error:
-        artifact_sha = {"unreadable": _why(error)}
+    opened = weights(cell["artifact"])(cfg)["artifact"]
+    artifact_sha = opened["sha256"] if "sha256" in opened else {"unreadable": opened["unreadable"]}
     # **Both read the returncode, because `sh` no longer raises.** Softening
     # `sh` to answer 127 rather than throw fixed the readers that could abort
     # a run and broke these two, which took `.stdout` blind: on a box without
@@ -1606,7 +1644,7 @@ def cell_metadata(cfg, cell, libraries, binaries, tools, texts=None):
 
 
 def run_cell(cfg, cell, outdir, libraries, binaries, tools,
-             texts=None, require_completed=False, turn_timeout=600):
+             texts=None, require_completed=False, turn_timeout=600, declaration=None):
     """One session under the serve-unload-reload-reissue protocol.
 
     `texts` is the turn list, defaulted to the two pinned constants so the
@@ -1619,6 +1657,12 @@ def run_cell(cfg, cell, outdir, libraries, binaries, tools,
     field: a capped turn is a defective specimen for a trace whose purpose
     is source material, per the 8B sketch's parameter section, so the cell
     fails loudly instead of depositing a truncation that reads as an answer.
+
+    `declaration` is the declaration text the run read at preflight, which
+    the cell's is made from, and read from the file only where no caller
+    holds one. The cell's artifact is read at its open and again at its
+    close, the cell's weights window, recorded as `metadata.weights`
+    (#716 round eleven).
     """
     # **Materialized once, sentinel preserved.** The caller's value is
     # listed exactly one time, so an iterator cannot be consumed by the
@@ -1635,29 +1679,40 @@ def run_cell(cfg, cell, outdir, libraries, binaries, tools,
               "steps": [], "turns": [], "verdict": None}
     if texts is None:
         texts = [SHORT_TEXT, LONG_TEXT]
+    # The cell's weights window: the artifact as `cell_metadata` read it at
+    # the cell's open, read again at its close whichever way the cell ends.
+    sha = report["metadata"]["artifact_sha256"]
+    weights_open = {"artifact": dict({"path": cell["artifact"]},
+                                     **({"sha256": sha} if isinstance(sha, str) else sha))}
+
+    def closed():
+        report["metadata"]["weights"] = provenance_close(
+            cfg, weights(cell["artifact"]), weights_open, "weights")
+        return report
 
     # The declaration with this cell's artifact, everything else as
     # the operator wrote it.
+    if declaration is None:
+        try:
+            with open(cfg["declaration"]) as f:
+                declaration = f.read()
+        except OSError as e:
+            # The one step here that reaches the box, a fault in the form
+            # `verify_session` records every other raise in.
+            report["verdict"] = f"error: {type(e).__name__}: {e}"
+            return closed()
     try:
-        with open(cfg["declaration"]) as f:
-            decl = f.read()
-    except OSError as e:
-        # The one step here that reaches the box, a fault in the form
-        # `verify_session` records every other raise in.
-        report["verdict"] = f"error: {type(e).__name__}: {e}"
-        return report
-    try:
-        swapped = with_artifact(decl, cell["artifact"])
+        swapped = with_artifact(declaration, cell["artifact"])
     except ValueError as e:
         report["verdict"] = f"the cell's artifact cannot be declared: {e}"
-        return report
+        return closed()
     # The seed the cell's declaration holds, which its record must bear out,
     # as the matrix's must (#716 round eight).
     try:
         declared_seed = declaration_seed(swapped)
     except ValueError as e:
         report["verdict"] = f"the cell's declaration carries no seed to hold: {e}"
-        return report
+        return closed()
 
     def step(verb):
         a = admin(cfg, verb)
@@ -1690,7 +1745,7 @@ def run_cell(cfg, cell, outdir, libraries, binaries, tools,
         })
         log(f"{st['turn']}: {'MATCH' if ok else 'DIVERGED: ' + ', '.join(c['check'] for c in checks if not c['match'])}")
     if report["verdict"] not in ("REPRODUCED", "DIVERGED"):
-        return report
+        return closed()
     # The cross-precision protocol's name for a divergence, which its
     # earlier deposits carry.
     if report["verdict"] == "DIVERGED":
@@ -1709,7 +1764,7 @@ def run_cell(cfg, cell, outdir, libraries, binaries, tools,
         with open(os.path.join(outdir, f"cell-{name}-{label}.ndjson"), "w") as f:
             for e in run_events:
                 f.write(json.dumps(e) + "\n")
-    return report
+    return closed()
 
 
 def stale_outputs(outdir, names, pattern=None):
@@ -1738,8 +1793,22 @@ def run_binding(records):
     return {"varied": seen}
 
 
-# The stack both entry points read at both ends of a run.
+# The stack both entry points read at both ends of a run, and the windows
+# every run's verdict requires: the weights and the stack (#716 round
+# eleven). An entry point that passes no weights window fails it.
 STACK_WINDOW = ("engine_libraries", "weaver_binaries", "toolchain")
+REQUIRED_WINDOWS = ("weights",) + STACK_WINDOW
+
+
+def cells_weights(reports):
+    """The weights window of a cells run: each cell's artifact read at the
+    cell's open and again at its close, `unchanged` only where every cell's
+    is and one cell at least ran. A window cannot see a swap made and
+    reverted between its two reads."""
+    each = {r["cell"]: (r.get("metadata") or {}).get("weights") for r in reports}
+    held = bool(each) and all(isinstance(e, dict) and e.get("status") == "unchanged"
+                              for e in each.values())
+    return {"status": "unchanged" if held else "not unchanged in every cell", "cells": each}
 
 
 def guessed(reading):
@@ -1761,14 +1830,15 @@ def run_verdict(records, windows, interrupted=False):
     least having run and no interrupt having cut the run short, and the held
     fields the run cannot show held:
 
-    - every window field, each of the stack's among them, reads `unchanged`;
+    - every window field, the weights and each of the stack's among them,
+      reads `unchanged`;
     - no binary was resolved by a guess;
     - the sessions that read a serving device read one binding, and at
       least one did.
     """
     reproduced = (not interrupted and bool(records)
                   and all(r.get("verdict") == "REPRODUCED" for r in records))
-    fields = list(STACK_WINDOW) + [k for k in windows if k not in STACK_WINDOW]
+    fields = list(REQUIRED_WINDOWS) + [k for k in windows if k not in REQUIRED_WINDOWS]
     unheld = [k for k in fields
               if not (isinstance(windows.get(k), dict) and windows[k].get("status") == "unchanged")]
     if "weaver_binaries" not in unheld and guessed(windows["weaver_binaries"].get("reading")):
@@ -1833,12 +1903,14 @@ def main():
         if stale:
             raise ValueError(f"the outdir already holds a run's output: {', '.join(stale)}."
                              " A run writes into a deposit no earlier run has written.")
-        standing = run_files(cfg, rewrites=True)
+        held = run_files(cfg, rewrites=True)
+        standing = held.decode()
         declaration_seed(standing)
         for c in cfg["cells"]:
             with_artifact(standing, c["artifact"])
             openable(c["artifact"], f"cell {c['name']}'s artifact")
         opening = opening_readings(cfg)
+        held_declaration(cfg, held)
     except ValueError as e:
         print(str(e), file=sys.stderr)
         sys.exit(2)
@@ -1846,7 +1918,10 @@ def main():
     # `libggml-cuda` built for four architectures is 142 MiB to hash.
     libraries, binaries, tools = (opening[k] for k in STACK_WINDOW)
     os.makedirs(args.outdir, exist_ok=True)
-    shutil.copy2(cfg["declaration"], backup)
+    # The backup and the restore are the bytes read at preflight, not a
+    # copy of the file as it stands (#716 round eleven).
+    with open(backup, "xb") as fh:
+        fh.write(held)
     reports, interrupted = [], False
     out = os.path.join(args.outdir, f"report-{cfg['box']}.json")
 
@@ -1874,7 +1949,8 @@ def main():
         try:
             for cell in cfg["cells"]:
                 report = hold_invocations(
-                    run_cell(cfg, cell, args.outdir, libraries, binaries, tools), invocations)
+                    run_cell(cfg, cell, args.outdir, libraries, binaries, tools,
+                             declaration=standing), invocations)
                 reports.append(report)
                 deposit()
                 if report["verdict"] == INTERRUPTED:
@@ -1917,7 +1993,8 @@ def main():
                   flush=True)
         deposit()
     finally:
-        shutil.copy2(backup, cfg["declaration"])
+        with open(cfg["declaration"], "wb") as fh:
+            fh.write(held)
         os.unlink(backup)
         print("declaration restored", flush=True)
 
@@ -1945,7 +2022,8 @@ def main():
     # held. Every committed config names a repo. The alternative #379
     # sketched - is_reading distinguishing a partial reading from an
     # unusable one - stays open there for the reader that earns it.
-    reproduced, failing = run_verdict(reports, closings, interrupted)
+    reproduced, failing = run_verdict(reports, dict(closings, weights=cells_weights(reports)),
+                                      interrupted)
     if interrupted:
         print("interrupted - not a reproduction result", flush=True)
     if reproduced and failing:

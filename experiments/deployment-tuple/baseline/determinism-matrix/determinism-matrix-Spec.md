@@ -207,25 +207,30 @@ the digest of the declaration it served, the sha256 of the declaration file, and
 loop that composed it. After each half's load stands the harness holds the first to the
 declaration the session wrote, which holds the artifact path, the seed, the sampling
 knobs and every other declared field per load, and where the config names `loop_sha256`
-it holds the second to that digest. **Every check a session makes is one function**,
-`verify_session` in `confirm_cells.py`: the load, declaration, loop and device holds,
-the recorded seed, absence, the comparison and the surplus. Both entry points call it,
-the matrix's `run_session` and the cross-precision protocol's `run_cell`, and neither
-verifies anything outside it, so a check cannot hold on one path and be missing from the
-other. A config naming no loop leaves the loop unchecked.
+it holds the second to that digest. The declaration the loads are held to is the bytes
+the run read at preflight, or the bytes it wrote for the session, by the digest of those
+bytes and never by a read of the file back, and the disk is held to them before the run
+starts. **Every check a session makes is one function**, `verify_session` in
+`confirm_cells.py`: the load, declaration, loop and device holds, the recorded seed,
+absence, the comparison and the surplus. Both entry points call it, the matrix's
+`run_session` and the cross-precision protocol's `run_cell`, and neither verifies
+anything outside it, so a check cannot hold on one path and be missing from the other.
+It records a raise from its closing unload as it records any other, an interrupt there
+as `interrupted` and anything else as a fault. A config naming no loop leaves the loop
+unchecked.
 
 **The run-wide verdict is one function too**, `run_verdict` in `confirm_cells.py`: at
 least one session ran and every session reproduced, every window field reads
-`unchanged`, no binary was resolved by a guess, and the sessions read one device
-binding. Both entry points exit on it and only format it. The invocation rule, that no
-invocation recurs in a run, is held on each record as it closes by `hold_invocations`,
-which both entry points call.
+`unchanged`, the weights window and the stack's three required of both, no binary was
+resolved by a guess, and the sessions read one device binding. Both entry points exit on
+it and only format it. The invocation rule, that no invocation recurs in a run, is held
+on each record as it closes by `hold_invocations`, which both entry points call.
 
 **Each tuple field the probe holds, and how:**
 
 | Field | Held how | Counted at the exit |
 | --- | --- | --- |
-| weights | the artifact's path held per load by the declaration's digest, and its bytes read at both ends | yes, `weights` must read `unchanged` |
+| weights | the artifact's path held per load by the declaration's digest, and its bytes read at both ends of the window: the run's for the matrix, each cell's for the cross-precision protocol | yes, `weights` must read `unchanged`, in every cell |
 | precision | fixed by the weights hash | yes, with the weights |
 | device | each load's binding read by its unit invocation as it stands, both halves on one under two invocations, and every session on the same one | yes, `serving_device` must be one binding |
 | kernel stack | the engine libraries, the binaries and the toolchain read at both ends | yes, each must read `unchanged` |
@@ -234,10 +239,16 @@ which both entry points call.
 
 **The exit code is the whole claim.** A run of either entry point exits 0 only where it
 ran a session, every session reproduced, and every field counted above held, and
-otherwise 1, with a log line
-naming the fields that did not hold. A field read only at the two ends is held against a
-change that stands at the close, not one undone within the run, and the per-load
-declaration digest is what holds the declared fields between.
+otherwise 1, with a log line naming the fields that did not hold. A field read only at
+the two ends is held against a change that stands at the close, not one undone within
+the run, and the per-load declaration digest is what holds the declared fields between.
+
+**A window cannot see a swap made and reverted between its two reads.** The weights and
+the stack are read at the ends of a window, the run's or the cell's, so bytes replaced
+for one load and put back before the close read as `unchanged`. The declaration's
+digest binds each load to the artifact's path and not to its bytes. The instrument that
+would close the gap is a per-load hash of the weights and the stack, read at each load
+and held like the declaration, and this probe has not bought it.
 
 **A run killed outright writes no summary.** An interrupt ends the run cleanly and still
 writes it, in either entry point: the session it cut short is recorded as `interrupted`,

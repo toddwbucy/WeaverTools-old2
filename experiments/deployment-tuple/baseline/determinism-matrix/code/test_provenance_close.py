@@ -82,7 +82,7 @@ def _drive_main(die_second_cell=False, swap_libs=False):
         calls["n"] += 1
         if calls["n"] == 2 and die_second_cell:
             raise RuntimeError("cell two died")
-        return {"cell": cell["name"], "metadata": {}, "devices": [{"ordinal": 0}],
+        return {"cell": cell["name"], "metadata": {"weights": {"status": "unchanged"}}, "devices": [{"ordinal": 0}],
                 "verdict": "REPRODUCED", "turns": [], "steps": []}
 
     lib_seq = [json.loads(json.dumps(LIBS)),
