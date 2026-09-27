@@ -117,6 +117,15 @@ matrix rather than the front of it.
    They must land in one fresh run named by the gate's closes.
 5. Compare every turn.
 
+**Every answer the admin gives is read.** The admin prints its answer and exits 0, or
+prints its refusal and exits 1, and an answer counts only where the two agree. A load
+must answer the state `idle`. The unload between the halves and the unload that closes
+the session must answer `unloaded`, and the unload that opens it `unloaded` or the
+refusal `no_residency`, nothing resident being a clean start. Any other answer is a
+fault naming it, the first fault of a session standing. The unload each entry point
+makes as its run ends is read too, and a refusal is logged as the agent perhaps still
+loaded, since no session's verdict rests on it.
+
 **A turn is compared on eight fields**, per `CHECKS`: the rendered prompt, the derived
 generation seed, the effective sampling knobs, the emission bytes, the finish kind, the
 resident count, the input token ids, and the per-token entropies. A check either record
@@ -135,17 +144,17 @@ config's, a load that served a declaration other than the session's or wrote no 
 event, a load whose unit invocation or serving device cannot be read, or which names no
 device, a reload under the load's own invocation, a load under an invocation an earlier
 session read, source and replay loads on different devices, a replay carrying turns the
-source did not, a turn not answered, a turn missing its request or a payload kind or
-carrying a compared kind twice or named by anything but a string, a source turn the
-replay does not carry, a check a record carries no value for, source or replay turns
-split across runs, under a run the gate names by anything but a string, or short of the
-depth, a replay read short, a seed mismatch under section 4, an exception, recorded as
-`error: <type>: <message>`, or an interrupt, recorded as `interrupted`. Both entry
-points record each of these in the one session path, so neither loses a session to a
-raise. A replay read short is the sink one turn behind and is kept apart from DIVERGED,
-which is the strongest negative the harness emits. Faults are counted apart from both
-verdicts, as the summary's `errors`, so a run's divergence count is never inflated by
-sessions that were not compared.
+source did not, an admin answer other than the step's, a turn not answered, a turn
+missing its request or a payload kind or carrying a compared kind twice or named by
+anything but a string, a source turn the replay does not carry, a check a record carries
+no value for, source or replay turns split across runs, under a run the gate names by
+anything but a string, or short of the depth, a replay read short, a seed mismatch under
+section 4, an exception, recorded as `error: <type>: <message>`, or an interrupt,
+recorded as `interrupted`. Both entry points record each of these in the one session
+path, so neither loses a session to a raise. A replay read short is the sink one turn
+behind and is kept apart from DIVERGED, which is the strongest negative the harness
+emits. Faults are counted apart from both verdicts, as the summary's `errors`, so a
+run's divergence count is never inflated by sessions that were not compared.
 
 **Each session's record** carries the prompt, its character, the depth, the sweep,
 both run identities, the declared and recorded seeds, the verdict and the wall time,

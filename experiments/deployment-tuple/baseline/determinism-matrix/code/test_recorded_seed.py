@@ -34,6 +34,11 @@ CFG = {"trace": "/unused/trace", "agent": "karl", "gate_socket": "/unused.sock",
 FIXED = {"lib": {"path": "/lib", "sha256": "f" * 64}}
 
 
+def answer(verb):
+    """The admin's answer to a load or an unload that succeeded."""
+    return {"kind": "state", "state": "idle" if verb == "load" else "unloaded", "exit": 0}
+
+
 def stack_fakes(device=None):
     """The stack's readers answering a fixed reading at both ends."""
     card = [{"ordinal": 0, "name": "card", "pci_bus_id": "0000:01:00.0"}]
@@ -87,12 +92,13 @@ class Agent:
         return self.invocation()
 
     def admin(self, cfg, verb):
+        """The admin's answers as it prints them, the exit status beside."""
         if verb == "load":
             self.loads += 1
             self.starts += 1
             self.run = f"run-{self.loads}"
             self.runs[self.run] = []
-        return {"kind": "state"}
+        return answer(verb)
 
     def wait_socket(self, cfg):
         return True
@@ -410,7 +416,7 @@ def cells_main(tmp, change=None, declared=None, prepare=None, fakes=None, outdir
     if prepare:
         prepare(tmp, decl)
     called, out = [], io.StringIO()
-    every = dict(stack_fakes(), admin=lambda c, v: called.append(v) or {"kind": "state"})
+    every = dict(stack_fakes(), admin=lambda c, v: called.append(v) or answer(v))
     every.update(fakes or {})
     argv = sys.argv
     try:

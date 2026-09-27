@@ -159,8 +159,8 @@ def _drive_run_cell(composer_digest, served=None):
             with open(trace, "a") as f:
                 f.write(json.dumps(_load(
                     "r-cell", _file("alpha_loop.py", composer_digest), digest)) + "\n")
-            return {"kind": "state"}
-        return {"kind": "no_residency"}
+            return {"kind": "state", "state": "idle", "exit": 0}
+        return {"kind": "no_residency", "exit": 1}
 
     def fake_gate(cfg, text, timeout=600):
         raise _Served(text)

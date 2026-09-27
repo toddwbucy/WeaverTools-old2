@@ -450,7 +450,10 @@ def main():
             with open(cfg["declaration"], "wb") as fh:
                 fh.write(held)
             os.unlink(pending)
-        base.admin(cfg, "unload")
+        # The run's own last unload, its answer read (#716 round twelve).
+        released = base.release(cfg)
+        if released:
+            log(released)
 
     total = len(results)
     good = sum(1 for r in results if r["verdict"] == "REPRODUCED")

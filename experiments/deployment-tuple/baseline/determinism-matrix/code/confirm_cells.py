@@ -934,14 +934,35 @@ def engine_libraries(cfg, spu=None):
 
 
 def admin(cfg, verb):
+    """The admin's answer to `verb`, its last stdout line as a JSON object,
+    with the process's exit status beside it as `exit` (#716 round twelve).
+    The admin prints its answer and exits 0, or prints its refusal and exits
+    1 (`weaver-admin/src/surface.rs`), and an answer is read only where the
+    two agree, by `admin_answered`."""
     r = sh(["sudo", "-n", f"WEAVER_ADMIN_CONFIG={cfg['admin_config']}",
             cfg["admin_bin"], verb, cfg["agent"]])
     line = (r.stdout.strip().splitlines() or [""])[-1]
     try:
-        return json.loads(line)
+        answer = json.loads(line)
     except json.JSONDecodeError:
+        answer = None
+    if not isinstance(answer, dict):
         return {"kind": "unparsed", "stdout": r.stdout, "stderr": r.stderr,
                 "exit": r.returncode}
+    return dict(answer, exit=r.returncode)
+
+
+def admin_answered(answer, states=(), refusals=()):
+    """True where the admin's answer is one this step accepts: exit 0 with a
+    `state` answer in `states`, or exit 1 with a refusal whose kind is in
+    `refusals`. A load answers `idle` and an unload `unloaded`
+    (`weaver-admin/src/main.rs`), and a kind the exit status does not bear
+    out is no answer (#716 round twelve)."""
+    if not isinstance(answer, dict):
+        return False
+    if answer.get("exit") == 0 and answer.get("kind") == "state":
+        return answer.get("state") in states
+    return answer.get("exit") == 1 and answer.get("kind") in refusals
 
 
 def wait_socket(cfg, timeout=120):
@@ -1226,8 +1247,9 @@ def verify_session(cfg, texts, rec, declared_seed, declaration_sha,
         """One half's load: the load itself, its socket, its declaration and
         loop, and its device read by its own unit invocation."""
         before = newest_load(cfg["trace"])[0]
-        if step("load").get("kind") != "state":
-            return "load refused" if half == "source" else "reload refused"
+        loaded = step("load")
+        if not admin_answered(loaded, states=("idle",)):
+            return f"{'load' if half == 'source' else 'reload'} refused: {canonical(loaded)}"
         if not wait_socket(cfg):
             return "gate socket never stood" if half == "source" else "gate socket never stood after reload"
         if not load_held(cfg, before, declaration_sha, half, rec, log):
@@ -1270,7 +1292,11 @@ def verify_session(cfg, texts, rec, declared_seed, declaration_sha,
             with open(cfg["declaration"], "wb") as fh:
                 fh.write(data)
             declaration_sha = hashlib.sha256(data).hexdigest()
-        step("unload")  # whatever held the device before this session
+        # Whatever held the device before this session: nothing resident is
+        # as good as unloaded here, and anything else is not a clean start.
+        opened = step("unload")
+        if not admin_answered(opened, states=("unloaded",), refusals=("no_residency",)):
+            return fault(f"the opening unload was refused: {canonical(opened)}")
         held = hold_load("source")
         if isinstance(held, str):
             return fault(held)
@@ -1314,7 +1340,10 @@ def verify_session(cfg, texts, rec, declared_seed, declaration_sha,
             return fault(f"the declared seed did not reach the record:"
                          f" declared {declared_seed}, recorded {recorded}")
 
-        step("unload")
+        # Unloaded fully, Spec section 3 step 3, or the reload is not cold.
+        between = step("unload")
+        if not admin_answered(between, states=("unloaded",)):
+            return fault(f"the unload between the halves was refused: {canonical(between)}")
         held = hold_load("replay")
         if isinstance(held, str):
             return fault(held)
@@ -1393,15 +1422,20 @@ def verify_session(cfg, texts, rec, declared_seed, declaration_sha,
         # **The closing unload is guarded too** (#716 round eleven): a raise
         # here left `verify_session` past both clauses above and lost the
         # session's record. An interrupt makes the session `interrupted`,
-        # and any other raise is a fault, the first fault standing where the
+        # and any other raise is a fault, as is an answer other than
+        # `unloaded` (#716 round twelve), the first fault standing where the
         # session already had one.
+        said = None
         try:
-            step("unload")
+            closed = step("unload")
+            if not admin_answered(closed, states=("unloaded",)):
+                said = f"the closing unload was refused: {canonical(closed)}"
         except KeyboardInterrupt:
             rec["verdict"] = INTERRUPTED
             log(f"{INTERRUPTED} at the closing unload")
         except Exception as exc:  # the device may still be held
             said = f"error: {type(exc).__name__}: {exc} (the closing unload)"
+        if said:
             if rec.get("verdict") in ("REPRODUCED", "DIVERGED", None):
                 rec["verdict"] = said
             log(said)
@@ -1821,6 +1855,17 @@ def guessed(reading):
         for e in reading.values())
 
 
+def release(cfg):
+    """The unload a run makes as it ends, after every session's own, and a
+    note where the admin did not answer unloaded or nothing resident: no
+    session's verdict rests on it, and the note says the agent may still be
+    loaded (#716 round twelve)."""
+    answer = admin(cfg, "unload")
+    if admin_answered(answer, states=("unloaded",), refusals=("no_residency",)):
+        return None
+    return f"the run's closing unload was refused, the agent may still be loaded: {canonical(answer)}"
+
+
 def run_verdict(records, windows, interrupted=False):
     """**The run-wide verdict**, which both entry points exit on and only
     format (#716 round nine), as `verify_session` is the one session
@@ -1997,6 +2042,11 @@ def main():
             fh.write(held)
         os.unlink(backup)
         print("declaration restored", flush=True)
+        # The run's own last unload, as the matrix makes it (#716 round
+        # twelve).
+        released = release(cfg)
+        if released:
+            print(released, flush=True)
 
     deposit()
     print(f"\nreport: {out}")
