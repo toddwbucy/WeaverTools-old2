@@ -1,10 +1,8 @@
 # Handoff: olympus returns to the SPU lane at the new pin
 
-**Version:** v0.3, 2026-09-26. Written from the thinkpad Planner seat for the
+**Version:** v0.4, 2026-09-26. Written from the thinkpad Planner seat for the
 olympus seat, for its return on 2026-09-29 once the HADES service is locked
-down. Landed on main on the operator's word of 2026-09-26.
-v0.1 said the SPU's pins had not moved, and the candle repin of PR #706 made
-that false the same evening. v0.3 carries the probe rulings of the same night.
+down.
 
 **Base:** `WeaverTools` at `bbd6b94`, after the merge of PR #708. Olympus's last
 device-side work stands at `e69916a`, the commit both probe stacks were built
@@ -22,8 +20,8 @@ to 0.19.10 so CUDA 13.4 builds natively, and it retired the
 every dense checkpoint without a norm bias. Both were landed and tested on
 thinkpad, on the operator's ruling that olympus verifies them on Monday. The
 thinkpad reading is in `crates/weaver-spu/kernels/PROVENANCE.md`'s Blackwell
-row. The Ampere row still reads CUDA 13.0 from 2026-08-06, and until it is
-re-measured the installed runtime on olympus is a binary at the old pins.
+row. The Ampere row still reads CUDA 13.0 from 2026-08-06, and the installed
+runtime on olympus is a binary at the old pins until step 6 reinstalls it.
 
 **bf16 output is not reproducible across the candle repin, and f32 is.** The
 candle side measured Qwen2.5-0.5B at both revs: f32 logits and all 24 layer
@@ -35,50 +33,53 @@ precision and kernel-stack arms.
 
 ## What changed, and why olympus reads it before building
 
-The process moved. `CLAUDE.md`'s pull request path and Working Process
-section 6 describe review as it runs: the Executor opens a draft, Codex's
-GitHub review is the third-party reviewer and reviews nothing in draft, the
-Planner grades every pass against a clean extract, the operator merges, and
-since `83aff15` every pull request names the issues and epic items it answers
-and the merging seat ticks them. The census is paused by the ruling of
-2026-09-26: backlog acts stop, the no-new-defect rule stands, new units carry
-headers and cite their perturbations. Fix the class and walk every site
-before the next pass, and more than four rounds means the diff is not the
-problem. The ruling that no privileged step acts on a copy of a fact held by
-another party without checking it against evidence it verified itself is in
-the Blackwell probe's Spec, section 5, and applies to any SPU act that reads
-state it did not produce.
+The process moved. `CLAUDE.md`'s pull request path describes review as it
+runs: the Executor opens a draft, Codex's GitHub review is the third-party
+reviewer and reviews nothing in draft, the Planner grades every pass against a
+clean extract, the operator merges, and since `83aff15` every pull request
+names the issues and epic items it answers and the merging seat ticks them.
+Working Process section 6 carries the last of those rules and not the loop
+itself, its H5 still naming the architecture seat. The census is paused by the
+ruling of 2026-09-26: backlog acts stop, the no-new-defect rule stands, new
+units carry headers and cite their perturbations. Fix the class and walk every
+site before the next pass, and more than four rounds means the diff is not the
+problem. The Blackwell probe's Spec, section 5, carries the rule that no
+privileged step acts on a copy of a fact held by another party without checking
+it against evidence it verified itself, as a rule of that probe's custody.
 
 The tree moved. `weaver-web` left the repository with PR #689 for
 `WeaverTools_Project/weaver-web/`, so the workspace is eleven crates and the
 deploy builds the whole workspace with no exclusion. The probe's code and Spec
-live under `experiments/randomness-tuple/device/blackwell/`, its ruling-free
-hold-lift landed with #693 and #695. `weaver-trace` gained `recall` (#692) and
+live under `experiments/randomness-tuple/device/blackwell/`, and the parts of
+its hold-lift that needed no ruling landed with #693 and #695. The hold itself
+stands until the privileged approval step lands, per the Spec's section 5. `weaver-trace` gained `recall` (#692) and
 `message.restored` (#702), the diagnostic replay crosses a flush and an
 elision and refuses a record that does not account for its model's input
 (#694, #701), a restore from a branch carries its inherited conversation
 (#705), and a task's verdict is a trace kind carried on the analysis summary
 (#707, #708). The test suites stopped leaking temporary directories (#704), except
-one SPU residency file, which is olympus's to guard.
+the SPU's `weaver-spu-residency` file, which is olympus's to guard.
 
 The ledger moved. The candle chain's items left #639 for two epics on
 2026-09-26: #699, the native engine's toolchain, and #698, the
 randomness-tuple experiment arm by arm, each row on #639 annotated with its
-new home. `docs/project/epic-audit-2026-09-26.md` is the register the move
-was made from.
+new home, the annotations on #639 and #679 carrying the audit of that date.
 
 ## What olympus does on Monday, in order
 
-1. Pull `main` at or past `bbd6b94` and read the two process documents and
+1. Pull `main` at or past `bbd6b94` and read the four process documents and
    `CLAUDE.md`'s pull request path before opening anything.
 2. Check `~/.cargo/config.toml` on olympus for a `CUDARC_CUDA_VERSION` override
    and remove it if present, as #684 did on thinkpad. cudarc 0.19.10 detects
    the toolkit itself, and an override left behind answers for a toolkit the
    box may not have.
-3. Measure and record before building: the card pair, the driver version, the
-   installed toolkit (`nvcc --version`), in the pull request body of the act
-   below, the way #684's and #706's bodies did.
-4. Run the SPU gate on olympus's own target directory, never a shared one:
+3. Measure and record before building: olympus's three cards, the two A6000s
+   and the RTX 2000 Ada, the driver version and the installed toolkit
+   (`nvcc --version`), in the body of step 5's pull request, the way #684's
+   and #706's bodies did.
+4. Run `process/gates/lock.sh`, `cargo fmt --all -- --check` and
+   `python3 process/gates/census.py` first, then the SPU gate on olympus's own
+   target directory, never a shared one:
 
        cargo clippy -p weaver-spu --all-targets --features cuda,gguf --locked \
          -- -D warnings
@@ -89,8 +90,9 @@ was made from.
    the exit status, not a grep of them. **A pass counts a test that skipped
    for want of an artifact or a second card**, so name which device tests ran
    with their assertions and which passed by skipping, as #706 did. On the
-   A6000 pair the two-card tests are the ones only olympus can run, so point
-   the artifact variables at real models and make them run.
+   A6000s the two-card tests are the ones only olympus can run: pin them to
+   the two A6000s with `CUDA_VISIBLE_DEVICES`, point the artifact variables at
+   real models, and make them run.
 5. Re-measure the Ampere row of `PROVENANCE.md` at the new pins, every column,
    and land it as one pull request under the rule: its body names #699's items
    on the olympus gate at 0.19.10 (the audit's 639.4) and the repin's olympus
@@ -98,9 +100,10 @@ was made from.
 6. Rebuild and reinstall the runtime with `deploy/update-stack.sh`, which
    builds the whole workspace at the lock and whose `validate` and `load`
    steps now keep admin's refusal cause (#691). A binary at the old pins on a
-   box at the new lock is the mismatch this handoff exists to end. It changes
-   the installed runtime on the deployment box, so the operator schedules it
-   against the HADES lockdown rather than olympus running it unasked.
+   box at the new lock is the mismatch this handoff exists to end. The
+   operator has authorized it for Monday. The script honours
+   `CARGO_TARGET_DIR`, so give it its own target directory rather than the
+   gate's.
 7. Prepare, but do not stage, the probe's B1 re-staging (679.4): olympus's
    `e69916a` stack as its recorded runs used it, copied by bytes, link-free,
    with its CUDA user-space libraries named by `ldd` of its engine library.
@@ -126,13 +129,14 @@ the census pause. Nothing here asks olympus to touch HADES.
 
     Base bbd6b94
     Documents in this batch
-      this handoff  both pins moved under the SPU, the gate is owed on the A6000 pair
+      this handoff  both pins moved under the SPU, the gate is owed on the A6000s
     Reached by this act from outside the crate in hand
       none  this handoff edits nothing
     Not reviewable in this batch
-      the PROVENANCE Ampere row  superseded by the measurement step 5 asks for
+      none
     Gates run and their result
       none  a reading act
     Asked of the receiving seat
-      steps 1 to 7 in order, one pull request for step 5, one for step 6 if
+      steps 1 to 7 in order, step 6 on the operator's authorization, one pull
+      request for step 5, one for step 6 if
       the deploy scripts need a change, and a report of the measurements
