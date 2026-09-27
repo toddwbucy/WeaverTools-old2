@@ -8,10 +8,11 @@ establish are `../determinism-matrix-Spec.md`'s. This page is how to run it on a
 `determinism_matrix.py` drives the matrix and imports `confirm_cells.py`, the replay
 harness, from beside it. Both come from the `weaver-experiments` tree at `d04da2a`.
 `confirm_cells.py` is byte-identical to its copy there, and `determinism_matrix.py`
-carries two fixes of #716, named in the Spec's section 0, with a test holding that the
-path the 2026-09-27 runs took returns what it returned before. The `test_*.py` files are
-the tests of the two, three from that tree and `test_recorded_seed.py` from #716. Each
-is a plain script and exits non-zero on the first failure:
+carries the fixes of #716, named in the Spec's section 0, with a test holding that on
+the path the 2026-09-27 runs took every verdict, seed and turn is what it was before,
+the declared seed alone now filled. The `test_*.py` files are the tests of the two,
+three from that tree and `test_recorded_seed.py` from #716. Each is a plain script and
+exits non-zero on the first failure:
 
 ```
 python3 test_seed_schedule.py
@@ -31,7 +32,7 @@ One JSON file per box. The matrix reads these fields:
 | --- | --- | --- |
 | `box` | yes | the box's name, recorded in the deposit |
 | `agent` | no | the agent the admin loads and unloads, `karl` for the baseline |
-| `declaration` | yes | the agent's declaration file, which a seed schedule or `--artifact` rewrites and restores |
+| `declaration` | yes | the agent's declaration file, whose one seed and one artifact are read at the start, whose digest every load is held to, and which a seed schedule or `--artifact` rewrites and restores |
 | `gate_socket` | yes | the agent's gate socket, under the admin's coordination root |
 | `trace` | yes | the agent's trace sink, which every comparison is read from |
 | `admin_bin` | yes | the installed `weaver-admin` |
@@ -39,7 +40,7 @@ One JSON file per box. The matrix reads these fields:
 | `repo` | yes | the checkout the stack was built from, for the toolchain reading |
 | `spu_bin` | optional | overrides the `spu-binary` the admin configuration names |
 | `build_flags` | yes | a description of the build, recorded and not parsed |
-| `loop_sha256` | optional | the sha256 of a loop file the agent composes with |
+| `loop_sha256` | optional | the sha256 of the loop the agent composes with, which every load is held to, a load composed by another being a fault. Absent, the loop is unchecked |
 
 **`cells` is not read by the matrix.** It lists artifacts for `confirm_cells.py`'s own
 entry point, the cross-precision protocol, and a config shared with that protocol
@@ -63,6 +64,16 @@ python3 determinism_matrix.py --config <deposit>/config.json \
 
 Its `summary.json` names the worker, SPU and gate binaries and every engine library
 by sha256. They must be the ones the box facts name, and the faults must be zero.
+
+## What the exit code says
+
+**Exit 0 means every session reproduced and every field the run holds held.** The
+weights, the engine libraries, the binaries and the toolchain must read the same at the
+start and the end, the serving device must be one binding for the whole run, and every
+session must bear out its declared seed and serve its declared declaration. Anything
+less exits 1, and the log names the fields that did not hold. Batch composition is
+recorded rather than held: one caller and one turn at a time by construction, which the
+record cannot show. The Spec's section 5 has the table.
 
 ## The sudo requirement
 

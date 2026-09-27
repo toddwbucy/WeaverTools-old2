@@ -22,14 +22,16 @@ deposit carries beside its record.
 The code is `determinism_matrix.py` and the harness it imports, `confirm_cells.py`, from
 the `weaver-experiments` tree at `d04da2a`, where the matrix ran from 2026-08-27 until
 it moved here. `confirm_cells.py` is byte-identical to that copy.
-`determinism_matrix.py` differs by two fixes of pull request #716, a record carrying no
-seed made a fault and a seed rotation that never repeats across a sweep, and a test pins
-that on the path every session of the 2026-09-27 runs took, a recorded seed and no
-schedule, it returns the record the `d04da2a` file returns. A run from this directory is
-the same instrument as the two thinkpad runs of 2026-09-27, made from `d04da2a`. The
-deposits before them ran earlier revisions of the matrix, and each names its own by
-sha256 where its box facts record one. The two files keep their own docstrings and
-comments, and this document restates only what a reader needs to hold a result against.
+`determinism_matrix.py` differs by the fixes of pull request #716, which hold every
+tuple field the probe claims held, per section 5, and a test pins that on the path every
+session of the 2026-09-27 runs took, a recorded seed and no schedule, the verdict, the
+recorded seeds and every turn are the ones the `d04da2a` file returns, the one field
+that moves being the declared seed, null in those runs' records and now the
+declaration's own. A run from this directory is the same instrument as the two thinkpad
+runs of 2026-09-27, made from `d04da2a`. The deposits before them ran earlier revisions
+of the matrix, and each names its own by sha256 where its box facts record one. The two
+files keep their own docstrings and comments, and this document restates only what a
+reader needs to hold a result against.
 
 **Words.** The charter's cell is a card family a device probe runs on. This probe's
 code calls one combination of a prompt and a depth a cell, and in this document that
@@ -102,11 +104,12 @@ matrix rather than the front of it.
 
 **One session is serve, unload, reload, reissue, compare.** In order:
 
-1. Unload the agent, load it, and wait for the gate socket to stand.
+1. Unload the agent, load it, wait for the gate socket to stand, and hold the load to
+   the session's declaration and loop, per section 5.
 2. Serve the session's texts, depth minus one filler turns and then the probe, and
    read the served turns back from the trace. They must all belong to one run and
    number exactly the depth.
-3. Unload fully, reload, and wait for the socket again.
+3. Unload fully, reload, wait for the socket again, and hold the reload the same way.
 4. Reissue every served turn byte-exact, the texts read back from the record's own
    user messages and not from the script's copy, and read the replayed turns back.
    They must land in one fresh run named by the gate's closes.
@@ -120,13 +123,14 @@ the replay holds no surplus turn, since a replay carrying turns the source did n
 interleaved traffic and never a match.
 
 **The verdict is REPRODUCED or DIVERGED, and anything else is an apparatus fault.** A
-session that could not complete records the step it stopped at as its verdict: a load
-or reload refused, a socket that never stood, a turn not answered, source or replay
-turns split across runs or short of the depth, a replay read short, a seed mismatch
-under section 4, or an exception. A replay read short is the sink one turn behind and
-is kept apart from DIVERGED, which is the strongest negative the harness emits. Faults
-are counted apart from both verdicts, so a run's divergence count is never inflated by
-sessions that were not compared.
+session that could not complete records the step it stopped at as its verdict: a load or
+reload refused, a socket that never stood, a load composed by a loop other than the
+config's, a load that served a declaration other than the session's or wrote no load
+event, a turn not answered, source or replay turns split across runs or short of the
+depth, a replay read short, a seed mismatch under section 4, or an exception. A replay
+read short is the sink one turn behind and is kept apart from DIVERGED, which is the
+strongest negative the harness emits. Faults are counted apart from both verdicts, so a
+run's divergence count is never inflated by sessions that were not compared.
 
 **Each session's record** carries the prompt, its character, the depth, the sweep,
 both run identities, the declared and recorded seeds, the verdict and the wall time,
@@ -136,35 +140,62 @@ sha256 of its emission.
 
 ## 4. The seed
 
-**Without a schedule every session runs under the declaration's own seed.** With
-`--seed-schedule`, a comma-separated list of distinct integers, the declaration's one
-`seed:` line is rewritten before each session. Both halves of a session read the same
-seed and successive sessions read different ones. The seed a matrix cell takes rotates
-by matrix cell and is offset by sweep, so over as many sweeps as the schedule has seeds
-every matrix cell meets every seed and no matrix cell keeps one seed from one sweep to
-the next. A schedule that cannot hold both properties with the sweep boundary, one seed
-or two, is refused, and so is a declaration carrying other than exactly one `seed:`
-line. The declaration is restored when the run ends, by its clock or by an interrupt,
-and not by a hangup, per section 5. `--artifact` overrides the declaration's artifact
-for every session in the same way and is restored with it.
+**Every session is declared under a seed, the declaration's own where no schedule
+stands.** The declaration's one `seed:` line is read at the start on every path, and a
+declaration carrying other than exactly one, or a seed that is not an integer, is
+refused before anything loads. With `--seed-schedule`, a comma-separated list of
+distinct integers, that line is rewritten before each session. Both halves of a session
+read the same seed and successive sessions read different ones. The seed a matrix cell
+takes rotates by matrix cell and is offset by sweep, so over as many sweeps as the
+schedule has seeds every matrix cell meets every seed and no matrix cell keeps one seed
+from one sweep to the next. A schedule that cannot hold both properties with the sweep
+boundary, one seed or two, is refused. The declaration is restored when the run ends, by
+its clock or by an interrupt, and not by a hangup, per section 5. `--artifact` overrides
+the declaration's artifact for every session in the same way and is restored with it.
 
 **A session whose seed the record does not bear out is a fault, not a verdict.** The
-source turns must carry one recorded seed, `sampling.seed` on each `model.request`,
-with or without a schedule. Where a schedule declared the seed, the recorded one must
-be it. The replay's recorded seed must equal the source's, since both halves load
-from one declaration and a replay under another seed is the apparatus and not the
-model.
+source turns must carry one recorded seed, `sampling.seed` on each `model.request`, with
+or without a schedule, and it must be the seed the session was declared under, the
+schedule's or the declaration's own. The replay's recorded seed must equal the source's,
+since both halves load from one declaration and a replay under another seed is the
+apparatus and not the model.
 
 ## 5. Provenance
 
-**The stack is read at the start and again at the end, and the summary says whether it
-held.** The engine libraries the SPU links, the worker, SPU and gate binaries, and the
-toolchain are each read when the run opens and again when it closes. A field that
-reads the same at both ends is `unchanged`, and one that differs says so with both
-readings, a changed claim being made only where both sides are readings and not where
-a closing read failed. The serving device is read from the run's window. The summary
+**The stack and the weights are read at the start and again at the end, and the summary
+says whether each held.** The artifact the declaration binds, by sha256, the engine
+libraries the SPU links, the worker, SPU and gate binaries, and the toolchain are each
+read when the run opens and again when it closes. A field that reads the same at both
+ends is `unchanged`, and one that differs says so with both readings, a changed claim
+being made only where both sides are readings and not where a closing read failed. The
+serving device is read from the worker's journal over the run's window. The summary
 carries these with the counts: sessions, reproduced, diverged, faults, the verdicts by
 prompt character and by declared seed, and the first twenty divergences and faults.
+
+**Every load is held to the session's declaration and loop.** Each load event records
+the digest of the declaration it served, the sha256 of the declaration file, and the
+loop that composed it. After each half's load stands the harness holds the first to the
+declaration the session wrote, which holds the artifact path, the seed, the sampling
+knobs and every other declared field per load, and where the config names `loop_sha256`
+it holds the second to that digest, as `confirm_cells.run_cell` does. A config naming no
+loop leaves the loop unchecked.
+
+**Each tuple field the probe holds, and how:**
+
+| Field | Held how | Counted at the exit |
+| --- | --- | --- |
+| weights | the artifact's path held per load by the declaration's digest, and its bytes read at both ends | yes, `weights` must read `unchanged` |
+| precision | fixed by the weights hash | yes, with the weights |
+| device | one serving binding over the run's window, read and not varied | yes, `serving_device` must be one binding |
+| kernel stack | the engine libraries, the binaries and the toolchain read at both ends | yes, each must read `unchanged` |
+| batch composition | recorded, not held: one caller and one turn at a time by construction, and the record carries nothing a second caller would change | no |
+| sampler and seed | the declared seed on every session's recorded seed, the replay's equal to the source's, the knobs compared per turn and held per load by the declaration's digest | yes, every session's verdict |
+
+**The exit code is the whole claim.** The run exits 0 only where it ran a session, every
+session reproduced, and every field counted above held, and otherwise 1, with a log line
+naming the fields that did not hold. A field read only at the two ends is held against a
+change that stands at the close, not one undone within the run, and the per-load
+declaration digest is what holds the declared fields between.
 
 **A run killed outright writes no summary.** An interrupt ends the run cleanly and
 still writes it. A hangup, which is what closing the operator's terminal sends, ends

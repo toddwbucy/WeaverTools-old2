@@ -121,6 +121,105 @@ def seed_for(schedule, iteration, cell_index):
         raise ValueError(f"a schedule of {len(schedule)} seeds has no valid rotation")
     return schedule[(cell_index + step * (iteration - 1)) % len(schedule)]
 
+
+# **Every field the baseline holds is verified held**, #716 round two. The
+# seed is read from the declaration on every path, not only a scheduled one,
+# each load is held to the declaration and the loop the session declared, the
+# artifact's bytes are read at both ends of the run, and the exit gate counts
+# every field. Batch composition is one by construction and is recorded, not
+# verified: the record carries nothing a second caller would change.
+SEED_VALUE = re.compile(r"^[ \t]*seed:[ \t]*(\S+)", re.M)
+ARTIFACT_VALUE = re.compile(r"^[ \t]*artifact:[ \t]*(\S+)[ \t]*$", re.M)
+
+
+def standing_seed(declaration):
+    """The one seed the declaration holds, read whether or not a schedule
+    stands, so a session without one is held to it as a scheduled one is."""
+    values = SEED_VALUE.findall(declaration)
+    if len(values) != 1:
+        raise ValueError(f"the declaration carries {len(values)} seed lines, not one")
+    try:
+        return int(values[0])
+    except ValueError:
+        raise ValueError(f"the declaration's seed {values[0]!r} is not an integer") from None
+
+
+def session_seed(schedule, standing, iteration, cell_index):
+    """The seed a session is declared under: the schedule's where one stands,
+    and otherwise the declaration's own."""
+    return seed_for(schedule, iteration, cell_index) if schedule else standing
+
+
+def artifact_of(declaration):
+    """The one artifact the declaration binds, whose bytes the run reads at
+    both ends as the weights field."""
+    found = ARTIFACT_VALUE.findall(declaration)
+    if len(found) != 1:
+        raise ValueError(f"the declaration names {len(found)} artifacts, not one")
+    return found[0]
+
+
+def weights(path):
+    """A provenance reader for the weights field: the artifact by sha256, or a
+    note saying why it could not be read."""
+    def read(cfg):
+        try:
+            return {"artifact": {"path": path, "sha256": base._sha256(path)}}
+        except OSError as e:
+            return {"artifact": {"path": path, "unreadable": base._why(e)}}
+    return read
+
+
+def load_held(cfg, before, declaration_sha, half, rec, timeout=15.0):
+    """After a load stands, the loop that composed it and the declaration it
+    served are the session's. The loop is checked as `confirm_cells.run_cell`
+    checks it, against the config's `loop_sha256`. The declaration is checked
+    by the digest the load event records, which is the declaration file's
+    sha256, so the artifact path, the seed, the sampling knobs and every other
+    declared field are held per load. Answers True where both hold, and
+    otherwise sets the session's verdict and answers False."""
+    refused = base.assert_loop(cfg, cfg["trace"], before)
+    if refused:
+        rec["loop_refused"] = dict(refused, half=half)
+        rec["verdict"] = (f"loop refused at the {half} load: declared"
+                          f" {refused['declared']}, recorded {refused['recorded']}")
+        return False
+    if declaration_sha is None:
+        return True
+    end, delay = time.time() + timeout, 0.02
+    while True:
+        run, event = base.newest_load(cfg["trace"])
+        if run is not None and run != before:
+            break
+        if time.time() >= end:
+            rec["verdict"] = f"no load event reached the trace for the {half} load"
+            return False
+        time.sleep(delay)
+        delay = min(delay * 1.5, 1.0)
+    served = (event.get("payload") or {}).get("declaration")
+    if served != declaration_sha:
+        rec["verdict"] = (f"the {half} load served another declaration:"
+                          f" declared {declaration_sha}, served {served}")
+        return False
+    return True
+
+
+# The fields read at both ends of a run, each held where both reads agree.
+HELD_BY_WINDOW = ("weights", "engine_libraries", "weaver_binaries", "toolchain")
+
+
+def unheld(summary):
+    """The held fields the summary cannot show held, which the exit gate
+    counts. The window fields must read `unchanged`. The serving device must
+    be one binding for the whole run, read and not varied: one list of
+    devices, none unreadable."""
+    out = [k for k in HELD_BY_WINDOW if (summary.get(k) or {}).get("status") != "unchanged"]
+    device = summary.get("serving_device")
+    if not (isinstance(device, list) and device
+            and all(isinstance(d, dict) and "unreadable" not in d for d in device)):
+        out.append("serving_device")
+    return out
+
 # **The prompt set spans the draw's confidence, which is the axis that
 # matters.** Each carries the character it was chosen for, so a reader
 # grading a failure can see what the turn was meant to be rather than
@@ -174,7 +273,7 @@ def entropies_of(turn):
     }
 
 
-def run_session(cfg, probe, depth, iteration, declared_seed=None):
+def run_session(cfg, probe, depth, iteration, declared_seed=None, declaration_sha=None):
     """One matrix cell: serve, unload, reload, reissue, compare.
 
     The agent is left unloaded whichever path this takes, so a cell that
@@ -196,11 +295,14 @@ def run_session(cfg, probe, depth, iteration, declared_seed=None):
 
     try:
         base.admin(cfg, "unload")
+        before = base.newest_load(cfg["trace"])[0]
         if base.admin(cfg, "load").get("kind") != "state":
             rec["verdict"] = "load refused"
             return rec
         if not base.wait_socket(cfg):
             rec["verdict"] = "gate socket never stood"
+            return rec
+        if not load_held(cfg, before, declaration_sha, "source", rec):
             return rec
 
         source_runs = set()
@@ -253,11 +355,14 @@ def run_session(cfg, probe, depth, iteration, declared_seed=None):
             return rec
 
         base.admin(cfg, "unload")
+        before = base.newest_load(cfg["trace"])[0]
         if base.admin(cfg, "load").get("kind") != "state":
             rec["verdict"] = "reload refused"
             return rec
         if not base.wait_socket(cfg):
             rec["verdict"] = "gate socket never stood after reload"
+            return rec
+        if not load_held(cfg, before, declaration_sha, "replay", rec):
             return rec
 
         # Reissued from the record rather than from this script's
@@ -391,6 +496,14 @@ def main():
         except ValueError as e:
             print(str(e), file=sys.stderr)
             sys.exit(2)
+    # The declaration's own seed and artifact, read on every path so a run
+    # without a schedule holds them too, and refused before anything loads.
+    try:
+        seed = standing_seed(standing)
+        artifact = artifact_of(standing)
+    except ValueError as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(2)
 
     deadline = time.time() + args.hours * 3600.0
     # Opened before the first load so the journal read at the summary
@@ -409,6 +522,8 @@ def main():
     libraries = {"unreadable": "the run ended before the libraries were read"}
     binaries = {"unreadable": "the run ended before the binaries were read"}
     tools = {"unreadable": "the run ended before the toolchain was read"}
+    weights_open = {"unreadable": "the run ended before the weights were read"}
+    standing_sha = None
     # The placeholders above are not readings, which is what `base.is_reading`
     # tests at the close: an interrupted at-start read and a failed one leave
     # the same shape, and neither may be compared against a good closing read.
@@ -439,6 +554,12 @@ def main():
         libraries = base.engine_libraries(cfg, opening_spu)
         binaries = base.weaver_binaries(cfg, opening_spu)
         tools = base.toolchain(cfg)
+        weights_open = weights(artifact)(cfg)
+        # The declaration as it stands on disk, by the digest every load
+        # event records, once the run's own artifact override is written.
+        standing_sha = base._sha256(cfg["declaration"])
+        log(f"weights: {json.dumps(weights_open)}")
+        log(f"declaration: sha256 {standing_sha}, seed {seed}")
         log(f"engine libraries: {json.dumps(libraries)}")
         log(f"weaver binaries: {json.dumps(binaries)}")
         log(f"toolchain: {json.dumps(tools)}")
@@ -453,14 +574,16 @@ def main():
                 for probe in PROMPTS:
                     if time.time() >= deadline:
                         break
-                    declared_seed = None
+                    declared_seed = session_seed(schedule, seed, iteration, cell_index)
+                    declaration_sha = standing_sha
                     if schedule:
-                        declared_seed = seed_for(schedule, iteration, cell_index)
                         with open(cfg["declaration"], "w") as fh:
                             fh.write(with_declared_seed(standing, declared_seed))
+                        declaration_sha = base._sha256(cfg["declaration"])
                     cell_index += 1
                     started = time.time()
-                    rec = run_session(cfg, probe, depth, iteration, declared_seed)
+                    rec = run_session(cfg, probe, depth, iteration, declared_seed,
+                                      declaration_sha)
                     rec["seconds"] = round(time.time() - started, 1)
                     results.append(rec)
                     ent = ""
@@ -493,14 +616,14 @@ def main():
         b = by_character.setdefault(r["character"], {"n": 0, "ok": 0})
         b["n"] += 1
         b["ok"] += 1 if r["verdict"] == "REPRODUCED" else 0
-    # By seed where a schedule stood: the within-session verdict per
-    # condition, so a seed that fails to reproduce is visible on its own.
+    # By seed: the within-session verdict per declared seed, so a seed that
+    # fails to reproduce is visible on its own. Every session carries one
+    # since #716, a run without a schedule reading the declaration's own.
     by_seed = {}
-    if schedule:
-        for r in results:
-            b = by_seed.setdefault(str(r["declared_seed"]), {"n": 0, "ok": 0})
-            b["n"] += 1
-            b["ok"] += 1 if r["verdict"] == "REPRODUCED" else 0
+    for r in results:
+        b = by_seed.setdefault(str(r["declared_seed"]), {"n": 0, "ok": 0})
+        b["n"] += 1
+        b["ok"] += 1 if r["verdict"] == "REPRODUCED" else 0
 
     # **The box facts ride the summary rather than a sidecar**, per issue
     # #370's third ask. The olympus deposit of 2026-08-27 carried its
@@ -576,6 +699,9 @@ def main():
     # built the binaries rather than in the binaries - the hashes above are
     # what would catch a swap, and this catches the pin moving under a run.
     tools = close(base.toolchain, tools, "toolchain", essence=whole)
+    # The weights field, the artifact's bytes, read like the stack at both
+    # ends (#716 round two).
+    weights_at_close = close(weights(artifact), weights_open, "weights")
 
     try:
         bindings = base.device_bindings(cfg, run_started)
@@ -587,6 +713,7 @@ def main():
     summary = {
         "serving_device": (bindings[0] if len(bindings) == 1
                            else {"varied": bindings}),
+        "weights": weights_at_close,
         "engine_libraries": libraries,
         "weaver_binaries": binaries_at_close,
         "toolchain": tools,
@@ -608,20 +735,16 @@ def main():
         f"{len(errors)} errors")
     for ch, b in sorted(by_character.items()):
         log(f"  {ch}: {b['ok']}/{b['n']}")
-    # **The window joins the verdict here too**, per #399's review: the
-    # confirm and trace-gen drivers already exit 1 over green sessions when
-    # the provenance moved, and one seam answering the same question two
-    # ways at the exit code is #379's opening defect relocated. The
-    # serving-device envelope is not in the gate: it is not a two-read
-    # close, and a multi-device report is its own field rather than a
-    # moved window.
-    window_held = all(
-        (summary[k] or {}).get("status") == "unchanged"
-        for k in ("engine_libraries", "weaver_binaries", "toolchain"))
-    if total and good == total and not window_held:
-        log("sessions reproduced but the provenance window did not hold"
-            " quiet - not a reproduction result")
-    sys.exit(0 if total and good == total and window_held else 1)
+    # **Every held field joins the verdict at the exit** (#716 round two).
+    # The window fields, the weights among them, must read unchanged, per
+    # #399's review, and the serving device must be one binding for the run,
+    # read and not varied: a run whose sessions all reproduce while a field
+    # it claims held moved, or was never read, is not a reproduction result.
+    failing = unheld(summary)
+    if total and good == total and failing:
+        log("sessions reproduced but these held fields did not hold:"
+            f" {', '.join(failing)} - not a reproduction result")
+    sys.exit(0 if total and good == total and not failing else 1)
 
 
 if __name__ == "__main__":
