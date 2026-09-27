@@ -154,8 +154,10 @@ The quarry's own `CLAUDE.md` documents runtime paths (`/opt/weavertools` source,
 - **A box that can compile the feature is not a box that should gate the device.**
   The lane ruling of 2026-09-15 stands untouched by the correction above: the
   device is the olympus lane, `weaver-spu`'s gate carries `--features cuda,gguf`
-  there, and `kernels/PROVENANCE.md` records this hardware as never having run
-  device-side. The earlier bullet argued the lane from a missing compiler, which
+  there, and `kernels/PROVENANCE.md` records what this hardware has run: the
+  crate's own device tests ran on the card at the candle repin of 2026-09-26,
+  and the salvaged kernels have not, nothing in the crate calling them yet.
+  The earlier bullet argued the lane from a missing compiler, which
   made a standing ruling rest on a fact about one box that turned out to be wrong.
 - The pinned toolchain (`nightly-2026-02-13`, rustc `47611e160`) is installed and matches
   `rust-toolchain.toml`.
