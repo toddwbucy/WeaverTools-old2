@@ -953,9 +953,9 @@ mod tests {
         assert_eq!(residency.release(), Err(LifecycleRefusal::NoResidency));
     }
 
-    /// A GGUF whose header carries exactly the one key the family lookup
-    /// needs, so an admit against it walks past steps one and two.
-    /// A minimal GGUF whose header resolves to exactly one registry entry.
+    /// A minimal GGUF whose header carries exactly the one key the family
+    /// lookup needs and resolves to exactly one registry entry, so an admit
+    /// against it walks past steps one and two.
     ///
     /// **It declares an uncontested architecture on purpose.** The fixture
     /// carries a header and no chat template, and a contested architecture
@@ -963,7 +963,12 @@ mod tests {
     /// this fixture refuse at selection and every test using it would read
     /// that refusal instead of the condition it means to exercise. `qwen2` is
     /// carried by one entry and needs no template to resolve.
-    fn resolvable_gguf() -> std::path::PathBuf {
+    ///
+    /// **It answers a guard rather than a path**, which removes the scratch
+    /// directory when the test ends, pass or fail, as issue #704's guards do
+    /// across the other crates. Its `Drop` runs on the unwind a failed
+    /// assertion takes, so the caller binds it for the length of the test.
+    fn resolvable_gguf() -> Fixture {
         use std::io::Write;
         let dir = std::env::temp_dir().join(format!("weaver-spu-residency-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("a scratch dir");
@@ -982,7 +987,19 @@ mod tests {
         file.extend_from_slice(value);
         let mut handle = std::fs::File::create(&path).expect("a fixture file");
         handle.write_all(&file).expect("the fixture is written");
-        path
+        Fixture { dir, path }
+    }
+
+    /// The fixture's path and the directory holding it, removed on drop.
+    struct Fixture {
+        dir: std::path::PathBuf,
+        path: std::path::PathBuf,
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
     }
 
     /// **An ordinal that appears twice refuses on the set's shape, on the admit
@@ -1002,8 +1019,9 @@ mod tests {
     #[test]
     fn a_duplicate_ordinal_refuses_on_the_admit_path() {
         let mut residency = Residency::new();
+        let fixture = resolvable_gguf();
         let binding = ModelBinding {
-            artifact: ArtifactRef(resolvable_gguf().to_string_lossy().into_owned()),
+            artifact: ArtifactRef(fixture.path.to_string_lossy().into_owned()),
             devices: vec![DeviceOrdinal(0), DeviceOrdinal(0)],
         };
         assert_eq!(
