@@ -130,6 +130,10 @@ def serving_device(cfg, since):
         return groups
     found = groups["groups"]
     if found:
+        # A device this reader could not parse is no device at all, and two
+        # of them would otherwise compare equal across the halves.
+        if any("unreadable" in d for d in found[-1]):
+            return {"unreadable": f"the load named a device this reader cannot parse: {found[-1]}"}
         return {"devices": found[-1]}
     return {"devices": [], "note": "the load named no CUDA device"}
 
@@ -181,14 +185,23 @@ def _device_groups(cfg, since):
                 groups.append(current)
             current = []
             continue
+        # **No evidence is dropped** (#716 round three). A device line met
+        # before any boundary is a load whose boundary fell before the
+        # window, and it opens its own group rather than vanishing. A line
+        # the grep matched and this pattern cannot read is kept as an
+        # unreadable device, and a load that named no device keeps its empty
+        # group, so either leaves the binding unheld rather than unread.
+        if current is None:
+            current = []
         m = DEVICE_LINE.search(line)
-        if m and current is not None:
+        if m:
             current.append({"ordinal": int(m.group(1)),
                             "name": m.group(2),
                             "pci_bus_id": m.group(3)})
+        else:
+            current.append({"unreadable": f"a device line this reader cannot parse: {line[:200]}"})
     if current is not None:
         groups.append(current)
-    groups = [g for g in groups if g]
     if groups:
         return {"groups": groups}
     # No match. Distinguish a journal this user cannot read from a load that
@@ -559,6 +572,12 @@ def engine_libraries(cfg, spu=None):
     for line in r.stdout.splitlines():
         m = re.search(r"(lib(?:ggml[\w-]*|llama)\.so[\w.]*)\s+=>\s+(\S+)", line)
         if not m:
+            # A line naming an engine library that this pattern cannot read
+            # is unreadable evidence, kept as such (#716 round three).
+            if re.search(r"lib(?:ggml|llama)", line):
+                out[f"unparsed: {line.strip()[:120]}"] = {
+                    "path": None, "sha256": None,
+                    "unreadable": "ldd named an engine library this reader cannot parse"}
             continue
         name, path = m.group(1), m.group(2)
         # `ldd` prints `=> not found` for an unresolved library, whose
@@ -828,7 +847,7 @@ def await_turns(trace_path, want, run_id, keep=4, timeout=None):
         if run_id in runs:
             events = runs[run_id]
             turns = cut_turns(events)
-            if len(turns) >= want:
+            if sum(1 for t in turns if not t["incomplete"]) >= want:
                 return turns, events
         if time.time() >= end:
             return turns, events
@@ -866,29 +885,64 @@ def cut_turns(events):
                                 "model.measurement")}
         wall = {kind: (k[kind][0].get("wall_ms") if kind in k else None)
                 for kind in ("turn.started", "turn.closed")}
+        # **An incomplete turn is kept and named, never dropped** (#716
+        # round three). A turn missing its request text or a payload kind,
+        # or carrying a compared kind twice, is evidence the harness cannot
+        # compare whole, and dropping it could hide surplus traffic in a
+        # replay. Callers wait on complete turns and refuse incomplete ones.
+        incomplete = []
+        if text is None:
+            incomplete.append("no request text")
+        for kind in ("model.request", "model.output", "model.measurement"):
+            n = len(k.get(kind, []))
+            if n == 0:
+                incomplete.append(f"no {kind}")
+            elif n > 1:
+                incomplete.append(f"{n} {kind} events")
         turns.append({"turn": t, "text": text, "payload": payload,
-                      "wall": wall})
-    return [t for t in turns
-            if t["text"] is not None
-            and all(t["payload"][x] is not None for x in t["payload"])]
+                      "wall": wall, "incomplete": incomplete})
+    return turns
 
 
-def pointer(value, ptr):
+# **Absence is its own answer and never a value** (#716 round three). A
+# field missing from both records compared equal as None and passed as a
+# match, so the comparator reads through a sentinel and names the side that
+# carries nothing, and a caller refuses the session rather than reading it.
+ABSENT = object()
+
+
+def pointer(value, ptr, absent=None):
     cur = value
     for part in ptr.strip("/").split("/"):
         if not isinstance(cur, dict) or part not in cur:
-            return None
+            return absent
         cur = cur[part]
     return cur
 
 
 def compare_turn(src, rep):
+    """Each of the eight CHECKS on one turn. A check a side carries no
+    value for, missing or null, is never a match and names the side under
+    `absent`, which is an apparatus fault for the caller, not a verdict."""
     out = []
     for name, kind, ptr in CHECKS:
-        a = pointer(src["payload"][kind], ptr)
-        b = pointer(rep["payload"][kind], ptr)
-        out.append({"check": name, "match": a == b})
+        a = pointer(src["payload"][kind], ptr, ABSENT)
+        b = pointer(rep["payload"][kind], ptr, ABSENT)
+        absent = [side for side, v in (("source", a), ("replay", b))
+                  if v is ABSENT or v is None]
+        check = {"check": name, "match": not absent and a == b}
+        if absent:
+            check["absent"] = absent
+        out.append(check)
     return out
+
+
+def unobserved(checks):
+    """The first check a turn's comparison could not observe, or None."""
+    for c in checks:
+        if c.get("absent"):
+            return f"{c['check']} absent from the {' and '.join(c['absent'])} record"
+    return None
 
 
 def whole_ms(t):
@@ -1078,6 +1132,11 @@ def run_cell(cfg, cell, outdir, libraries, binaries, tools,
             report["verdict"] = (
                 f"expected {len(texts)} source turns, found {len(source_turns)}")
             return report
+        broken = next((st for st in source_turns if st["incomplete"]), None)
+        if broken:
+            report["verdict"] = (f"source {broken['turn']} is incomplete:"
+                                 f" {', '.join(broken['incomplete'])}")
+            return report
         if require_completed:
             for st in source_turns:
                 finish = pointer(st["payload"].get("model.output"), "/finish")
@@ -1188,11 +1247,24 @@ def run_cell(cfg, cell, outdir, libraries, binaries, tools,
                 f" found {len(replay_all)} - the record is incomplete"
             )
             return report
+        broken = next((rt for rt in replay_all if rt["incomplete"]), None)
+        if broken:
+            report["verdict"] = (f"replay {broken['turn']} is incomplete:"
+                                 f" {', '.join(broken['incomplete'])}")
+            return report
         all_match = len(replay_all) == len(source_turns)
         for st in source_turns:
             rt = replay_turns.get(st["turn"])
-            checks = (compare_turn(st, rt) if rt else
-                      [{"check": c[0], "match": False} for c in CHECKS])
+            # A source turn the replay does not carry is the record, not the
+            # model, and an unobserved check is the same (#716 round three).
+            if rt is None:
+                report["verdict"] = f"the replay carries no {st['turn']}"
+                return report
+            checks = compare_turn(st, rt)
+            why = unobserved(checks)
+            if why:
+                report["verdict"] = f"{st['turn']}: {why}"
+                return report
             ok = all(c["match"] for c in checks)
             all_match &= ok
             m = st["payload"]["model.measurement"]
@@ -1230,6 +1302,17 @@ def run_cell(cfg, cell, outdir, libraries, binaries, tools,
         # holding the device. After an ordinary finish this answers
         # no_residency, which is harmless and recorded.
         step("unload")
+
+
+def windows_held(reports):
+    """Every report carries its closing window and every field of it reads
+    unchanged. A report with none was never shown held, and an empty `all()`
+    would have said it was (#716 round three)."""
+    closes = [r["metadata"].get("provenance_at_close") for r in reports]
+    return bool(closes) and all(
+        isinstance(c, dict) and c
+        and all(isinstance(v, dict) and v.get("status") == "unchanged" for v in c.values())
+        for c in closes)
 
 
 def main():
@@ -1338,12 +1421,7 @@ def main():
     # sketched - is_reading distinguishing a partial reading from an
     # unusable one - stays open there for the reader that earns it.
     reproduced = all(r["verdict"] == "REPRODUCED" for r in reports) and reports
-    window_held = all(
-        v.get("status") == "unchanged"
-        for r in reports
-        for v in (r["metadata"].get("provenance_at_close") or {}).values()
-        if isinstance(v, dict)
-    )
+    window_held = windows_held(reports)
     if reproduced and not window_held:
         print("cells reproduced but the provenance window did not hold quiet"
               " - not a reproduction result", flush=True)

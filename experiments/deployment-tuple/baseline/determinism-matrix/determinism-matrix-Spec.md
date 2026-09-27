@@ -21,17 +21,19 @@ deposit carries beside its record.
 
 The code is `determinism_matrix.py` and the harness it imports, `confirm_cells.py`, from
 the `weaver-experiments` tree at `d04da2a`, where the matrix ran from 2026-08-27 until
-it moved here. `confirm_cells.py` is byte-identical to that copy.
-`determinism_matrix.py` differs by the fixes of pull request #716, which hold every
-tuple field the probe claims held, per section 5, and a test pins that on the path every
-session of the 2026-09-27 runs took, a recorded seed and no schedule, the verdict, the
-recorded seeds and every turn are the ones the `d04da2a` file returns, the one field
-that moves being the declared seed, null in those runs' records and now the
-declaration's own. A run from this directory is the same instrument as the two thinkpad
-runs of 2026-09-27, made from `d04da2a`. The deposits before them ran earlier revisions
-of the matrix, and each names its own by sha256 where its box facts record one. The two
-files keep their own docstrings and comments, and this document restates only what a
-reader needs to hold a result against.
+it moved here. Both differ from that copy by the fixes of pull request #716, which hold
+every tuple field the probe claims held, per section 5, and refuse absence and
+unreadable evidence rather than read them as agreement, per section 3. A test pins that
+on the path every session of the 2026-09-27 runs took, a recorded seed, no schedule,
+every compared field present in both records and every load logging its device, the
+verdict, the recorded seeds and every turn are the ones the `d04da2a` file returns, and
+the fields that move are named: the declared seed, null in those runs' records and now
+the declaration's own, and the device each session's loads logged. A run from this
+directory is the same instrument as the two thinkpad runs of 2026-09-27, made from
+`d04da2a`. The deposits before them ran earlier revisions of the matrix, and each names
+its own by sha256 where its box facts record one. The two files keep their own
+docstrings and comments, and this document restates only what a reader needs to hold a
+result against.
 
 **Words.** The charter's cell is a card family a device probe runs on. This probe's
 code calls one combination of a prompt and a depth a cell, and in this document that
@@ -116,17 +118,22 @@ matrix rather than the front of it.
 5. Compare every turn.
 
 **A turn is compared on eight fields**, per `CHECKS`: the rendered prompt, the derived
-generation seed, the effective sampling knobs, the emission bytes, the finish kind,
-the resident count, the input token ids, and the per-token entropies. A turn matches
-when all eight are equal, and a session matches when every served turn matches and
-the replay holds no surplus turn, since a replay carrying turns the source did not is
-interleaved traffic and never a match.
+generation seed, the effective sampling knobs, the emission bytes, the finish kind, the
+resident count, the input token ids, and the per-token entropies. A check either record
+carries no value for, missing or null, is never a match and is a fault, so absence on
+both sides cannot read as agreement. A turn matches when all eight are observed and
+equal, and a session matches when every served turn matches and the replay holds no
+surplus turn, since a replay carrying turns the source did not is interleaved traffic
+and never a match.
 
 **The verdict is REPRODUCED or DIVERGED, and anything else is an apparatus fault.** A
 session that could not complete records the step it stopped at as its verdict: a load or
 reload refused, a socket that never stood, a load composed by a loop other than the
 config's, a load that served a declaration other than the session's or wrote no load
-event, a turn not answered, source or replay turns split across runs or short of the
+event, a load whose serving device cannot be read or names none, source and replay loads
+on different devices, a turn not answered, a turn missing its request or a payload kind
+or carrying a compared kind twice, a source turn the replay does not carry, a check a
+record carries no value for, source or replay turns split across runs or short of the
 depth, a replay read short, a seed mismatch under section 4, or an exception. A replay
 read short is the sink one turn behind and is kept apart from DIVERGED, which is the
 strongest negative the harness emits. Faults are counted apart from both verdicts, so a
@@ -168,9 +175,12 @@ libraries the SPU links, the worker, SPU and gate binaries, and the toolchain ar
 read when the run opens and again when it closes. A field that reads the same at both
 ends is `unchanged`, and one that differs says so with both readings, a changed claim
 being made only where both sides are readings and not where a closing read failed. The
-serving device is read from the worker's journal over the run's window. The summary
-carries these with the counts: sessions, reproduced, diverged, faults, the verdicts by
-prompt character and by declared seed, and the first twenty divergences and faults.
+serving device is read from the worker's journal for each load as it stands, both halves
+of a session on one binding, since a journal kept by size holds minutes and a read at
+the close would miss most of a run. The window read at the close is kept as a record and
+not counted. The summary carries these with the counts: sessions, reproduced, diverged,
+faults, the verdicts by prompt character and by declared seed, and the first twenty
+divergences and faults.
 
 **Every load is held to the session's declaration and loop.** Each load event records
 the digest of the declaration it served, the sha256 of the declaration file, and the
@@ -186,7 +196,7 @@ loop leaves the loop unchecked.
 | --- | --- | --- |
 | weights | the artifact's path held per load by the declaration's digest, and its bytes read at both ends | yes, `weights` must read `unchanged` |
 | precision | fixed by the weights hash | yes, with the weights |
-| device | one serving binding over the run's window, read and not varied | yes, `serving_device` must be one binding |
+| device | each load's binding read as it stands, both halves on one, and every session on the same one | yes, `serving_device` must be one binding |
 | kernel stack | the engine libraries, the binaries and the toolchain read at both ends | yes, each must read `unchanged` |
 | batch composition | recorded, not held: one caller and one turn at a time by construction, and the record carries nothing a second caller would change | no |
 | sampler and seed | the declared seed on every session's recorded seed, the replay's equal to the source's, the knobs compared per turn and held per load by the declaration's digest | yes, every session's verdict |

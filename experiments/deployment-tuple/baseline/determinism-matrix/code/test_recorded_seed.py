@@ -17,6 +17,7 @@ CFG = {"trace": "unused", "agent": "karl"}
 SEED = 451234785645
 DECLARATION = "d" * 64
 LOOP = "1" * 64
+CARD = [{"ordinal": 0, "name": "card", "pci_bus_id": "0000:01:00.0"}]
 
 
 class Agent:
@@ -25,9 +26,14 @@ class Agent:
     its ordinal and the seed its half was loaded under, or no seed at all."""
 
     def __init__(self, source_seed=SEED, replay_seed=SEED,
-                 served=(DECLARATION, DECLARATION), loops=(LOOP, LOOP)):
+                 served=(DECLARATION, DECLARATION), loops=(LOOP, LOOP),
+                 devices=({"devices": CARD}, {"devices": CARD})):
         self.seeds, self.loads, self.runs = (source_seed, replay_seed), 0, {}
-        self.served, self.loops, self.run = served, loops, None
+        self.served, self.loops, self.run, self.devices = served, loops, None, devices
+
+    def serving_device(self, cfg, since):
+        """The device each half's load logs, as the journal read answers it."""
+        return self.devices[self.loads - 1]
 
     def admin(self, cfg, verb):
         if verb == "load":
@@ -40,25 +46,28 @@ class Agent:
         return True
 
     def gate_turn(self, cfg, text):
-        turns = self.runs[self.run]
-        n = len(turns) + 1
+        """One turn's trace events, written as the sink writes them, so the
+        harness reads them back through its own `cut_turns`."""
+        events = self.runs[self.run]
+        n = sum(1 for e in events if e["kind"] == "turn.started") + 1
         seed = self.seeds[self.loads - 1]
         sampling = {"generation_seed": 7 * n, "temperature": 0.7}
         if seed is not None:
             sampling["seed"] = seed
-        turns.append({
-            "turn": f"t-{n}", "text": text,
-            "payload": {
-                "model.request": {"rendered": f"<user>{text}", "sampling": sampling},
-                "model.output": {"emission": [len(text), n], "finish": "stop", "resident": 12 * n},
-                "model.measurement": {"input_tokens": [n, len(text)], "entropies": [0.25, 0.5 * n]},
-            },
-            "wall": {"turn.started": 1000 * n, "turn.closed": 1000 * n + 40},
-        })
+        turn = f"t-{n}"
+        for kind, payload, wall in [
+                ("turn.started", {}, 1000 * n),
+                ("message.user", {"role": "user", "content": [{"type": "text", "text": text}]}, 1000 * n),
+                ("model.request", {"rendered": f"<user>{text}", "sampling": sampling}, 1000 * n),
+                ("model.output", {"emission": [len(text), n], "finish": "stop", "resident": 12 * n}, 1000 * n),
+                ("model.measurement", {"input_tokens": [n, len(text)], "entropies": [0.25, 0.5 * n]}, 1000 * n),
+                ("turn.closed", {"close": "clean"}, 1000 * n + 40)]:
+            events.append({"run": self.run, "turn": turn, "kind": kind, "wall_ms": wall, "payload": payload})
         return {"kind": "answered", "run": self.run}
 
     def await_turns(self, trace, want, run):
-        return list(self.runs.get(run, [])), None
+        events = list(self.runs.get(run, []))
+        return base.cut_turns(events), events
 
     def newest_load(self, trace, keep=2):
         """The load event each half's load writes: the declaration's digest
@@ -73,7 +82,8 @@ class Agent:
 
 def session(agent, depth=2, declared_seed=None, declaration_sha=None, cfg=CFG):
     saved = {k: getattr(base, k)
-             for k in ("admin", "wait_socket", "gate_turn", "await_turns", "newest_load")}
+             for k in ("admin", "wait_socket", "gate_turn", "await_turns", "newest_load",
+                       "serving_device")}
     try:
         for k in saved:
             setattr(base, k, getattr(agent, k))
@@ -135,20 +145,26 @@ BEFORE = json.loads("""
 """)
 
 
+# The fields a session record gains since d04da2a on today's path, named so
+# that nothing else may move: the device each load logged (round three).
+ADDED = {"devices": CARD}
+
+
 def test_the_path_the_runs_took_is_unchanged():
     # Perturbation: any change to a verdict, a seed field or a turn's
-    # comparison on this path fails the equality.
-    assert session(Agent()) == BEFORE
+    # comparison on this path fails the equality. On that path every CHECKS
+    # field is present in both records and every load logs its device.
+    assert session(Agent()) == dict(BEFORE, **ADDED)
 
 
-def test_the_path_main_now_drives_differs_by_the_declared_seed_alone():
+def test_the_path_main_now_drives_differs_by_the_named_fields_alone():
     # #716 round two: main reads the declaration's seed without a schedule
     # and holds every load to the declaration's digest. On today's path the
     # verdict, the recorded seeds and every turn are the d04da2a record's,
     # and the one field that moves is `declared_seed`, null in today's
     # records and now the seed the declaration holds.
     rec = session(Agent(), declared_seed=SEED, declaration_sha=DECLARATION)
-    assert rec == dict(BEFORE, declared_seed=SEED), sorted(
+    assert rec == dict(BEFORE, declared_seed=SEED, **ADDED), sorted(
         k for k in rec if rec[k] != BEFORE.get(k))
 
 
@@ -255,7 +271,8 @@ def test_a_divergence_still_reads_as_one():
     def drifting(cfg, text):
         close = real(cfg, text)
         if agent.loads == 2:
-            agent.runs[agent.run][-1]["payload"]["model.output"]["emission"].append(0)
+            output = [e for e in agent.runs[agent.run] if e["kind"] == "model.output"][-1]
+            output["payload"]["emission"].append(0)
         return close
     agent.gate_turn = drifting
     assert session(agent)["verdict"] == "DIVERGED"
@@ -289,7 +306,8 @@ def run_main(agent, device=None, hours="0.00003"):
                  "toolchain": lambda c: {"rustc": {"path": "/rustc", "sha256": "e" * 64}},
                  "closing_resolution": lambda c: ("/spu", None),
                  "device_bindings": lambda c, since: [device if device is not None else card]}
-        for k in ("admin", "wait_socket", "gate_turn", "await_turns", "newest_load"):
+        for k in ("admin", "wait_socket", "gate_turn", "await_turns", "newest_load",
+                  "serving_device"):
             fakes[k] = getattr(agent, k)
         saved = {k: getattr(base, k) for k in fakes}
         argv = sys.argv
@@ -338,8 +356,10 @@ def test_main_holds_every_field_without_a_schedule():
     assert code == 1 and all(r["verdict"].startswith("the declared seed did not reach") for r in records)
     code, records, _ = run_main(Reloading(served=("e" * 64, "e" * 64)))
     assert code == 1 and all("served another declaration" in r["verdict"] for r in records)
-    code, records, _ = run_main(Reloading(), device={"varied": []})
-    assert code == 1 and {r["verdict"] for r in records} == {"REPRODUCED"}
+    # The journal window is recorded and not gated, so a window that lost
+    # its loads no longer stands in for them: the sessions' own reads do.
+    code, records, s = run_main(Reloading(), device={"varied": []})
+    assert code == 0 and s["serving_device"] == CARD, (code, s["serving_device"])
 
 
 if __name__ == "__main__":

@@ -204,6 +204,38 @@ def load_held(cfg, before, declaration_sha, half, rec, timeout=15.0):
     return True
 
 
+def load_device(cfg, since, half, rec, tries=15, pause=0.2):
+    """The devices this half's load bound, read from the worker's journal
+    right after the load stands, while the journal still holds it (#716
+    round three). A read at the end of the run cannot stand in for this: on
+    a box whose journal keeps minutes, the window a run spans is mostly gone
+    by its close, and the loads it lost would pass unread. A load whose
+    device cannot be read, or which names none, is a fault. Retried briefly,
+    since journald can trail the load it records."""
+    for _ in range(tries):
+        seen = base.serving_device(cfg, since)
+        if isinstance(seen, dict) and seen.get("devices"):
+            return seen["devices"]
+        time.sleep(pause)
+    rec["verdict"] = f"the {half} load's serving device could not be read: {json.dumps(seen)}"
+    return None
+
+
+def run_binding(results):
+    """The one binding every session read, or why there is none: the
+    sessions' own per-load reads, not a window the journal may have lost."""
+    seen = []
+    for r in results:
+        d = r.get("devices")
+        if d is not None and d not in seen:
+            seen.append(d)
+    if len(seen) == 1:
+        return seen[0]
+    if not seen:
+        return {"unreadable": "no session read its serving device"}
+    return {"varied": seen}
+
+
 # The fields read at both ends of a run, each held where both reads agree.
 HELD_BY_WINDOW = ("weights", "engine_libraries", "weaver_binaries", "toolchain")
 
@@ -214,6 +246,14 @@ def unheld(summary):
     be one binding for the whole run, read and not varied: one list of
     devices, none unreadable."""
     out = [k for k in HELD_BY_WINDOW if (summary.get(k) or {}).get("status") != "unchanged"]
+    # A binary resolved by a guess, the admin configuration unread, was read
+    # identically at both ends and still never shown to be the one the
+    # runtime launches (#716 round three).
+    binaries = ((summary.get("weaver_binaries") or {}).get("reading") or {})
+    if "weaver_binaries" not in out and any(
+            isinstance(e, dict) and str(e.get("resolved_by", "")).startswith("guessed")
+            for e in binaries.values()):
+        out.append("weaver_binaries")
     device = summary.get("serving_device")
     if not (isinstance(device, list) and device
             and all(isinstance(d, dict) and "unreadable" not in d for d in device)):
@@ -265,12 +305,18 @@ def entropies_of(turn):
     vals = [x for x in e if isinstance(x, (int, float))]
     if not vals:
         return None
-    return {
+    summary = {
         "count": len(vals),
         "mean": round(statistics.fmean(vals), 6),
         "max": round(max(vals), 6),
         "min": round(min(vals), 6),
     }
+    # A value that is not a number is left out of the summary and counted,
+    # never dropped unsaid (#716 round three). The comparison reads the
+    # series whole and is not touched by this.
+    if len(vals) != len(e):
+        summary["non_numeric"] = len(e) - len(vals)
+    return summary
 
 
 def run_session(cfg, probe, depth, iteration, declared_seed=None, declaration_sha=None):
@@ -296,6 +342,7 @@ def run_session(cfg, probe, depth, iteration, declared_seed=None, declaration_sh
     try:
         base.admin(cfg, "unload")
         before = base.newest_load(cfg["trace"])[0]
+        since = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 1))
         if base.admin(cfg, "load").get("kind") != "state":
             rec["verdict"] = "load refused"
             return rec
@@ -303,6 +350,9 @@ def run_session(cfg, probe, depth, iteration, declared_seed=None, declaration_sh
             rec["verdict"] = "gate socket never stood"
             return rec
         if not load_held(cfg, before, declaration_sha, "source", rec):
+            return rec
+        source_devices = load_device(cfg, since, "source", rec)
+        if source_devices is None:
             return rec
 
         source_runs = set()
@@ -325,6 +375,13 @@ def run_session(cfg, probe, depth, iteration, declared_seed=None, declaration_sh
         source_turns, _ = base.await_turns(cfg["trace"], depth, source_run)
         if len(source_turns) != depth:
             rec["verdict"] = f"expected {depth} source turns, found {len(source_turns)}"
+            return rec
+        # An incomplete turn is refused by name before anything is read from
+        # it, the harness keeping it rather than dropping it (#716 round three).
+        broken = next((st for st in source_turns if st["incomplete"]), None)
+        if broken:
+            rec["verdict"] = (f"source {broken['turn']} is incomplete:"
+                              f" {', '.join(broken['incomplete'])}")
             return rec
         # **The seed the record carries is read back, never assumed.** The
         # declared seed rides every `model.request` as `sampling.seed`, per
@@ -356,6 +413,7 @@ def run_session(cfg, probe, depth, iteration, declared_seed=None, declaration_sh
 
         base.admin(cfg, "unload")
         before = base.newest_load(cfg["trace"])[0]
+        since = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 1))
         if base.admin(cfg, "load").get("kind") != "state":
             rec["verdict"] = "reload refused"
             return rec
@@ -364,6 +422,15 @@ def run_session(cfg, probe, depth, iteration, declared_seed=None, declaration_sh
             return rec
         if not load_held(cfg, before, declaration_sha, "replay", rec):
             return rec
+        replay_devices = load_device(cfg, since, "replay", rec)
+        if replay_devices is None:
+            return rec
+        # Both halves on one binding, or the comparison is across silicon.
+        if replay_devices != source_devices:
+            rec["verdict"] = (f"source and replay did not bind the same devices:"
+                              f" {json.dumps(source_devices)} against {json.dumps(replay_devices)}")
+            return rec
+        rec["devices"] = source_devices
 
         # Reissued from the record rather than from this script's
         # constants, because the record is the artifact under test.
@@ -396,6 +463,11 @@ def run_session(cfg, probe, depth, iteration, declared_seed=None, declaration_sh
                 f" found {len(replay_all)} - the record is incomplete"
             )
             return rec
+        broken = next((rt for rt in replay_all if rt["incomplete"]), None)
+        if broken:
+            rec["verdict"] = (f"replay {broken['turn']} is incomplete:"
+                              f" {', '.join(broken['incomplete'])}")
+            return rec
         # **The replay's seed is read back like the source's.** Both halves
         # load from one declaration, so a replay recorded under another seed
         # is the apparatus and not the model, and the sampling-knobs check
@@ -416,11 +488,18 @@ def run_session(cfg, probe, depth, iteration, declared_seed=None, declaration_sh
         all_match = len(replay_all) == len(source_turns)
         for st in source_turns:
             rt = replay_by.get(st["turn"])
+            # A source turn the replay does not carry is the record and not
+            # the model, and so is a check either side carries no value for:
+            # both are faults, never DIVERGED and never a match (#716 round
+            # three).
             if rt is None:
-                all_match = False
-                rec["turns"].append({"turn": st["turn"], "missing": True})
-                continue
+                rec["verdict"] = f"the replay carries no {st['turn']}"
+                return rec
             checks = base.compare_turn(st, rt)
+            why = base.unobserved(checks)
+            if why:
+                rec["verdict"] = f"{st['turn']}: {why}"
+                return rec
             matched = all(c["match"] for c in checks)
             all_match = all_match and matched
             # The emission's digest rides beside the verdict so a reading
@@ -711,8 +790,12 @@ def main():
         # being a call a Ctrl-C can land in.
         bindings = [{"unreadable": f"the device read failed: {base._why(e)}"}]
     summary = {
-        "serving_device": (bindings[0] if len(bindings) == 1
-                           else {"varied": bindings}),
+        # Held from every session's own per-load read (#716 round three).
+        # The journal window over the whole run is kept as a record and not
+        # gated: a journal that keeps minutes cannot answer for hours.
+        "serving_device": run_binding(results),
+        "serving_device_journal_window": (bindings[0] if len(bindings) == 1
+                                          else {"varied": bindings}),
         "weights": weights_at_close,
         "engine_libraries": libraries,
         "weaver_binaries": binaries_at_close,
