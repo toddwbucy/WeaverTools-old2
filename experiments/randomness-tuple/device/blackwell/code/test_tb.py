@@ -1103,6 +1103,16 @@ class PayloadTests(unittest.TestCase):
         self.invoke_load(job)
         self.assertIn('seed: 7',(self.root/'agents/B1/bravo.yaml').read_text())
 
+    def test_a_load_whose_sink_stands_refuses_by_name(self):
+        # #709 round three's walk: a coordinator dying after root's load and
+        # before its receipt leaves the sink standing, and the retried load
+        # refuses by name rather than loading the run twice. Perturbation:
+        # drop fresh-sink and the retry refuses unnamed, at mkdir.
+        job=self.setup_load();self.invoke_load(job)
+        declaration=(self.root/'agents/B1/bravo.yaml').read_bytes()
+        with self.assertRaisesRegex(RuntimeError,'fresh-sink'):self.invoke_load(job)
+        self.assertEqual((self.root/'agents/B1/bravo.yaml').read_bytes(),declaration)
+
     def test_replay_load_orders_preload_before_wait(self):
         job=self.setup_load();source=self.base/'source';source.write_text(TWO_RUNS)
         job.update(kind='refeed',source_trace=str(source),source_run='r2');self.plan['files'][str(source)]=order.sha(source)
@@ -2026,10 +2036,25 @@ class ApprovalTests(unittest.TestCase):
     def write(self,record=None):
         self.recordfile.write_text(json.dumps(record or self.record))
 
-    def approve(self,code=None,record=None):
+    def approve(self,code=None,record=None,expected=None):
+        """Root's approve, handed the record digest the coordinator took
+        before sudo: by default the record's own, as it stands."""
+        path=record or self.recordfile
         with self.pt.as_root(code or self.code),patch('tb_payload.os.geteuid',return_value=0),patch.dict(os.environ,{'SUDO_UID':'1000'}),patch('tb_payload.pwd.getpwnam',return_value=self.pt.user),contextlib.redirect_stdout(io.StringIO()) as out:
-            payload.approve(str(record or self.recordfile))
+            payload.approve(str(path),expected or order.sha(path))
         return out.getvalue()
+
+    def as_sudo(self,argv,stdout,**kw):
+        """sudo as the coordinator calls it for approve, running root's step
+        in process, a refusal answering as the payload's exit status does."""
+        self.assertEqual(argv[:4],['sudo','/usr/bin/python3','-I','-c'])
+        try:
+            with self.pt.as_root(self.code),patch('tb_payload.os.geteuid',return_value=0),patch.dict(os.environ,{'SUDO_UID':'1000'}),patch('tb_payload.pwd.getpwnam',return_value=self.pt.user),contextlib.redirect_stdout(stdout):
+                payload.approve(argv[6],argv[7])
+        except RuntimeError as error:
+            stdout.write(f'REFUSED: {error}\n');stdout.flush()
+            return subprocess.CompletedProcess(argv,1)
+        return subprocess.CompletedProcess(argv,0)
 
     def approvals(self):
         return sorted(p.name for p in (self.pt.root/'approval').iterdir()) if (self.pt.root/'approval').exists() else None
@@ -2063,13 +2088,94 @@ class ApprovalTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError,'approval-artifacts'):self.approve()
         self.assertEqual(self.approvals(),before)
 
-    def test_a_second_approve_of_the_same_record_refuses(self):
-        self.approve();before=self.approvals()
+    def test_a_second_approve_of_the_same_record_adopts_it(self):
+        # #709 round three: a record approved before is adopted, its complete
+        # approval verified and its digest printed, and nothing is written.
+        # Perturbation: drop the adoption and a second approval is written
+        # beside the first.
+        first=self.approve().split()[1];directory=self.pt.root/'approval'/first
+        before={f.name:(f.read_bytes(),f.stat().st_mtime_ns) for f in directory.iterdir()}
+        self.assertEqual(self.approve().split()[1],first)
+        self.assertEqual(self.approvals(),[first])
+        self.assertEqual({f.name:(f.read_bytes(),f.stat().st_mtime_ns) for f in directory.iterdir()},before)
+        # What is adopted is checked as a reader checks it. Perturbation: drop
+        # approval-adopt and each of these is adopted.
+        for name,change in [('approval.pub.json',b'{}'),('plan.json',b'changed'),('tb_payload.py',b'changed')]:
+            with self.subTest(name=name):
+                kept=(directory/name).read_bytes();(directory/name).chmod(0o600);(directory/name).write_bytes(change)
+                with self.assertRaisesRegex(RuntimeError,'approval-adopt'):self.approve()
+                (directory/name).write_bytes(kept);(directory/name).chmod(0o644 if name=='approval.pub.json' else 0o600)
+        # Two complete approvals of one record is custody no approve made, and
+        # neither is adopted. Perturbation: drop approval-once and one is.
+        body=json.loads((directory/'approval.json').read_bytes());body['approved_at']=1
+        data=(json.dumps(body,sort_keys=True,indent=1)+'\n').encode();twin=self.pt.root/'approval'/hashlib.sha256(data).hexdigest()
+        shutil.copytree(directory,twin);(twin/'approval.json').write_bytes(data);(twin/'approval.pub.json').write_bytes(data)
         with self.assertRaisesRegex(RuntimeError,'approval-once'):self.approve()
-        self.assertEqual(self.approvals(),before)
+        shutil.rmtree(twin)
         # A new review is a new record and approves beside the first.
         self.write(dict(self.record,reference=self.record['reference']+'1'));self.approve()
         self.assertEqual(len(self.approvals()),2)
+
+    def test_a_partial_approval_refuses_by_name(self):
+        # #709 round three: a crash mid-write leaves a `.pending-` directory
+        # the run's own cleanup never reached. It is never adopted or written
+        # past, and refuses by name. Perturbation: drop approval-partial and
+        # the first refuses unnamed, the second is adopted past.
+        self.approve();before=self.approvals()
+        pending=self.pt.root/'approval'/('.pending-'+order.sha(self.recordfile));pending.mkdir(mode=0o700)
+        (pending/'plan.json').write_bytes(self.planfile.read_bytes())
+        with self.assertRaisesRegex(RuntimeError,'approval-partial'):self.approve()
+        self.assertEqual(sorted(os.listdir(self.pt.root/'approval')),sorted(before+[pending.name]))
+        shutil.rmtree(pending)
+        # A digest-named directory whose record is missing is no approval either.
+        broken=self.pt.root/'approval'/('d'*64);broken.mkdir();broken.chmod(0o755)
+        with self.assertRaisesRegex(RuntimeError,'approval-partial'):self.approve()
+        broken.rmdir();self.assertEqual(self.approvals(),before)
+
+    def test_a_record_moved_after_the_coordinator_hashed_it_refuses(self):
+        # #709 round three: root holds its read to the digest the coordinator
+        # took before sudo. Perturbation: drop approval-record-digest and the
+        # moved record is approved under a digest the coordinator never took.
+        expected=order.sha(self.recordfile)
+        self.write(dict(self.record,reference=self.record['reference']+'2'))
+        with self.assertRaisesRegex(RuntimeError,'approval-record-digest'):self.approve(expected=expected)
+        self.assertFalse(self.pt.root.exists())
+
+    def test_an_interrupted_approve_is_adopted_on_retry(self):
+        # #709 round three, the crash window: root commits, then the
+        # coordinator dies before the state learns the pointer. The retry
+        # adopts root's approval and records the pointer once. The target is
+        # hashed once before sudo and never read again after it.
+        statefile=self.pt.base/'state.json';order.atomic(statefile,dict(cursor=0,done={},approval=None))
+        log=self.pt.base/'approve.log'
+        with patch.object(order,'APPROVAL_ROOT',self.pt.root/'approval'),patch.object(order,'APPROVAL_OWNER',os.getuid()):
+            def dies_after_root(argv,stdout,**kw):
+                self.as_sudo(argv,stdout);raise KeyboardInterrupt('the coordinator dies here')
+            with patch('tb_order.subprocess.run',side_effect=dies_after_root),self.assertRaises(KeyboardInterrupt):order.approve(statefile,self.recordfile,log)
+            self.assertIsNone(json.loads(statefile.read_text())['approval'])
+            committed=self.approvals();self.assertEqual(len(committed),1)
+            writes=[];real=order.atomic
+            def counted(path,value):writes.append(value.get('approval'));real(path,value)
+            with patch('tb_order.subprocess.run',side_effect=self.as_sudo),patch('tb_order.atomic',side_effect=counted):
+                self.assertEqual(order.approve(statefile,self.recordfile,log),committed[0])
+            self.assertEqual((writes,self.approvals()),([committed[0]],committed))
+            self.assertEqual(json.loads(statefile.read_text())['approval'],committed[0])
+            # The record moving on disk after root has run changes nothing:
+            # the coordinator checks the approval against the digest it took
+            # before sudo. Perturbation: read the target again after root and
+            # this refuses under approve-record.
+            order.atomic(statefile,dict(cursor=0,done={},approval=None))
+            def moved_after_root(argv,stdout,**kw):
+                result=self.as_sudo(argv,stdout);self.write(dict(self.record,reference=self.record['reference']+'3'));return result
+            self.write()
+            with patch('tb_order.subprocess.run',side_effect=moved_after_root):self.assertEqual(order.approve(statefile,self.recordfile,log),committed[0])
+            # And moving before root reads it refuses at root, the state unchanged.
+            order.atomic(statefile,dict(cursor=0,done={},approval=None));self.write()
+            def moved_before_root(argv,stdout,**kw):
+                self.write(dict(self.record,reference=self.record['reference']+'4'));return self.as_sudo(argv,stdout)
+            with patch('tb_order.subprocess.run',side_effect=moved_before_root),self.assertRaisesRegex(order.Refused,'approve-exit'):order.approve(statefile,self.recordfile,log)
+            self.assertIn('approval-record-digest',log.read_text())
+            self.assertIsNone(json.loads(statefile.read_text())['approval'])
 
     def test_a_linked_or_malformed_record_or_other_code_refuses(self):
         link=self.pt.base/'linked.json';link.symlink_to(self.recordfile)
@@ -2098,9 +2204,9 @@ class ApprovalTests(unittest.TestCase):
         log=self.pt.base/'approve.log'
         def as_sudo(argv,stdout,**kw):
             self.assertEqual(argv[:4],['sudo','/usr/bin/python3','-I','-c'])
-            self.assertEqual(argv[5:],['approve',str(self.recordfile.resolve())])
+            self.assertEqual(argv[5:],['approve',str(self.recordfile.resolve()),order.sha(self.recordfile)])
             with self.pt.as_root(self.code),patch('tb_payload.os.geteuid',return_value=0),patch.dict(os.environ,{'SUDO_UID':'1000'}),patch('tb_payload.pwd.getpwnam',return_value=self.pt.user),contextlib.redirect_stdout(stdout):
-                payload.approve(argv[6])
+                payload.approve(argv[6],argv[7])
             return subprocess.CompletedProcess(argv,0)
         with patch.object(order,'APPROVAL_ROOT',self.pt.root/'approval'),patch.object(order,'APPROVAL_OWNER',os.getuid()):
             with patch('tb_order.subprocess.run',side_effect=as_sudo):digest=order.approve(statefile,self.recordfile,log)
@@ -2128,7 +2234,7 @@ class ApprovalTests(unittest.TestCase):
         def as_sudo(argv,stdout,**kw):
             asked.append(argv)
             with self.pt.as_root(self.code),patch('tb_payload.os.geteuid',return_value=0),patch.dict(os.environ,{'SUDO_UID':'1000'}),patch('tb_payload.pwd.getpwnam',return_value=self.pt.user),contextlib.redirect_stdout(stdout):
-                payload.approve(argv[6])
+                payload.approve(argv[6],argv[7])
             return subprocess.CompletedProcess(argv,0)
         with patch.object(order,'APPROVAL_ROOT',self.pt.root/'approval'),patch.object(order,'APPROVAL_OWNER',os.getuid()),patch('tb_order.subprocess.run',side_effect=as_sudo):
             with self.assertRaisesRegex(order.Refused,'one-approval-per-state'):order.approve(statefile,self.recordfile,log)
@@ -2169,12 +2275,16 @@ class ApprovalTests(unittest.TestCase):
         self.assertEqual(self.approvals(),[])
 
     def test_an_approval_directory_already_standing_refuses(self):
-        # The digest is deterministic under a fixed clock, so a directory that
-        # already holds its name, with no record in it, is found by the rename.
-        with patch('tb_payload.time.time',return_value=0):digest=self.approve().split()[1]
-        (self.pt.root/'approval'/digest/'approval.json').unlink()
-        with patch('tb_payload.time.time',return_value=0),self.assertRaisesRegex(RuntimeError,'approval-new'):self.approve()
-        self.assertEqual(self.approvals(),[digest])
+        # The scan refuses anything standing that is not a complete approval,
+        # so what the rename still finds is a name made during the run.
+        (self.pt.root/'approval').mkdir(parents=True);self.pt.root.chmod(0o755);(self.pt.root/'approval').chmod(0o755)
+        real=payload.write_new;made=[]
+        def appears(path,data,mode):
+            real(path,data,mode)
+            if path.name=='approval.json':
+                twin=path.parent.parent/hashlib.sha256(data).hexdigest();twin.mkdir();made.append(twin.name)
+        with patch('tb_payload.write_new',side_effect=appears),self.assertRaisesRegex(RuntimeError,'approval-new'):self.approve()
+        self.assertEqual(self.approvals(),made)
 
     def test_root_reads_its_own_code_and_an_approval_by_name(self):
         self.assertEqual(payload.own_code(b'/usr/bin/python3\0-I\0-c\0CODE\0provision\0'+b'a'*64+b'\0'),b'CODE')
@@ -2190,7 +2300,8 @@ class ApprovalTests(unittest.TestCase):
             held=stand_approval(self.pt.root/'approval',dict(self.record,hold=True))
             with self.assertRaisesRegex(RuntimeError,'approval-record'):payload.read_approval(held)
         with self.pt.as_root(),patch('tb_payload.os.geteuid',return_value=0),patch.dict(os.environ,{'SUDO_UID':'1000'}):
-            for argv in [['payload','approve'],['payload','approve',str(self.recordfile),'extra']]:
+            for argv in [['payload','approve'],['payload','approve',str(self.recordfile)],['payload','approve',str(self.recordfile),'not-a-digest'],
+                         ['payload','approve',str(self.recordfile),order.sha(self.recordfile),'extra']]:
                 with self.subTest(argv=argv),patch('sys.argv',argv),self.assertRaisesRegex(RuntimeError,'approve-arguments'):payload.main()
 
     def test_the_coordinator_refuses_what_it_cannot_verify(self):

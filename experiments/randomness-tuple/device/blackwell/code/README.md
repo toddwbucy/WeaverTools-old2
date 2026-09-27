@@ -93,7 +93,11 @@ seat's published record, and root reads the record and every artifact it names
 once, checks each digest before its first write, copies the reviewed payload and
 plan root-owned under `/var/lib/weaver-tb/approval/<digest>/`, writes
 `approval.json` (0600) and `approval.pub.json` (0644), and prints the digest. It
-refuses a second approve of the same record and leaves nothing on any refusal.
+leaves nothing on any refusal. The coordinator hashes the record once before sudo
+and root holds its own read to that digest. A second approve of the same record
+adopts the approval root already made and writes nothing, so a coordinator that
+died after root committed recovers by running `approve` again. A partial
+approval a crash left refuses by name.
 The state keeps only that digest, as `approval`. Root reads the approval it
 names, holds its own code to the approval's payload digest, and parses the
 root-owned plan copy. The coordinator reads the public copy and takes the hold

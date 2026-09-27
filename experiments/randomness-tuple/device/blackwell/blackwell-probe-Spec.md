@@ -339,23 +339,41 @@ refuse to run as root, under `operator-not-root` and `driver-not-root`.
 2026-09-26 on #698 (679.5). The review seat publishes its review as a record: the
 status, the hold, the seat, the reference, the plan's path, the payload's path and the
 artifact map, every path with its sha256. The operator runs `tb-operator.sh approve
-<record>`, which hands root the reviewed payload by the `-c` form above. Root reads the
-record once, refusing a link, and every artifact it names once, each held to its digest
-before the first write, and holds the code it is running to the record's payload digest.
-It copies the reviewed payload and the plan into a directory under
-`/var/lib/weaver-tb/approval/`, writes `approval.json` (0600) and `approval.pub.json`
-(0644), the same bytes, names the directory by their digest, and prints it. It refuses a
-record it has approved before, and a refusal leaves nothing behind, under
-`approval-record`, `approval-root`, `approval-once`, `root-chain-custody`,
-`approval-self`, `approval-artifacts` and `approval-new`. **The state keeps that digest
-and nothing else about approval**, as `approval`, a pointer the coordinator records only
-once the public copy it names is root's and matches, under `approve-exit`,
-`approve-printed` and `approve-record`. **A new approval means a new state**: the
-pointer is set once, a second `approve` against a state holding one refuses before root
-is asked, under `one-approval-per-state`, and every receipt records the approval it ran
-under, so no run carries evidence of two. The hold and the review's fields are the
-record's. `halt` and `cursor` stay the operator's by design: a halt is the operator's
-right, and the cursor selects a step whose every earlier receipt is verified.
+<record>`. The coordinator hashes the record once and hands root the reviewed payload by
+the `-c` form above with the record's path and that digest. Root reads the record once,
+refusing a link, holds it to the coordinator's digest, reads every artifact it names
+once, each held to its digest before the first write, and holds the code it is running
+to the record's payload digest. It copies the reviewed payload and the plan into a
+directory under `/var/lib/weaver-tb/approval/`, writes `approval.json` (0600) and
+`approval.pub.json` (0644), the same bytes, names the directory by their digest, and
+prints it. A refusal leaves nothing behind, under `approval-record`,
+`approval-record-digest`, `approval-root`, `root-chain-custody`, `approval-self`,
+`approval-artifacts` and `approval-new`. **The state keeps that digest and nothing else
+about approval**, as `approval`, a pointer the coordinator records only once the public
+copy it names is root's and matches it and the record digest taken before sudo, the
+record never read again after root has run, under `approve-exit`, `approve-printed` and
+`approve-record`. **A new approval means a new state**: the pointer is set once, a
+second `approve` against a state holding one refuses before root is asked, under
+`one-approval-per-state`, and every receipt records the approval it ran under, so no run
+carries evidence of two. The hold and the review's fields are the record's. `halt` and
+`cursor` stay the operator's by design: a halt is the operator's right, and the cursor
+selects a step whose every earlier receipt is verified.
+
+**Every handoff across sudo answers a death between its two sides**, on #709's third
+pass. An interrupted step is never silently resumed, and adopting a finished, verified
+result is not a resume. **`approve` is adopted on retry**: a coordinator that dies after
+root commits and before the state is written leaves an approval the state does not name,
+and the retry hands root the same record, which root finds complete, checks as a reader
+would, and answers with its digest, writing nothing, under `approval-adopt`. Two
+complete approvals of one record refuse, under `approval-once`. A directory a crash left
+mid-write, or anything in the approvals that is not a complete approval, is never
+adopted and refuses by name, under `approval-partial`. **The scheduled steps refuse
+rather than repeat**: a `provision` retried over its own partial or finished work
+refuses under `fresh-install-root`, a `load` whose sink stands refuses under
+`fresh-sink` rather than loading the run twice, and an `unload` re-measures its whole
+claim, the agent unloaded and the interlock clear, from nothing it recorded before. A
+coordinator that survives the failure records a halt, and every later step refuses under
+`halt` while it stands.
 
 **On one box the operator at the sudo prompt is the trust anchor.** The snapshot closes
 the window between approval and `next`, the one the security review on #683 found, where
@@ -667,6 +685,7 @@ coordinator's: `schema`, `agent`, `stacks-distinct`, `isolated-root`, `tuple`,
 `approve-record-named`, `no-record-outside-approve` and `operator-not-root`. The
 payload's: `root-payload`, `approve-arguments`, `own-code`, `approval-record`,
 `approval-root`, `approval-once`, `approval-self`, `approval-artifacts`, `approval-new`,
+`approval-record-digest`, `approval-partial`, `approval-adopt`, `fresh-sink`,
 `approval-digest`, `approval-custody`, `payload-hash`, `plan-hash`, `fixed-root-agent`,
 `operator`, `source-file-hash`, `job-found`, `model-source`, `existing-model-custody`,
 `existing-model`, `stack-no-symlinks`, `stack-libraries`, `stack-file-coverage`,
@@ -735,9 +754,9 @@ reads each citation from `code/`.
 | `blackwell-probe-falsifier-halts-after-unload` | perturbation, `pair-falsifier`, `own-refeed-falsifier`, `control-falsifier`, `changed-seed-prediction` |
 | `blackwell-probe-one-command-one-seat-per-step` | perturbation, `step-order`, `seat`, `not-repeated`, `driver-owner`, `operator-not-root`, `driver-not-root` |
 | `blackwell-probe-approval-gates-every-step` | perturbation, `approval-digest`, `approval-custody`, `approval-record`, `approval-coverage`, `artifact-hashes`, `plan-snapshot`, `manifest-coverage`, `manifest-hashes`, `halt` |
-| `blackwell-probe-approval-in-root-custody` | perturbation, `one-approval-per-state`, `prior-approval`, `approval-record`, `approval-root`, `approval-once`, `approval-self`, `approval-artifacts`, `approval-new`, `approval-digest`, `approval-custody`, `own-code`, `approve-arguments`, `approve-exit`, `approve-printed`, `approve-record`, the tampered-artifact, flipped-state, replaced-payload and second-approve tests |
+| `blackwell-probe-approval-in-root-custody` | perturbation, `one-approval-per-state`, `prior-approval`, `approval-record-digest`, `approval-partial`, `approval-adopt`, the interrupted-approve test, `approval-record`, `approval-root`, `approval-once`, `approval-self`, `approval-artifacts`, `approval-new`, `approval-digest`, `approval-custody`, `own-code`, `approve-arguments`, `approve-exit`, `approve-printed`, `approve-record`, the tampered-artifact, flipped-state, replaced-payload and second-approve tests |
 | `blackwell-probe-wait-verifies-when-the-state-moves` | perturbation, `wait-owner`, `wait-order`, `wait-deadline` and the state-moves test |
-| `blackwell-probe-halt-is-evidence` | perturbation, `prior-success`, `prior-approval`, `prior-evidence`, `payload-exit`, `payload-receipt`, `cursor` |
+| `blackwell-probe-halt-is-evidence` | perturbation, `prior-success`, `prior-approval`, `prior-evidence`, `payload-exit`, `payload-receipt`, `cursor`, `fresh-sink` |
 | `blackwell-probe-root-receives-bytes-never-a-path` | perturbation, `payload-hash`, `plan-hash`, `root-payload`, `fixed-root-agent`, `operator` |
 | `blackwell-probe-operator-input-read-once` | perturbation, `snapshot-hash`, `source-file-hash`, `source-run-selected`, `reader-approved`, `source-trace`, `receipt-present`, `receipt-digest` |
 | `blackwell-probe-served-tree-locked-and-verified` | perturbation, `stack-no-symlinks`, `stack-file-coverage`, `installed-no-symlinks`, `installed-stack-custody`, `installed-stack-coverage`, `installed-stack-hash`, `served-directory-custody`, `root-chain-custody` |

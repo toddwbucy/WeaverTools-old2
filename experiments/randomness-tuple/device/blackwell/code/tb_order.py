@@ -529,7 +529,13 @@ def approve(state_path, record, log):
     first write, and snapshots the approval root-owned. On one box the
     operator at the sudo prompt is the trust anchor, so this step checks
     nothing root does not check again. The state learns only the digest root
-    printed, and only once the public copy it names is root's and matches."""
+    printed, and only once the public copy it names is root's and matches it
+    and the record digest taken before sudo.
+
+    **Safe to retry after an interruption.** Dying after root commits and
+    before the state is written leaves an approval the state does not name.
+    The retry hands root the same record, root adopts the approval it already
+    made, and the pointer is recorded then, once."""
     order = Order(state_path)
     with order.locked():
         s = order.read()
@@ -539,14 +545,18 @@ def approve(state_path, record, log):
         check('one-approval-per-state', s.get('approval') is None)
         data = Path(__file__).with_name('tb_payload.py').read_bytes()
         target = Path(record).resolve()
+        # The record is hashed once, here, and that digest is what root holds
+        # its own read to and what the approval is checked against after:
+        # the target is never read again once root has run.
+        record_sha = sha(target)
         with log.open('w') as out:
-            code = subprocess.run(['sudo', '/usr/bin/python3', '-I', '-c', data.decode(), 'approve', str(target)],
+            code = subprocess.run(['sudo', '/usr/bin/python3', '-I', '-c', data.decode(), 'approve', str(target), record_sha],
                                   stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT).returncode
         check('approve-exit', code == 0)
         printed = [line.split(' ', 1)[1] for line in log.read_text().splitlines() if line.startswith('APPROVAL: ')]
         check('approve-printed', len(printed) == 1)
         approval = publication(printed[0])
-        check('approve-record', same(approval.get('record_sha256'), sha(target)))
+        check('approve-record', same(approval.get('record_sha256'), record_sha))
         s['approval'] = printed[0]
         atomic(order.path, s)
         return printed[0]

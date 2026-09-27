@@ -106,15 +106,35 @@ def write_new(path, data, mode):
     os.chmod(path, mode)
 
 
-def approve(record_path):
+def complete(held):
+    """An approval directory as `approve` leaves it at its rename: named by the
+    digest of its own `approval.json`, locked, no link. A `.pending-` directory
+    a crash left mid-write, or anything else in the approvals, is not."""
+    try:
+        return (DIGEST.fullmatch(held.name) is not None and not held.is_symlink() and held.is_dir()
+                and locked(held) and hashlib.sha256(read_once(held / 'approval.json', follow=False)).hexdigest() == held.name)
+    except OSError:
+        return False
+
+
+def approve(record_path, expected):
     """**The one privileged approval step** (679.5, the ruling of 2026-09-26 on
     #698). Root reads the review record once, refusing a link, and every
     artifact it names once, each held to its digest before the first write.
     The reviewed payload is the code now running, held to its digest too. It
     then copies the reviewed payload and the plan root-owned and writes
     `approval.json` (0600) and `approval.pub.json` (0644), the same bytes,
-    into a directory named by their digest, which it prints. A record already
-    approved refuses, and a refusal leaves nothing behind.
+    into a directory named by their digest, which it prints. A refusal leaves
+    nothing behind.
+
+    **Root holds the record to the digest the coordinator took before sudo**,
+    so the record approved is the one the coordinator records, whatever moves
+    on disk between the two. **A record approved before is adopted, not
+    approved again**: its complete approval is verified and its digest printed,
+    and nothing is written. That is what makes the step safe to retry when
+    the coordinator died after root committed and before the state learned the
+    pointer. A partial approval a crash left mid-write is never adopted and
+    refuses by name, since an interrupted step is never silently resumed.
 
     **On one box the operator at the sudo prompt is the trust anchor.** The
     snapshot closes the window between approval and `next`. The window before
@@ -127,17 +147,33 @@ def approve(record_path):
         record = None
     need('approval-record', well_formed_review(record))
     record_sha = hashlib.sha256(raw).hexdigest()
+    need('approval-record-digest', record_sha == expected)
     approvals = ROOT / APPROVAL
+    matches = []
     if approvals.exists():
         need('approval-root', locked(ROOT) and locked(approvals))
-        for held in approvals.iterdir():
-            prior = held / 'approval.json'
-            if prior.is_file() and not prior.is_symlink():
-                need('approval-once', json.loads(read_once(prior, follow=False)).get('record_sha256') != record_sha)
+        for held in sorted(approvals.iterdir()):
+            need('approval-partial', complete(held))
+            if json.loads(read_once(held / 'approval.json', follow=False)).get('record_sha256') == record_sha:
+                matches.append(held)
+        need('approval-once', len(matches) <= 1)
     elif ROOT.exists():
         need('approval-root', locked(ROOT))
     need('root-chain-custody', chain_custody(ROOT))
     need('approval-self', hashlib.sha256(own_code()).hexdigest() == record['artifacts'][record['payload']])
+    if matches:
+        # The approval this record already has, finished and renamed before
+        # whatever interrupted the run that made it: adopted whole, after the
+        # same checks a reader makes of it, and nothing written.
+        held = matches[0]
+        body = read_once(held / 'approval.json', follow=False)
+        prior = json.loads(body)
+        need('approval-adopt', read_once(held / 'approval.pub.json', follow=False) == body
+             and all(locked(held / name) for name in ('approval.json', 'approval.pub.json', 'plan.json', 'tb_payload.py'))
+             and hashlib.sha256(read_once(held / 'plan.json', follow=False)).hexdigest() == prior['plan']['sha256']
+             and hashlib.sha256(read_once(held / 'tb_payload.py', follow=False)).hexdigest() == prior['payload']['sha256'])
+        print(f'APPROVAL: {held.name}', flush=True)
+        return held.name
     kept = {}
     for path, digest in record['artifacts'].items():
         data = Path(path).read_bytes()
@@ -689,7 +725,11 @@ def load(plan, job, source_sink=None):
         need('cuda-local', len(lines) == 1 and f'{ROOT}/stacks/{stack}/cuda-lib/' in lines[0])
     print(resolved)
     directory = ROOT / 'sinks' / job['id']
-    directory.mkdir()  # Never truncate/reuse a run, even after refusal.
+    # Never truncate or reuse a run, even after refusal. A load whose sink
+    # stands was run before, perhaps by a coordinator that died before its
+    # receipt was written, and it refuses by name rather than loading twice.
+    need('fresh-sink', not directory.exists() and not directory.is_symlink())
+    directory.mkdir()
     os.chown(directory, 0, grp.getgrnam(plan['operator']).gr_gid)
     directory.chmod(0o2750)
     sink = directory / 'trace.ndjson'
@@ -739,8 +779,8 @@ def load(plan, job, source_sink=None):
 def main():
     need('root-payload', os.geteuid() == 0)
     if sys.argv[1:2] == ['approve']:
-        need('approve-arguments', len(sys.argv) == 3)
-        approve(sys.argv[2])
+        need('approve-arguments', len(sys.argv) == 4 and DIGEST.fullmatch(sys.argv[3]) is not None)
+        approve(sys.argv[2], sys.argv[3])
         print('SUCCESS: approve', flush=True)
         return
     step, pointer, *source_sink = sys.argv[1:]
