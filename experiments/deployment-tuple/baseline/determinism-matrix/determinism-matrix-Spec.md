@@ -139,11 +139,13 @@ source did not, a turn not answered, a turn missing its request or a payload kin
 carrying a compared kind twice or named by anything but a string, a source turn the
 replay does not carry, a check a record carries no value for, source or replay turns
 split across runs, under a run the gate names by anything but a string, or short of the
-depth, a replay read short, a seed mismatch under section 4, or an exception. A replay
-read short is the sink one turn behind and is kept apart from DIVERGED, which is the
-strongest negative the harness emits. Faults are counted apart from both verdicts, as
-the summary's `errors`, so a run's divergence count is never inflated by sessions that
-were not compared.
+depth, a replay read short, a seed mismatch under section 4, an exception, recorded as
+`error: <type>: <message>`, or an interrupt, recorded as `interrupted`. Both entry
+points record each of these in the one session path, so neither loses a session to a
+raise. A replay read short is the sink one turn behind and is kept apart from DIVERGED,
+which is the strongest negative the harness emits. Faults are counted apart from both
+verdicts, as the summary's `errors`, so a run's divergence count is never inflated by
+sessions that were not compared.
 
 **Each session's record** carries the prompt, its character, the depth, the sweep,
 both run identities, the declared and recorded seeds, the verdict and the wall time,
@@ -237,10 +239,12 @@ naming the fields that did not hold. A field read only at the two ends is held a
 change that stands at the close, not one undone within the run, and the per-load
 declaration digest is what holds the declared fields between.
 
-**A run killed outright writes no summary.** An interrupt ends the run cleanly and
-still writes it. A hangup, which is what closing the operator's terminal sends, ends
-the process before it does, and the per-session record written as each session
-closes is then the whole of what the run left.
+**A run killed outright writes no summary.** An interrupt ends the run cleanly and still
+writes it, in either entry point: the session it cut short is recorded as `interrupted`,
+the window is read at the close, and the run exits 1, since a session it began did not
+complete. A hangup, which is what closing the operator's terminal sends, ends the
+process before it does, and the per-session record written as each session closes is
+then the whole of what the run left.
 
 ## 6. The shared declarations
 
@@ -299,15 +303,28 @@ strings, since it reads each into every cell's record. A refused run exits 2.
 
 **Every file a run opens is opened at preflight too.** The config must parse as a JSON
 object. The artifact is opened and hashed as the weights' opening reading, and each
-cell's artifact is opened. The declaration is read, and where the run rewrites it, it
-is opened for writing and its directory must be writable for the backup. The admin
-binary must be a regular file with an execute bit, since it runs under `sudo`, and the
+cell's artifact is opened. The declaration is read, and where the run rewrites it, it is
+opened for writing and its directory must be writable for the backup. The admin binary
+must be a regular file with an execute bit, since it runs under `sudo`, and the
 repository a directory. The stack's opening readings are taken there, the admin
 configuration's entries, the binaries they name, the SPU and each library it links, and
 a reading that is not one, or that resolved a binary by a guess, is refused, since the
 exit could never count it held. The trace and the gate socket stand only once a load
 has, and each is awaited where it is read. No loop file is opened: the loop is held by
 its digest against each load event.
+
+**Every path the stack resolves is absolute.** The worker and the admin's units resolve
+a relative path against their own working directory and the harness against its launch
+directory, so one spelling would name two files and the run would record the bytes of
+one while the stack served the other. The declaration's artifact, `--artifact`, each
+cell's artifact, the config's `trace`, `gate_socket`, `admin_config` and `spu_bin`, and
+every binary the admin configuration names are refused at preflight unless absolute,
+and a library `ldd` names by any other path is unreadable. The paths only the harness
+opens, the declaration file, `admin_bin`, `repo` and the outdir, are its own.
+
+**Every file a run writes is its own.** The matrix writes three fixed names. The
+cross-precision entry point writes its report under the box's name and each cell's two
+trace files under the cell's name, so two cells of one name are refused at preflight.
 
 **A run writes into a deposit no earlier run wrote.** An outdir already holding
 `matrix.jsonl`, `matrix.log` or `summary.json` is refused before anything is written,

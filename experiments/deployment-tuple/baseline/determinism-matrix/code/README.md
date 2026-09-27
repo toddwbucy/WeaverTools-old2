@@ -12,8 +12,9 @@ path the 2026-09-27 runs took every verdict, seed and turn is what it was before
 fields that move named: the declared seed and the device each load logged. The
 `test_*.py` files are the tests of the two, three from that tree and
 `test_recorded_seed.py`, `test_absence_and_evidence.py`, `test_round_five.py`,
-`test_round_seven.py`, `test_round_eight.py` and `test_round_nine.py` from #716. Each
-is a plain script and exits non-zero on the first failure:
+`test_round_seven.py`, `test_round_eight.py`, `test_round_nine.py` and
+`test_round_ten.py` from #716. Each is a plain script and exits non-zero on the first
+failure:
 
 ```
 python3 test_seed_schedule.py
@@ -25,6 +26,7 @@ python3 test_round_five.py
 python3 test_round_seven.py
 python3 test_round_eight.py
 python3 test_round_nine.py
+python3 test_round_ten.py
 ```
 
 Stdlib only. It needs the installed agent stack, one agent whose declaration it
@@ -56,7 +58,10 @@ may carry it. The matrix takes its artifact from the declaration or from `--arti
 must be readable, the declaration writable where the run rewrites it, `admin_bin` an
 executable file and `repo` a directory, and the stack's opening readings, the admin
 configuration's entries and the binaries and libraries they name, must be readings and
-not guesses. A run refused there exits 2 and names what it refused.
+not guesses. Every path the stack resolves, the artifacts, `trace`, `gate_socket`,
+`admin_config`, `spu_bin` and the binaries the admin configuration names, must be
+absolute, and cell names must not repeat. A run refused there exits 2 and names what it
+refused.
 
 ## Before a run
 
@@ -91,7 +96,9 @@ start and the end, the serving device must be one binding for the whole run, and
 session must bear out its declared seed and serve its declared declaration. Anything
 less exits 1, and the log names the fields that did not hold. Both entry points exit
 on the one verdict, `run_verdict`, so the cross-precision protocol holds the same
-fields. Batch composition is
+fields. A session that raises is recorded as `error: <type>: <message>` on either, and
+an interrupt records the session it cut short as `interrupted`, closes the run and
+exits 1. Batch composition is
 recorded rather than held: one caller and one turn at a time by construction, which the
 record cannot show. The Spec's section 5 has the table.
 

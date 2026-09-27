@@ -29,7 +29,7 @@ MODEL = os.path.join(FIXTURE, "m.gguf")
 with open(MODEL, "wb") as _fh:
     _fh.write(b"weights")
 # Every key the config must carry, the fake agent reading none of them.
-CFG = {"trace": "unused", "agent": "karl", "gate_socket": "/unused.sock", "admin_bin": ADMIN,
+CFG = {"trace": "/unused/trace", "agent": "karl", "gate_socket": "/unused.sock", "admin_bin": ADMIN,
        "admin_config": "/unused/config", "repo": FIXTURE}
 FIXED = {"lib": {"path": "/lib", "sha256": "f" * 64}}
 

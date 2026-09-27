@@ -323,6 +323,21 @@ def declaration_seed(declaration):
 CONFIG_KEYS = ("agent", "declaration", "gate_socket", "trace", "admin_bin", "admin_config", "repo")
 CELL_CONFIG_KEYS = CONFIG_KEYS + ("box", "build_flags")
 OPTIONAL_KEYS = ("spu_bin", "loop_sha256", "build_flags")
+# **A path the stack resolves is absolute** (#716 round ten). The worker and
+# the admin's units resolve a relative path against their own working
+# directory and this harness against its launch directory, so one spelling
+# names two files, and the run records the bytes of the one it opened while
+# the stack serves the other. These keys name what the stack reads or
+# writes: its trace, its gate socket, the admin's configuration and the SPU.
+STACK_PATH_KEYS = ("trace", "gate_socket", "admin_config", "spu_bin")
+
+
+def stack_path(path, what):
+    """`path` where it is absolute, or the refusal naming it."""
+    if not isinstance(path, str) or not os.path.isabs(path):
+        raise ValueError(f"the {what} {path!r} is not an absolute path, and the stack"
+                         " resolves a relative one against its own directory")
+    return path
 
 
 def config_values(cfg, required=CONFIG_KEYS):
@@ -334,6 +349,9 @@ def config_values(cfg, required=CONFIG_KEYS):
     for key in OPTIONAL_KEYS:
         if key in cfg and (not isinstance(cfg[key], str) or not cfg[key]):
             raise ValueError(f"the config's optional {key} {cfg[key]!r} is present and empty or not a string")
+    for key in STACK_PATH_KEYS:
+        if key in cfg:
+            stack_path(cfg[key], f"config's {key}")
     return cfg
 
 
@@ -459,12 +477,13 @@ def yaml_scalar(raw):
 
 
 def declared_artifact(declaration):
-    """The one artifact the declaration binds, read as a scalar."""
+    """The one artifact the declaration binds, read as a scalar and held to
+    an absolute path, since the worker resolves it."""
     found = ARTIFACT_KEY.findall(declaration)
     if len(found) != 1:
         raise ValueError(f"the declaration names {len(found)} artifacts, not one")
     try:
-        return yaml_scalar(found[0][1])
+        return stack_path(yaml_scalar(found[0][1]), "declaration's artifact")
     except ValueError as e:
         raise ValueError(f"the declaration's artifact: {e}") from None
 
@@ -473,7 +492,9 @@ def with_artifact(declaration, path):
     """The declaration with its one artifact line set to `path`, written as a
     plain scalar. A path a plain scalar cannot carry unchanged is refused,
     as is a declaration without exactly one artifact line: the old rewrite's
-    `\\s*` could run past a line end into the next key."""
+    `\\s*` could run past a line end into the next key. The path is absolute,
+    since the worker resolves it."""
+    stack_path(path, "artifact path")
     if (not path or any(c.isspace() for c in path) or "#" in path
             or PLAIN_START.match(path) or ": " in path or path.endswith(":")):
         raise ValueError(f"the artifact path {path!r} is not one a plain YAML scalar carries unchanged")
@@ -512,7 +533,11 @@ def _resolve_spu(cfg):
     from an older deploy sitting there would be hashed confidently under the
     field whose whole purpose is to say whether two boxes run one build.
     """
+    # A relative path is refused rather than resolved here, the stack
+    # resolving it against another directory (#716 round ten).
     if cfg.get("spu_bin") is not None:
+        if not os.path.isabs(cfg["spu_bin"]):
+            return None, f"the config's spu_bin {cfg['spu_bin']!r} is not an absolute path"
         return cfg["spu_bin"], "config spu_bin"
     # **Skipped rather than joined against nothing.** `os.path.join("", name)`
     # is a bare relative name read against the launch directory, so a file
@@ -525,6 +550,8 @@ def _resolve_spu(cfg):
         try:
             with open(stated) as f:
                 named = f.read().strip()
+            if named and not os.path.isabs(named):
+                return None, f"{stated} names a relative path {named!r}"
             if named:
                 return named, "admin config spu-binary"
         except OSError:
@@ -736,6 +763,13 @@ def weaver_binaries(cfg, spu=None):
                 out[key] = {"path": None, "sha256": None,
                             "unreadable": f"{stated}: names no path"}
                 continue
+            # The admin launches this path, and a relative one resolves
+            # against its unit's directory, not this process's (#716 round
+            # ten).
+            if not os.path.isabs(path):
+                out[key] = {"path": path, "sha256": None,
+                            "unreadable": f"{stated}: names a relative path"}
+                continue
         try:
             out[key] = {"path": path, "sha256": _sha256(path)}
         except OSError as e:
@@ -856,10 +890,13 @@ def engine_libraries(cfg, spu=None):
         name, path = m.group(1), m.group(2)
         # `ldd` prints `=> not found` for an unresolved library, whose
         # second field is the bare word `not`. Recorded as unresolved
-        # rather than hashed as a path.
+        # rather than hashed as a path, and any other path that is not
+        # absolute is unreadable too, never resolved against this process's
+        # directory (#716 round ten).
         if not path.startswith("/"):
             out[name] = {"path": None, "sha256": None,
-                         "unreadable": "ldd reports it not found"}
+                         "unreadable": "ldd reports it not found" if path.startswith("not found")
+                         else f"ldd names a path that is not absolute: {path}"}
             continue
         try:
             h = hashlib.sha256()
@@ -1123,8 +1160,13 @@ def load_held(cfg, before, declaration_sha, half, rec, log=None, timeout=15.0):
     return True
 
 
+# The verdict of a session an interrupt cut short, on which both loops stop.
+INTERRUPTED = "interrupted"
+
+
 def verify_session(cfg, texts, rec, declared_seed, declaration_sha,
-                   step=None, log=None, turn_timeout=600, require_completed=False):
+                   step=None, log=None, turn_timeout=600, require_completed=False,
+                   declaration=None):
     """**The one session verification**, shared by both entry points: the
     matrix's `run_session` and this file's `run_cell` call it, and neither
     verifies anything outside it (#716 round eight). Three checks the matrix
@@ -1139,8 +1181,13 @@ def verify_session(cfg, texts, rec, declared_seed, declaration_sha,
     CHECKS field. It sets `rec["verdict"]`, a named fault or REPRODUCED or
     DIVERGED, and the run, seed, device and invocation fields it read, and
     answers the compared turns as `(source, replay, checks)` with the
-    evidence the caller deposits or records. It raises what it does not
-    expect, and each caller decides whether a raise is a verdict. The agent
+    evidence the caller deposits or records.
+
+    `declaration`, where given, is written to the declaration file before
+    the first load, and its digest is the one both loads are held to.
+    **Every exception is a verdict here, on both paths** (#716 round ten): a
+    raise is the apparatus fault `error: <type>: <message>`, and an interrupt
+    is the fault `interrupted`, on which the caller's loop stops. The agent
     is unloaded whichever way it leaves."""
     step = step or (lambda verb: admin(cfg, verb))
     log = log or (lambda m: None)
@@ -1193,6 +1240,10 @@ def verify_session(cfg, texts, rec, declared_seed, declaration_sha,
         return seeds[0], None
 
     try:
+        if declaration is not None:
+            with open(cfg["declaration"], "w") as fh:
+                fh.write(declaration)
+            declaration_sha = _sha256(cfg["declaration"])
         step("unload")  # whatever held the device before this session
         held = hold_load("source")
         if isinstance(held, str):
@@ -1308,6 +1359,10 @@ def verify_session(cfg, texts, rec, declared_seed, declaration_sha,
                          f" the source did not: {', '.join(surplus)}")
         rec["verdict"] = "REPRODUCED" if all_match else "DIVERGED"
         return pairs, evidence
+    except KeyboardInterrupt:
+        return fault(INTERRUPTED)
+    except Exception as exc:  # an unattended run records rather than dies
+        return fault(f"error: {type(exc).__name__}: {exc}")
     finally:
         step("unload")
 
@@ -1583,18 +1638,19 @@ def run_cell(cfg, cell, outdir, libraries, binaries, tools,
 
     # The declaration with this cell's artifact, everything else as
     # the operator wrote it.
-    with open(cfg["declaration"]) as f:
-        decl = f.read()
+    try:
+        with open(cfg["declaration"]) as f:
+            decl = f.read()
+    except OSError as e:
+        # The one step here that reaches the box, a fault in the form
+        # `verify_session` records every other raise in.
+        report["verdict"] = f"error: {type(e).__name__}: {e}"
+        return report
     try:
         swapped = with_artifact(decl, cell["artifact"])
     except ValueError as e:
         report["verdict"] = f"the cell's artifact cannot be declared: {e}"
         return report
-    with open(cfg["declaration"], "w") as f:
-        f.write(swapped)
-    # The declaration as written, by the digest every load event records,
-    # which both of the cell's loads are held to (#716 round six).
-    declaration_sha = _sha256(cfg["declaration"])
     # The seed the cell's declaration holds, which its record must bear out,
     # as the matrix's must (#716 round eight).
     try:
@@ -1611,9 +1667,11 @@ def run_cell(cfg, cell, outdir, libraries, binaries, tools,
 
     # **Verified by the one function both entry points share**, and nothing
     # here verifies anything of its own: this records, names and deposits.
-    pairs, evidence = verify_session(cfg, texts, report, declared_seed, declaration_sha,
+    # It writes the cell's declaration and holds both loads to its digest
+    # (#716 round six), and records any raise as the cell's fault.
+    pairs, evidence = verify_session(cfg, texts, report, declared_seed, None,
                                      step=step, log=log, turn_timeout=turn_timeout,
-                                     require_completed=require_completed)
+                                     require_completed=require_completed, declaration=swapped)
     report["metadata"]["serving_device"]["source"] = evidence["source_read"]
     report["metadata"]["serving_device"]["replay"] = evidence["replay_read"]
     if "invocations" in report:
@@ -1640,7 +1698,12 @@ def run_cell(cfg, cell, outdir, libraries, binaries, tools,
     # **Deposited from a fresh read rather than from the snapshots the
     # comparison used**, which on the source side were taken before its
     # unload, so a deposit from them would hold a run with no closing event.
-    _, whole = read_runs(cfg["trace"], keep=6)
+    # A trace that cannot be read again deposits the snapshots rather than
+    # losing a compared cell.
+    try:
+        _, whole = read_runs(cfg["trace"], keep=6)
+    except OSError:
+        whole = {}
     for label, run in (("source", report["source_run"]), ("replay", report["replay_run"])):
         run_events = whole.get(run) or evidence[f"{label}_events"]
         with open(os.path.join(outdir, f"cell-{name}-{label}.ndjson"), "w") as f:
@@ -1689,20 +1752,22 @@ def guessed(reading):
         for e in reading.values())
 
 
-def run_verdict(records, windows):
+def run_verdict(records, windows, interrupted=False):
     """**The run-wide verdict**, which both entry points exit on and only
     format (#716 round nine), as `verify_session` is the one session
     verification. `records` are the sessions, matrix records or cell
     reports, and `windows` the closing envelopes the entry point read, the
     stack's and any more. Answers whether every session reproduced, one at
-    least having run, and the held fields the run cannot show held:
+    least having run and no interrupt having cut the run short, and the held
+    fields the run cannot show held:
 
     - every window field, each of the stack's among them, reads `unchanged`;
     - no binary was resolved by a guess;
     - the sessions that read a serving device read one binding, and at
       least one did.
     """
-    reproduced = bool(records) and all(r.get("verdict") == "REPRODUCED" for r in records)
+    reproduced = (not interrupted and bool(records)
+                  and all(r.get("verdict") == "REPRODUCED" for r in records))
     fields = list(STACK_WINDOW) + [k for k in windows if k not in STACK_WINDOW]
     unheld = [k for k in fields
               if not (isinstance(windows.get(k), dict) and windows[k].get("status") == "unchanged")]
@@ -1750,6 +1815,12 @@ def main():
         for what, name in [("box", cfg["box"])] + [("cell name", c["name"]) for c in cfg["cells"]]:
             if SAFE_NAME.fullmatch(name) is None:
                 raise ValueError(f"the {what} {name!r} is not a name a deposit file can carry")
+        # Each cell's deposit files carry its name, so two cells of one name
+        # would write one pair of files (#716 round ten).
+        names = [c["name"] for c in cfg["cells"]]
+        repeated = sorted({n for n in names if names.count(n) > 1})
+        if repeated:
+            raise ValueError(f"the cell names {repeated} repeat, and each cell deposits under its name")
         # A backup already standing is a run that never restored the
         # declaration, whose file is then not the operator's: refused rather
         # than overwritten with the unrestored text (#716 round five).
@@ -1776,7 +1847,7 @@ def main():
     libraries, binaries, tools = (opening[k] for k in STACK_WINDOW)
     os.makedirs(args.outdir, exist_ok=True)
     shutil.copy2(cfg["declaration"], backup)
-    reports = []
+    reports, interrupted = [], False
     out = os.path.join(args.outdir, f"report-{cfg['box']}.json")
 
     def deposit():
@@ -1795,11 +1866,22 @@ def main():
         print(f"engine libraries: {json.dumps(libraries)}", flush=True)
         print(f"weaver binaries: {json.dumps(binaries)}", flush=True)
         print(f"toolchain: {json.dumps(tools)}", flush=True)
+        # **An interrupt stops the cells and still closes the run**, as it
+        # stops the matrix's sessions (#716 round ten): the cell it cut short
+        # is recorded as `interrupted`, the window is read, the deposit is
+        # written, and the run exits 1.
         invocations = set()
-        for cell in cfg["cells"]:
-            reports.append(hold_invocations(
-                run_cell(cfg, cell, args.outdir, libraries, binaries, tools), invocations))
-            deposit()
+        try:
+            for cell in cfg["cells"]:
+                report = hold_invocations(
+                    run_cell(cfg, cell, args.outdir, libraries, binaries, tools), invocations)
+                reports.append(report)
+                deposit()
+                if report["verdict"] == INTERRUPTED:
+                    raise KeyboardInterrupt
+        except KeyboardInterrupt:
+            interrupted = True
+            print("interrupted", flush=True)
 
         # **The provenance is read again after the cells have run**, the way
         # the matrix reads it at its close. A run unloads and reloads the
@@ -1863,7 +1945,9 @@ def main():
     # held. Every committed config names a repo. The alternative #379
     # sketched - is_reading distinguishing a partial reading from an
     # unusable one - stays open there for the reader that earns it.
-    reproduced, failing = run_verdict(reports, closings)
+    reproduced, failing = run_verdict(reports, closings, interrupted)
+    if interrupted:
+        print("interrupted - not a reproduction result", flush=True)
     if reproduced and failing:
         print("cells reproduced but these held fields did not hold:"
               f" {', '.join(failing)} - not a reproduction result", flush=True)

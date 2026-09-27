@@ -232,14 +232,16 @@ def entropies_of(turn):
     return summary
 
 
-def run_session(cfg, probe, depth, iteration, declared_seed=None, declaration_sha=None):
+def run_session(cfg, probe, depth, iteration, declared_seed=None, declaration_sha=None,
+                declaration=None):
     """One matrix cell: serve, unload, reload, reissue, compare, by the one
     session verification both entry points share (`confirm_cells.
     verify_session`, #716 round eight). This builds the matrix cell's texts
     and its record and formats the compared turns, and verifies nothing of
-    its own. The agent is left unloaded whichever path this takes, and an
-    unattended run records a raise as the session's verdict rather than
-    dying on it.
+    its own. `declaration`, where the run rewrites it, is the session's
+    declaration text, written by the shared path. The agent is left unloaded
+    whichever path this takes, and a raise is the session's verdict, recorded
+    by the shared path on both entry points (#716 round ten).
     """
     key, character, text = probe
     rec = {"probe": key, "character": character, "depth": depth,
@@ -250,11 +252,8 @@ def run_session(cfg, probe, depth, iteration, declared_seed=None, declaration_sh
     # The probe sits last, so its ordinal is the depth and everything
     # before it is the state the depth exists to build.
     texts = [FILLER] * (depth - 1) + [text]
-    try:
-        pairs, _ = base.verify_session(cfg, texts, rec, declared_seed, declaration_sha)
-    except Exception as exc:  # an unattended run records rather than dies
-        rec["verdict"] = f"error: {type(exc).__name__}: {exc}"
-        return rec
+    pairs, _ = base.verify_session(cfg, texts, rec, declared_seed, declaration_sha,
+                                   declaration=declaration)
     for st, rt, checks in pairs:
         # The emission's digest rides beside the verdict so a reading across
         # sessions, which is what a varied seed is read by, needs no second
@@ -373,7 +372,7 @@ def main():
     # cannot reach back past this run.
     run_started = time.strftime(
         "%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 1))
-    results, iteration, invocations = [], 0, set()
+    results, iteration, invocations, interrupted = [], 0, set(), False
     logpath = os.path.join(args.outdir, "matrix.log")
 
     def log(msg):
@@ -419,15 +418,14 @@ def main():
                     if time.time() >= deadline:
                         break
                     declared_seed = session_seed(schedule, seed, iteration, cell_index)
-                    declaration_sha = standing_sha
-                    if schedule is not None:
-                        with open(cfg["declaration"], "w") as fh:
-                            fh.write(with_declared_seed(standing, declared_seed))
-                        declaration_sha = base._sha256(cfg["declaration"])
+                    # Under a schedule the shared path writes the session's
+                    # declaration and holds its loads to that digest.
+                    declaration = (with_declared_seed(standing, declared_seed)
+                                   if schedule is not None else None)
                     cell_index += 1
                     started = time.time()
                     rec = run_session(cfg, probe, depth, iteration, declared_seed,
-                                      declaration_sha)
+                                      standing_sha, declaration)
                     rec["seconds"] = round(time.time() - started, 1)
                     # Every load of a run is its own invocation, held as
                     # the cross-precision entry point holds it.
@@ -441,7 +439,12 @@ def main():
                         f"{rec['verdict']} ({rec['seconds']}s){ent}{seed_note}")
                     with open(os.path.join(args.outdir, "matrix.jsonl"), "a") as fh:
                         fh.write(json.dumps(rec) + "\n")
+                    # The session an interrupt cut short is recorded, and the
+                    # run stops on it, as the cells stop (#716 round ten).
+                    if rec["verdict"] == base.INTERRUPTED:
+                        raise KeyboardInterrupt
     except KeyboardInterrupt:
+        interrupted = True
         log("interrupted")
     finally:
         # Restored only where this run swapped it: rewriting unconditionally
@@ -594,7 +597,9 @@ def main():
     # round nine).
     reproduced, failing = base.run_verdict(results, {
         "weights": weights_at_close, "engine_libraries": libraries,
-        "weaver_binaries": binaries_at_close, "toolchain": tools})
+        "weaver_binaries": binaries_at_close, "toolchain": tools}, interrupted)
+    if interrupted:
+        log("interrupted - not a reproduction result")
     if reproduced and failing:
         log("sessions reproduced but these held fields did not hold:"
             f" {', '.join(failing)} - not a reproduction result")

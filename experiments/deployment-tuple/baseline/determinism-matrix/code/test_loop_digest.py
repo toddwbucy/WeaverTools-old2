@@ -124,8 +124,10 @@ def test_missing_trace_is_an_absence_not_a_raise():
     assert g.newest_load("/nonexistent/trace.ndjson") == (None, None)
 
 
-class _Served(Exception):
-    """Raised by the gate stub: a turn was about to be served."""
+class _Served(BaseException):
+    """Raised by the gate stub: a turn was about to be served. Not an
+    `Exception`, which the shared session path records as a fault (#716
+    round ten), so it stops the drive at the gate."""
 
 
 def _drive_run_cell(composer_digest, served=None):
@@ -141,13 +143,13 @@ def _drive_run_cell(composer_digest, served=None):
     trace = _trace(td, [_load("r-old", _file("alpha_loop.py", DECLARED))])
     decl = os.path.join(td, "k.yaml")
     with open(decl, "w") as f:
-        f.write("artifact: a\nseed: 7\n")
+        f.write("artifact: /a\nseed: 7\n")
     out = os.path.join(td, "out")
     os.makedirs(out)
     cfg = {"box": "t", "agent": "karl", "declaration": decl, "trace": trace,
            "gate_socket": "/s", "admin_bin": "/bin/true", "admin_config": td,
            "repo": td, "build_flags": "x", "loop_sha256": DECLARED}
-    cell = {"name": "c1", "precision": "q8", "artifact": "a"}
+    cell = {"name": "c1", "precision": "q8", "artifact": "/a"}
     steps = []
 
     def fake_admin(cfg, verb):
