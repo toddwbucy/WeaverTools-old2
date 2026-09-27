@@ -41,6 +41,7 @@ import os
 import re
 import shutil
 import socket
+import stat
 import subprocess
 import sys
 import time
@@ -71,10 +72,9 @@ def sh(args, **kw):
     **A metadata reader must not be the reason a run does not happen.**
     `subprocess.run` raises when the binary is absent or `cwd` does not
     exist, and the provenance readers below call it for `rustup`, `ldd`, and
-    `git` - none of which a box is obliged to carry. Raising there aborts a
-    seven-hour matrix before its first session, or dies in the confirm
-    driver ahead of the `try` that restores the declaration, leaving a
-    `.pre-cells` backup behind. That is the rule `device_bindings` and
+    `git` - none of which a box is obliged to carry. Raising there aborts
+    either entry point at its preflight with a traceback rather than a
+    refusal naming the reading. That is the rule `device_bindings` and
     `engine_libraries` already state, applied to the primitive they share:
     these facts exist to make a deposit worth trusting, so none may be the
     reason there is no deposit.
@@ -281,6 +281,24 @@ def seed_value(text, where):
     return value
 
 
+# **A decoded record value is compared by its type as well as its value**
+# (#716 round nine). Python's `==` takes 1, 1.0 and true for one value, so a
+# seed recorded as true matched a declared 1, and a replay recording 1.0
+# where its source recorded 1 read as a reproduction.
+def recorded_seed(value, where):
+    """A seed as a record carries it: an integer within the sampler's u64,
+    never a boolean or a float, refused by name before any comparison."""
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= U64_MAX:
+        raise ValueError(f"{where} {canonical(value)} is not an integer within the sampler's u64")
+    return value
+
+
+def canonical(value):
+    """Decoded JSON as canonical text, which is what two record values are
+    compared by: equal only where they are the same JSON."""
+    return json.dumps(value, sort_keys=True)
+
+
 SEED_KEY = re.compile(r"^[ \t]*seed:(.*)$", re.M)
 
 
@@ -299,8 +317,11 @@ def declaration_seed(declaration):
 
 # The config keys each entry point reads, and the optional ones. A key is a
 # value or absent: an empty string reads as neither, and a test of its truth
-# would take it for absent and guess in its place (#716 round eight).
+# would take it for absent and guess in its place (#716 round eight). The
+# cross-precision entry point also reads `box` and `build_flags`, into its
+# file names and every cell's metadata (#716 round nine).
 CONFIG_KEYS = ("agent", "declaration", "gate_socket", "trace", "admin_bin", "admin_config", "repo")
+CELL_CONFIG_KEYS = CONFIG_KEYS + ("box", "build_flags")
 OPTIONAL_KEYS = ("spu_bin", "loop_sha256", "build_flags")
 
 
@@ -325,6 +346,90 @@ def loop_digest(cfg):
                                  or re.fullmatch(r"[0-9a-f]{64}", declared) is None):
         raise ValueError(f"the config's loop_sha256 {declared!r} is not 64 lowercase hex digits")
     return declared
+
+
+# **Every file a run opens is opened at preflight** (#716 round nine), as
+# every value is checked there, so an unreadable file is refused before the
+# outdir stands rather than at its first use after it, which could be every
+# session of a seven-hour run.
+def read_config(path):
+    """The config, a JSON object, or the refusal naming why not."""
+    try:
+        with open(path) as f:
+            cfg = json.load(f)
+    except (OSError, ValueError) as e:
+        raise ValueError(f"the config {path} cannot be read: {_why(e)}") from None
+    if not isinstance(cfg, dict):
+        raise ValueError(f"the config {path} is not a JSON object")
+    return cfg
+
+
+def cell_values(cell):
+    """A cell as the run reads it, its name, precision and artifact each a
+    non-empty string, or the refusal naming the key."""
+    if not isinstance(cell, dict):
+        raise ValueError(f"the config's cell {cell!r} is not an object")
+    for key in ("name", "precision", "artifact"):
+        if not isinstance(cell.get(key), str) or not cell[key]:
+            raise ValueError(f"the cell's {key} {cell.get(key)!r} is not a non-empty string")
+    return cell
+
+
+def openable(path, what, mode="rb"):
+    """`path` opened as the run will open it and closed again, nothing read
+    or written, or the refusal naming why it cannot be."""
+    try:
+        with open(path, mode):
+            pass
+    except OSError as e:
+        raise ValueError(f"the {what} {path} cannot be opened: {_why(e)}") from None
+
+
+def run_files(cfg, rewrites):
+    """The files a run opens outside its provenance readings, each checked
+    as the run will use it, and the declaration's text. The declaration is
+    read, and where the run rewrites it, opened for writing with its
+    backup's directory writable. The admin binary is a regular file with an
+    execute bit, since it runs under `sudo`, and the repository is a
+    directory. The trace and the gate socket stand only once a load has, and
+    each is awaited where it is read."""
+    decl = cfg["declaration"]
+    openable(decl, "declaration", "r+b" if rewrites else "rb")
+    directory = os.path.dirname(os.path.abspath(decl))
+    if rewrites and not os.access(directory, os.W_OK | os.X_OK):
+        raise ValueError(f"the declaration's directory {directory} is not writable,"
+                         " and the run keeps its backup there")
+    try:
+        st = os.stat(cfg["admin_bin"])
+    except OSError as e:
+        raise ValueError(f"the config's admin_bin {cfg['admin_bin']} cannot be read: {_why(e)}") from None
+    if not stat.S_ISREG(st.st_mode) or not st.st_mode & 0o111:
+        raise ValueError(f"the config's admin_bin {cfg['admin_bin']} is not an executable file")
+    if not os.path.isdir(cfg["repo"]):
+        raise ValueError(f"the config's repo {cfg['repo']} is not a directory")
+    with open(decl) as f:
+        return f.read()
+
+
+def opening_readings(cfg):
+    """The stack as the run opens, read at preflight by both entry points:
+    the SPU resolved once for both collectors, the engine libraries, the
+    binaries and the toolchain. Every file the run reads for provenance is
+    opened here, the admin configuration's entries, the binaries they name,
+    the SPU and each library it links. A reading the exit could never count
+    held, one that is not a reading or that resolved a binary by a guess, is
+    refused by name."""
+    spu = _resolve_spu(cfg)
+    readings = {"engine_libraries": engine_libraries(cfg, spu),
+                "weaver_binaries": weaver_binaries(cfg, spu),
+                "toolchain": toolchain(cfg)}
+    for field, reading in readings.items():
+        if not is_reading(reading):
+            raise ValueError(f"the opening {field} is not a reading: {json.dumps(reading)}")
+        if guessed(reading):
+            raise ValueError(f"the opening {field} resolved a binary by a guess,"
+                             f" which the exit never counts held: {json.dumps(reading)}")
+    return readings
 
 
 def yaml_scalar(raw):
@@ -805,6 +910,12 @@ def gate_turn(cfg, text, timeout=600):
     return json.loads(line)
 
 
+def run_named(value):
+    """True where `value` names a run as the trace and the gate name one: a
+    non-empty string (#716 round nine)."""
+    return isinstance(value, str) and bool(value)
+
+
 def read_runs(trace_path, keep=None):
     """Run -> its events, in first-appearance order.
 
@@ -843,7 +954,9 @@ def read_runs(trace_path, keep=None):
         except json.JSONDecodeError:
             continue
         r = e.get("run")
-        if r is None:
+        # A run is named by a string. An event naming anything else is of
+        # no run the harness can name, and as keys 1 and true are one run.
+        if not run_named(r):
             continue
         if r not in runs:
             runs[r] = []
@@ -878,7 +991,7 @@ def _tail_lines(trace_path, keep, chunk=1 << 20):
                     r = json.loads(raw).get("run")
                 except json.JSONDecodeError:
                     continue
-                if r is not None and r not in seen:
+                if run_named(r) and r not in seen:
                     seen.append(r)
                     # One past `keep`: the `keep`th run is whole only once a
                     # newer boundary has been crossed.
@@ -1059,9 +1172,25 @@ def verify_session(cfg, texts, rec, declared_seed, declaration_sha,
                     f" invocation {invocation}: {json.dumps(seen)}")
         return seen["devices"], invocation
 
-    def seed_of(turns):
-        seeds = {pointer(t["payload"]["model.request"], "/sampling/seed") for t in turns}
-        return seeds.pop() if len(seeds) == 1 else sorted(seeds, key=str)
+    def seed_of(turns, half):
+        """The one seed `turns` were recorded under and no fault, or what
+        they carry and the fault. Each seed is held to the sampler's u64
+        before any comparison, so true cannot stand for 1."""
+        seeds = []
+        for t in turns:
+            value = pointer(t["payload"]["model.request"], "/sampling/seed")
+            if value is not None:
+                try:
+                    recorded_seed(value, f"the {half} {t['turn']} recorded seed")
+                except ValueError as e:
+                    return value, str(e)
+            if value not in seeds:
+                seeds.append(value)
+        if len(seeds) > 1:
+            return seeds, f"the {half} turns were recorded under {len(seeds)} seeds: {seeds}"
+        if seeds in ([], [None]):
+            return None, f"the {half} turns carry no recorded seed"
+        return seeds[0], None
 
     try:
         step("unload")  # whatever held the device before this session
@@ -1071,17 +1200,19 @@ def verify_session(cfg, texts, rec, declared_seed, declaration_sha,
         source_devices, source_invocation = held
 
         log("serving the source turns")
-        source_runs = set()
+        source_runs = []
         for text in texts:
             close = gate_turn(cfg, text, timeout=turn_timeout)
             if close.get("kind") != "answered":
                 return fault(f"source turn not answered: {close.get('kind')}")
-            source_runs.add(close.get("run"))
+            source_runs.append(close.get("run"))
         # The closes name the run, so the wait is on that run rather than on
         # whichever is newest, which the previous session's run can satisfy.
-        if len(source_runs) != 1 or None in source_runs:
+        # A run is named by a string, as the trace names it: anything else
+        # names no run, and a set would take 1 and true for one.
+        if not all(run_named(r) for r in source_runs) or len(set(source_runs)) != 1:
             return fault("the source turns did not share one run")
-        source_run = source_runs.pop()
+        source_run = source_runs[0]
         rec["source_run"] = source_run
         source_turns, evidence["source_events"] = await_turns(cfg["trace"], len(texts), source_run)
         if len(source_turns) != len(texts):
@@ -1098,12 +1229,10 @@ def verify_session(cfg, texts, rec, declared_seed, declaration_sha,
                                  " and the cell fails rather than records")
         # **The seed the record carries is read back, never assumed**: one
         # seed, present, and the one the session was declared under.
-        recorded = seed_of(source_turns)
+        recorded, why = seed_of(source_turns, "source")
         rec["recorded_seed"] = recorded
-        if isinstance(recorded, list):
-            return fault(f"the source turns were recorded under {len(recorded)} seeds: {recorded}")
-        if recorded is None:
-            return fault("the source turns carry no recorded seed")
+        if why:
+            return fault(why)
         if declared_seed is not None and recorded != declared_seed:
             return fault(f"the declared seed did not reach the record:"
                          f" declared {declared_seed}, recorded {recorded}")
@@ -1127,15 +1256,16 @@ def verify_session(cfg, texts, rec, declared_seed, declaration_sha,
         # Reissued from the record rather than from the caller's texts,
         # because the record is the artifact under test.
         log("reissuing from the record")
-        runs_seen = set()
+        runs_seen = []
         for st in source_turns:
             close = gate_turn(cfg, st["text"], timeout=turn_timeout)
             if close.get("kind") != "answered":
                 return fault(f"reissue {st['turn']} closed {close.get('kind')}")
-            runs_seen.add(close.get("run"))
-        if len(runs_seen) != 1 or None in runs_seen or source_run in runs_seen:
+            runs_seen.append(close.get("run"))
+        if (not all(run_named(r) for r in runs_seen) or len(set(runs_seen)) != 1
+                or runs_seen[0] == source_run):
             return fault("reissues did not land in one fresh run")
-        replay_run = runs_seen.pop()
+        replay_run = runs_seen[0]
         rec["replay_run"] = replay_run
         replay_all, evidence["replay_events"] = await_turns(cfg["trace"], len(source_turns), replay_run)
         if not replay_all:
@@ -1150,7 +1280,9 @@ def verify_session(cfg, texts, rec, declared_seed, declaration_sha,
             return fault(f"replay {broken['turn']} is incomplete: {', '.join(broken['incomplete'])}")
         # Both halves load one declaration, so a replay under another seed is
         # the apparatus, which the knobs check would otherwise read DIVERGED.
-        rec["replay_recorded_seed"] = seed_of(replay_all)
+        rec["replay_recorded_seed"], why = seed_of(replay_all, "replay")
+        if why:
+            return fault(why)
         if rec["replay_recorded_seed"] != recorded:
             return fault(f"the replay was recorded under another seed:"
                          f" source {recorded}, replay {rec['replay_recorded_seed']}")
@@ -1235,18 +1367,23 @@ def cut_turns(events):
     """Turn -> its events, in first-appearance order. The request text
     is the turn's last message.user event, identity messages preceding
     the request in render order."""
-    order, by = [], {}
+    order, by, names = [], {}, {}
     for e in events:
         t = e.get("turn")
-        if not t:
+        if t is None:
             continue
-        if t not in by:
-            by[t] = {}
-            order.append(t)
-        by[t].setdefault(e.get("kind"), []).append(e)
+        # Keyed by canonical JSON rather than by the value, so 1 and true
+        # stay two turns, and a kind that is not a string is no kind (#716
+        # round nine).
+        key = canonical(t)
+        if key not in by:
+            by[key], names[key] = {}, t
+            order.append(key)
+        kind = e.get("kind")
+        by[key].setdefault(kind if isinstance(kind, str) else None, []).append(e)
     turns = []
-    for t in order:
-        k = by[t]
+    for key in order:
+        t, k = names[key], by[key]
         users = k.get("message.user", [])
         text = None
         # The request is exactly one text part. A request of several parts
@@ -1271,12 +1408,14 @@ def cut_turns(events):
         # compare whole, and dropping it could hide surplus traffic in a
         # replay. Callers wait on complete turns and refuse incomplete ones.
         incomplete = []
+        if not (isinstance(t, str) and t):
+            incomplete.append(f"the turn id {canonical(t)} is not a string")
         if request_shape:
             incomplete.append(request_shape)
         elif text is None:
             incomplete.append("no request text")
         if None in k:
-            incomplete.append(f"{len(k[None])} events with no kind")
+            incomplete.append(f"{len(k[None])} events with no string kind")
         for kind in ("model.request", "model.output", "model.measurement"):
             n = len(k.get(kind, []))
             if n == 0:
@@ -1305,16 +1444,18 @@ def pointer(value, ptr, absent=None):
 
 
 def compare_turn(src, rep):
-    """Each of the eight CHECKS on one turn. A check a side carries no
-    value for, missing or null, is never a match and names the side under
-    `absent`, which is an apparatus fault for the caller, not a verdict."""
+    """Each of the eight CHECKS on one turn, compared as canonical JSON, so
+    a value of another type is not a match (#716 round nine). A check a side
+    carries no value for, missing or null, is never a match and names the
+    side under `absent`, which is an apparatus fault for the caller, not a
+    verdict."""
     out = []
     for name, kind, ptr in CHECKS:
         a = pointer(src["payload"][kind], ptr, ABSENT)
         b = pointer(rep["payload"][kind], ptr, ABSENT)
         absent = [side for side, v in (("source", a), ("replay", b))
                   if v is ABSENT or v is None]
-        check = {"check": name, "match": not absent and a == b}
+        check = {"check": name, "match": not absent and canonical(a) == canonical(b)}
         if absent:
             check["absent"] = absent
         out.append(check)
@@ -1519,15 +1660,71 @@ def stale_outputs(outdir, names, pattern=None):
     return found
 
 
-def windows_held(reports):
-    """Every report carries its closing window and every field of it reads
-    unchanged. A report with none was never shown held, and an empty `all()`
-    would have said it was (#716 round three)."""
-    closes = [r["metadata"].get("provenance_at_close") for r in reports]
-    return bool(closes) and all(
-        isinstance(c, dict) and c
-        and all(isinstance(v, dict) and v.get("status") == "unchanged" for v in c.values())
-        for c in closes)
+def run_binding(records):
+    """The one binding every session read, or why there is none: the
+    sessions' own per-load reads, not a window the journal may have lost."""
+    seen = []
+    for r in records:
+        d = r.get("devices")
+        if d is not None and d not in seen:
+            seen.append(d)
+    if len(seen) == 1:
+        return seen[0]
+    if not seen:
+        return {"unreadable": "no session read its serving device"}
+    return {"varied": seen}
+
+
+# The stack both entry points read at both ends of a run.
+STACK_WINDOW = ("engine_libraries", "weaver_binaries", "toolchain")
+
+
+def guessed(reading):
+    """True where the reading resolved a binary by a guess, the admin
+    configuration naming none. It reads identically at both ends and is
+    still never shown to be the one the runtime launches (#716 round
+    three)."""
+    return isinstance(reading, dict) and any(
+        isinstance(e, dict) and str(e.get("resolved_by", "")).startswith("guessed")
+        for e in reading.values())
+
+
+def run_verdict(records, windows):
+    """**The run-wide verdict**, which both entry points exit on and only
+    format (#716 round nine), as `verify_session` is the one session
+    verification. `records` are the sessions, matrix records or cell
+    reports, and `windows` the closing envelopes the entry point read, the
+    stack's and any more. Answers whether every session reproduced, one at
+    least having run, and the held fields the run cannot show held:
+
+    - every window field, each of the stack's among them, reads `unchanged`;
+    - no binary was resolved by a guess;
+    - the sessions that read a serving device read one binding, and at
+      least one did.
+    """
+    reproduced = bool(records) and all(r.get("verdict") == "REPRODUCED" for r in records)
+    fields = list(STACK_WINDOW) + [k for k in windows if k not in STACK_WINDOW]
+    unheld = [k for k in fields
+              if not (isinstance(windows.get(k), dict) and windows[k].get("status") == "unchanged")]
+    if "weaver_binaries" not in unheld and guessed(windows["weaver_binaries"].get("reading")):
+        unheld.append("weaver_binaries")
+    device = run_binding(records)
+    if not (isinstance(device, list) and device
+            and all(isinstance(d, dict) and "unreadable" not in d for d in device)):
+        unheld.append("serving_device")
+    return reproduced, unheld
+
+
+def hold_invocations(rec, seen):
+    """Every load of a run is its own unit invocation: one an earlier
+    session read is a load that did not happen, and the session's verdict
+    says so. Both entry points hold each record to it as it closes (#716
+    round nine), `seen` carrying the run's invocations so far."""
+    reused = [i for i in rec.get("invocations") or [] if i in seen]
+    if reused:
+        rec["verdict"] = f"a load read invocation {reused[0]}, which an earlier session read"
+    seen.update(rec.get("invocations") or [])
+    return rec
 
 
 def main():
@@ -1535,48 +1732,50 @@ def main():
     ap.add_argument("--config", required=True)
     ap.add_argument("--outdir", default=".")
     args = ap.parse_args()
-    with open(args.config) as f:
-        cfg = json.load(f)
-    # Every value the run takes is checked before it writes or loads
-    # anything (#716 round seven): the names that become filenames, each
-    # cell's artifact against the declaration, and the loop digest.
+    # Every value the run takes and every file it opens is checked before it
+    # writes or loads anything (#716 rounds seven and nine): the names that
+    # become filenames, each cell, its artifact against the declaration and
+    # opened, the loop digest, the files the run opens, and the stack's
+    # opening readings.
     try:
         if not args.outdir:
             raise ValueError("--outdir is empty")
-        config_values(cfg, CONFIG_KEYS + ("box",))
+        cfg = read_config(args.config)
+        config_values(cfg, CELL_CONFIG_KEYS)
         if not isinstance(cfg.get("cells"), list) or not cfg["cells"]:
             raise ValueError(f"the config's cells {cfg.get('cells')!r} is not a non-empty list")
+        for c in cfg["cells"]:
+            cell_values(c)
         loop_digest(cfg)
         for what, name in [("box", cfg["box"])] + [("cell name", c["name"]) for c in cfg["cells"]]:
-            if not isinstance(name, str) or SAFE_NAME.fullmatch(name) is None:
+            if SAFE_NAME.fullmatch(name) is None:
                 raise ValueError(f"the {what} {name!r} is not a name a deposit file can carry")
-        with open(cfg["declaration"]) as f:
-            standing = f.read()
+        # A backup already standing is a run that never restored the
+        # declaration, whose file is then not the operator's: refused rather
+        # than overwritten with the unrestored text (#716 round five).
+        backup = cfg["declaration"] + ".pre-cells"
+        if os.path.lexists(backup):
+            raise ValueError(f"a previous run left the declaration unrestored: its backup stands at"
+                             f" {backup}. Restore the declaration from it and remove it first.")
+        stale = stale_outputs(args.outdir, [f"report-{cfg['box']}.json"], "cell-*.ndjson") \
+            if os.path.isdir(args.outdir) else []
+        if stale:
+            raise ValueError(f"the outdir already holds a run's output: {', '.join(stale)}."
+                             " A run writes into a deposit no earlier run has written.")
+        standing = run_files(cfg, rewrites=True)
         declaration_seed(standing)
         for c in cfg["cells"]:
             with_artifact(standing, c["artifact"])
+            openable(c["artifact"], f"cell {c['name']}'s artifact")
+        opening = opening_readings(cfg)
     except ValueError as e:
         print(str(e), file=sys.stderr)
         sys.exit(2)
-    stale = stale_outputs(args.outdir, [f"report-{cfg['box']}.json"], "cell-*.ndjson") \
-        if os.path.isdir(args.outdir) else []
-    if stale:
-        print(f"the outdir already holds a run's output: {', '.join(stale)}."
-              " A run writes into a deposit no earlier run has written.", file=sys.stderr)
-        sys.exit(2)
-
-    # A backup already standing is a run that never restored the
-    # declaration, whose file is then not the operator's: refused rather
-    # than overwritten with the unrestored text (#716 round five).
-    backup = cfg["declaration"] + ".pre-cells"
-    if os.path.lexists(backup):
-        print(f"a previous run left the declaration unrestored: its backup stands at"
-              f" {backup}. Restore the declaration from it and remove it first.", file=sys.stderr)
-        sys.exit(2)
-    os.makedirs(args.outdir, exist_ok=True)
-    shutil.copy2(cfg["declaration"], backup)
     # Read once for the run: the libraries cannot change under it, and
     # `libggml-cuda` built for four architectures is 142 MiB to hash.
+    libraries, binaries, tools = (opening[k] for k in STACK_WINDOW)
+    os.makedirs(args.outdir, exist_ok=True)
+    shutil.copy2(cfg["declaration"], backup)
     reports = []
     out = os.path.join(args.outdir, f"report-{cfg['box']}.json")
 
@@ -1590,23 +1789,16 @@ def main():
             json.dump(reports, f, indent=1)
 
     try:
-        # **Inside the scope that restores the declaration.** The backup is
-        # already taken by this point, and a reader raising above the `try`
-        # leaves a `.pre-cells` file beside the operator's own. `sh` no longer
-        # raises, but it was never the only raiser in the window and this act
-        # added two more readers into it.
-        # One resolution for both collectors, so the two fields cannot
-        # disagree about which SPU they measured.
-        spu = _resolve_spu(cfg)
-        libraries = engine_libraries(cfg, spu)
-        binaries = weaver_binaries(cfg, spu)
-        tools = toolchain(cfg)
+        # The stack was read at preflight, one resolution for both
+        # collectors so the two fields cannot disagree about which SPU they
+        # measured.
         print(f"engine libraries: {json.dumps(libraries)}", flush=True)
         print(f"weaver binaries: {json.dumps(binaries)}", flush=True)
         print(f"toolchain: {json.dumps(tools)}", flush=True)
+        invocations = set()
         for cell in cfg["cells"]:
-            reports.append(
-                run_cell(cfg, cell, args.outdir, libraries, binaries, tools))
+            reports.append(hold_invocations(
+                run_cell(cfg, cell, args.outdir, libraries, binaries, tools), invocations))
             deposit()
 
         # **The provenance is read again after the cells have run**, the way
@@ -1658,9 +1850,11 @@ def main():
               " declares, and those cells deposited no comparison", flush=True)
     # **The window is part of the verdict** - defect 4's consequence half: a
     # detected mid-run swap, or a close that could not certify the window,
-    # is not a reproduction result and must not exit 0. `closings` is bound
-    # only when every cell ran, so an early abort exits nonzero through the
-    # reproduced check alone.
+    # is not a reproduction result and must not exit 0. The verdict is
+    # `run_verdict`, the one both entry points exit on (#716 round nine), so
+    # the guessed binary and the one device binding are held here as the
+    # matrix holds them. `closings` is bound only when every cell ran, and
+    # an abort before it raises out of the `try` above.
     #
     # **A stably unreadable reader fails the gate, and that is a decision
     # rather than an inheritance**, named per #399's review: a box whose
@@ -1669,12 +1863,11 @@ def main():
     # held. Every committed config names a repo. The alternative #379
     # sketched - is_reading distinguishing a partial reading from an
     # unusable one - stays open there for the reader that earns it.
-    reproduced = all(r["verdict"] == "REPRODUCED" for r in reports) and reports
-    window_held = windows_held(reports)
-    if reproduced and not window_held:
-        print("cells reproduced but the provenance window did not hold quiet"
-              " - not a reproduction result", flush=True)
-    sys.exit(0 if reproduced and window_held else 1)
+    reproduced, failing = run_verdict(reports, closings)
+    if reproduced and failing:
+        print("cells reproduced but these held fields did not hold:"
+              f" {', '.join(failing)} - not a reproduction result", flush=True)
+    sys.exit(0 if reproduced and not failing else 1)
 
 
 if __name__ == "__main__":

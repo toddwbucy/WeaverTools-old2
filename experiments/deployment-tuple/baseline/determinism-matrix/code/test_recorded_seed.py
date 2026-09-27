@@ -4,18 +4,57 @@ A fake agent stands in for the admin, the gate and the trace, so
 `run_session` runs whole with no device. Run with
 `python3 test_recorded_seed.py` or under pytest.
 """
+import atexit
+import contextlib
 import json
 import os
+import shutil
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import determinism_matrix as dm  # noqa: E402
 
 base = dm.base
+# The files preflight opens, real so that a full config passes it: an
+# executable admin, a repository directory and an artifact.
+FIXTURE = tempfile.mkdtemp(prefix="matrix-fixture-")
+atexit.register(shutil.rmtree, FIXTURE, True)
+ADMIN = os.path.join(FIXTURE, "weaver-admin")
+with open(ADMIN, "w") as _fh:
+    _fh.write("#!/bin/sh\n")
+os.chmod(ADMIN, 0o755)
+MODEL = os.path.join(FIXTURE, "m.gguf")
+with open(MODEL, "wb") as _fh:
+    _fh.write(b"weights")
 # Every key the config must carry, the fake agent reading none of them.
-CFG = {"trace": "unused", "agent": "karl", "gate_socket": "/unused.sock", "admin_bin": "/unused/admin",
-       "admin_config": "/unused/config", "repo": "/unused/repo"}
+CFG = {"trace": "unused", "agent": "karl", "gate_socket": "/unused.sock", "admin_bin": ADMIN,
+       "admin_config": "/unused/config", "repo": FIXTURE}
+FIXED = {"lib": {"path": "/lib", "sha256": "f" * 64}}
+
+
+def stack_fakes(device=None):
+    """The stack's readers answering a fixed reading at both ends."""
+    card = [{"ordinal": 0, "name": "card", "pci_bus_id": "0000:01:00.0"}]
+    return {"_resolve_spu": lambda c: "/spu", "engine_libraries": lambda c, s: FIXED,
+            "weaver_binaries": lambda c, s: FIXED,
+            "toolchain": lambda c: {"rustc": {"path": "/rustc", "sha256": "e" * 64}},
+            "closing_resolution": lambda c: ("/spu", None),
+            "device_bindings": lambda c, since: [device if device is not None else card]}
+
+
+@contextlib.contextmanager
+def patched(fakes):
+    """`fakes` set on confirm_cells for the block, restored after it."""
+    saved = {k: getattr(base, k) for k in fakes}
+    try:
+        for k, v in fakes.items():
+            setattr(base, k, v)
+        yield
+    finally:
+        for k, v in saved.items():
+            setattr(base, k, v)
 SEED = 451234785645
 DECLARATION = "d" * 64
 LOOP = "1" * 64
@@ -219,26 +258,29 @@ def test_each_load_is_composed_by_the_declared_loop():
         assert rec["loop_refused"]["half"] == half
 
 
-def summary(**changes):
-    held = {"status": "unchanged", "reading": {}}
-    s = {k: held for k in dm.HELD_BY_WINDOW}
-    s["serving_device"] = [{"ordinal": 0, "name": "card", "pci_bus_id": "0000:01:00.0"}]
-    s.update(changes)
-    return s
+# The matrix's windows, every one unchanged.
+HELD = {k: {"status": "unchanged", "reading": {}} for k in ("weights",) + base.STACK_WINDOW}
+
+
+def unheld(windows=HELD, devices=(CARD,)):
+    """The run-wide verdict's unheld fields over sessions that reproduced,
+    each carrying one of `devices`."""
+    records = [{"verdict": "REPRODUCED", **({} if d is None else {"devices": d})} for d in devices]
+    return base.run_verdict(records, windows)[1]
 
 
 def test_the_exit_gate_counts_every_held_field():
     # Codex's round-two P1: the serving device was recorded and not gated,
     # and the weights were not read at all. Perturbation: drop the device
-    # clause, or weights from HELD_BY_WINDOW, and a case here passes.
-    assert dm.unheld(summary()) == []
+    # clause, or a window field, and a case here passes.
+    assert unheld() == []
     for k in ("weights", "engine_libraries", "weaver_binaries", "toolchain"):
-        assert dm.unheld(summary(**{k: {"status": "varied"}})) == [k]
-        assert dm.unheld(summary(**{k: {"status": "at_close_unreadable"}})) == [k]
-    card = {"ordinal": 0, "name": "card", "pci_bus_id": "0000:01:00.0"}
-    for device in ({"varied": [[card], [dict(card, ordinal=1)]]}, {"varied": []},
-                   {"unreadable": "journalctl exit 2"}, [], [{"unreadable": "no line"}], None):
-        assert dm.unheld(summary(serving_device=device)) == ["serving_device"], device
+        assert unheld(dict(HELD, **{k: {"status": "varied"}})) == [k]
+        assert unheld(dict(HELD, **{k: {"status": "at_close_unreadable"}})) == [k]
+    card = CARD[0]
+    for devices in ([[card], [dict(card, ordinal=1)]], [None], [None, None], [[]],
+                    [[{"unreadable": "no line"}]], []):
+        assert unheld(devices=devices) == ["serving_device"], devices
 
 
 def test_the_weights_are_the_artifacts_bytes():
@@ -272,6 +314,8 @@ def test_a_record_carrying_no_seed_is_a_fault_before_any_comparison():
 
 def test_a_replay_carrying_no_seed_is_a_fault_too():
     rec = session(Agent(replay_seed=None))
+    assert rec["verdict"] == "the replay turns carry no recorded seed", rec["verdict"]
+    rec = session(Agent(replay_seed=SEED + 1))
     assert rec["verdict"].startswith("the replay was recorded under another seed"), rec["verdict"]
 
 
@@ -291,16 +335,12 @@ def test_a_divergence_still_reads_as_one():
     assert session(agent)["verdict"] == "DIVERGED"
 
 
-def run_main(agent, device=None, hours="0.00003", extra=(), prepare=None, inspect=None):
+def run_main(agent, device=None, hours="0.00003", extra=(), prepare=None, inspect=None, stack=None):
     """`main` whole on the fake agent: a real declaration and config in a
-    temporary directory, the stack's readers answering a fixed reading, and
-    the exit code and the per-session records returned."""
-    import contextlib
+    temporary directory, the stack's readers answering a fixed reading or
+    `stack`'s, and the exit code and the per-session records returned."""
     import hashlib
     import io
-    import tempfile
-    card = [{"ordinal": 0, "name": "card", "pci_bus_id": "0000:01:00.0"}]
-    fixed = {"lib": {"path": "/lib", "sha256": "f" * 64}}
     with tempfile.TemporaryDirectory() as tmp:
         model = os.path.join(tmp, "model.gguf")
         with open(model, "wb") as fh:
@@ -316,11 +356,7 @@ def run_main(agent, device=None, hours="0.00003", extra=(), prepare=None, inspec
             json.dump(dict(CFG, declaration=decl), fh)
         if prepare:
             prepare(tmp, decl)
-        fakes = {"_resolve_spu": lambda c: "/spu", "engine_libraries": lambda c, s: fixed,
-                 "weaver_binaries": lambda c, s: fixed,
-                 "toolchain": lambda c: {"rustc": {"path": "/rustc", "sha256": "e" * 64}},
-                 "closing_resolution": lambda c: ("/spu", None),
-                 "device_bindings": lambda c, since: [device if device is not None else card]}
+        fakes = dict(stack_fakes(device), **(stack or {}))
         for k in ("admin", "wait_socket", "gate_turn", "await_turns", "newest_load",
                   "serving_device", "unit_invocation"):
             fakes[k] = getattr(agent, k)
@@ -351,6 +387,44 @@ def run_main(agent, device=None, hours="0.00003", extra=(), prepare=None, inspec
         except (OSError, ValueError):
             pass
     return code, records, summary_read
+
+
+def cells_main(tmp, change=None, declared=None, prepare=None, fakes=None, outdir=None):
+    """The cross-precision `main` whole on a full config in `tmp`, the stack
+    faked and the admin recording its verbs: the exit code, the verbs and
+    what the run printed. `fakes` replaces more of confirm_cells."""
+    import io
+    decl = os.path.join(tmp, "karl.yaml")
+    with open(decl, "w") as fh:
+        fh.write(declared if declared is not None else f"artifact: {MODEL}\nseed: {SEED}\n")
+    cfg = dict(CFG, box="thinkpad", build_flags="x", declaration=decl,
+               cells=[{"name": "q8", "precision": "q8", "artifact": MODEL}])
+    for k, v in (change or {}).items():
+        if v is None:
+            cfg.pop(k, None)
+        else:
+            cfg[k] = v
+    path = os.path.join(tmp, "config.json")
+    with open(path, "w") as fh:
+        json.dump(cfg, fh)
+    if prepare:
+        prepare(tmp, decl)
+    called, out = [], io.StringIO()
+    every = dict(stack_fakes(), admin=lambda c, v: called.append(v) or {"kind": "state"})
+    every.update(fakes or {})
+    argv = sys.argv
+    try:
+        sys.argv = ["confirm_cells.py", "--config", path, "--outdir",
+                    outdir if outdir is not None else os.path.join(tmp, "out")]
+        with patched(every), contextlib.redirect_stdout(out):
+            try:
+                base.main()
+                code = 0
+            except SystemExit as e:
+                code = e.code
+    finally:
+        sys.argv = argv
+    return code, called, out.getvalue()
 
 
 class Reloading(Agent):

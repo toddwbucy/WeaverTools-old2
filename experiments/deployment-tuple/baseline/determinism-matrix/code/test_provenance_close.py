@@ -82,7 +82,7 @@ def _drive_main(die_second_cell=False, swap_libs=False):
         calls["n"] += 1
         if calls["n"] == 2 and die_second_cell:
             raise RuntimeError("cell two died")
-        return {"cell": cell["name"], "metadata": {},
+        return {"cell": cell["name"], "metadata": {}, "devices": [{"ordinal": 0}],
                 "verdict": "REPRODUCED", "turns": [], "steps": []}
 
     lib_seq = [json.loads(json.dumps(LIBS)),
@@ -98,9 +98,13 @@ def _drive_main(die_second_cell=False, swap_libs=False):
         g.run_cell = fake_run_cell
 
         td = tempfile.mkdtemp()
+        # The artifact preflight opens.
+        artifact = os.path.join(td, "a")
+        with open(artifact, "w") as f:
+            f.write("weights")
         decl = os.path.join(td, "k.yaml")
         with open(decl, "w") as f:
-            f.write("artifact: a\nseed: 7\n")
+            f.write(f"artifact: {artifact}\nseed: 7\n")
         cfgp = os.path.join(td, "c.json")
         with open(cfgp, "w") as f:
             json.dump({"box": "t", "declaration": decl, "repo": ".",
@@ -108,8 +112,8 @@ def _drive_main(die_second_cell=False, swap_libs=False):
                        "admin_bin": "/bin/true", "agent": "karl",
                        "gate_socket": "/s", "trace": "/t",
                        "cells": [
-                           {"name": "c1", "precision": "q8", "artifact": "a"},
-                           {"name": "c2", "precision": "bf", "artifact": "a"},
+                           {"name": "c1", "precision": "q8", "artifact": artifact},
+                           {"name": "c2", "precision": "bf", "artifact": artifact},
                        ]}, f)
         out = os.path.join(td, "out")
         os.makedirs(out)

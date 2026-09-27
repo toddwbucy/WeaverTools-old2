@@ -122,7 +122,9 @@ generation seed, the effective sampling knobs, the emission bytes, the finish ki
 resident count, the input token ids, and the per-token entropies. A check either record
 carries no value for, missing or null, is never a match and is a fault, so absence on
 both sides cannot read as agreement. A turn matches when all eight are observed and
-equal, and a session matches when every served turn matches and the replay holds no
+equal as JSON, type included, since Python's `==` takes 1, 1.0 and true for one value
+and a replay recording one where its source recorded another did not reproduce. A
+session matches when every served turn matches and the replay holds no
 surplus turn, since a replay carrying turns the source did not is interleaved traffic
 and never a match.
 
@@ -134,8 +136,9 @@ event, a load whose unit invocation or serving device cannot be read, or which n
 device, a reload under the load's own invocation, a load under an invocation an earlier
 session read, source and replay loads on different devices, a replay carrying turns the
 source did not, a turn not answered, a turn missing its request or a payload kind or
-carrying a compared kind twice, a source turn the replay does not carry, a check a
-record carries no value for, source or replay turns split across runs or short of the
+carrying a compared kind twice or named by anything but a string, a source turn the
+replay does not carry, a check a record carries no value for, source or replay turns
+split across runs, under a run the gate names by anything but a string, or short of the
 depth, a replay read short, a seed mismatch under section 4, or an exception. A replay
 read short is the sink one turn behind and is kept apart from DIVERGED, which is the
 strongest negative the harness emits. Faults are counted apart from both verdicts, as
@@ -170,9 +173,11 @@ session in the same way and is restored with it.
 **A session whose seed the record does not bear out is a fault, not a verdict.** The
 source turns must carry one recorded seed, `sampling.seed` on each `model.request`, with
 or without a schedule, and it must be the seed the session was declared under, the
-schedule's or the declaration's own. The replay's recorded seed must equal the source's,
-since both halves load from one declaration and a replay under another seed is the
-apparatus and not the model.
+schedule's or the declaration's own. Every recorded seed is held to the u64 domain a
+declared one is, an integer and never a boolean or a float, before it is compared, so a
+seed recorded as true or 1.0 cannot stand for 1. The replay's recorded seed must equal
+the source's, since both halves load from one declaration and a replay under another
+seed is the apparatus and not the model.
 
 ## 5. Provenance
 
@@ -207,6 +212,13 @@ the matrix's `run_session` and the cross-precision protocol's `run_cell`, and ne
 verifies anything outside it, so a check cannot hold on one path and be missing from the
 other. A config naming no loop leaves the loop unchecked.
 
+**The run-wide verdict is one function too**, `run_verdict` in `confirm_cells.py`: at
+least one session ran and every session reproduced, every window field reads
+`unchanged`, no binary was resolved by a guess, and the sessions read one device
+binding. Both entry points exit on it and only format it. The invocation rule, that no
+invocation recurs in a run, is held on each record as it closes by `hold_invocations`,
+which both entry points call.
+
 **Each tuple field the probe holds, and how:**
 
 | Field | Held how | Counted at the exit |
@@ -218,8 +230,9 @@ other. A config naming no loop leaves the loop unchecked.
 | batch composition | recorded, not held: one caller and one turn at a time by construction, and the record carries nothing a second caller would change | no |
 | sampler and seed | the declared seed on every session's recorded seed, the replay's equal to the source's, the knobs compared per turn and held per load by the declaration's digest | yes, every session's verdict |
 
-**The exit code is the whole claim.** The run exits 0 only where it ran a session, every
-session reproduced, and every field counted above held, and otherwise 1, with a log line
+**The exit code is the whole claim.** A run of either entry point exits 0 only where it
+ran a session, every session reproduced, and every field counted above held, and
+otherwise 1, with a log line
 naming the fields that did not hold. A field read only at the two ends is held against a
 change that stands at the close, not one undone within the run, and the per-load
 declaration digest is what holds the declared fields between.
@@ -280,7 +293,21 @@ The seeds, per section 4, `--hours`, which must be finite, positive and a deadli
 clock reaches, the config's `loop_sha256`, which must be 64 lowercase hex digits, and
 the declaration's artifact and any `--artifact` are refused by name, and the outdir is
 made only once every check has passed. The cross-precision entry point checks its box
-and cell names, which become filenames, and each cell's artifact the same way.
+and cell names, which become filenames, and each cell's artifact the same way, and it
+requires `box`, `build_flags` and each cell's name, precision and artifact as non-empty
+strings, since it reads each into every cell's record. A refused run exits 2.
+
+**Every file a run opens is opened at preflight too.** The config must parse as a JSON
+object. The artifact is opened and hashed as the weights' opening reading, and each
+cell's artifact is opened. The declaration is read, and where the run rewrites it, it
+is opened for writing and its directory must be writable for the backup. The admin
+binary must be a regular file with an execute bit, since it runs under `sudo`, and the
+repository a directory. The stack's opening readings are taken there, the admin
+configuration's entries, the binaries they name, the SPU and each library it links, and
+a reading that is not one, or that resolved a binary by a guess, is refused, since the
+exit could never count it held. The trace and the gate socket stand only once a load
+has, and each is awaited where it is read. No loop file is opened: the loop is held by
+its digest against each load event.
 
 **A run writes into a deposit no earlier run wrote.** An outdir already holding
 `matrix.jsonl`, `matrix.log` or `summary.json` is refused before anything is written,

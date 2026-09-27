@@ -12,7 +12,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import determinism_matrix as dm  # noqa: E402
-from test_recorded_seed import CARD, SEED, Agent, session  # noqa: E402
+from test_recorded_seed import CARD, HELD, Agent, session, unheld  # noqa: E402
 
 base = dm.base
 
@@ -133,11 +133,10 @@ def test_each_load_reads_its_own_device():
             assert rec["verdict"].startswith(want), rec["verdict"]
     finally:
         base.load_devices.__defaults__ = saved
-    assert dm.run_binding([{"devices": CARD}, {"devices": CARD}, {}]) == CARD
-    assert dm.run_binding([{"devices": CARD}, {"devices": other}]) == {"varied": [CARD, other]}
-    assert "unreadable" in dm.run_binding([{}, {}])
-    assert dm.unheld({**{k: {"status": "unchanged"} for k in dm.HELD_BY_WINDOW},
-                      "serving_device": dm.run_binding([{"devices": CARD}, {"devices": other}])}) == ["serving_device"]
+    assert base.run_binding([{"devices": CARD}, {"devices": CARD}, {}]) == CARD
+    assert base.run_binding([{"devices": CARD}, {"devices": other}]) == {"varied": [CARD, other]}
+    assert "unreadable" in base.run_binding([{}, {}])
+    assert unheld(devices=[CARD, other]) == ["serving_device"]
 
 
 def journal(lines, probe="-- some line --"):
@@ -172,9 +171,7 @@ def test_the_device_reader_drops_no_load():
         groups = base._device_groups({"agent": "karl"}, "t")["groups"]
         assert "unreadable" in groups[0][0], groups
         assert "unreadable" in base.serving_device({"agent": "karl"}, "t")
-        bindings = base.device_bindings({"agent": "karl"}, "t")
-        assert dm.unheld({**{k: {"status": "unchanged"} for k in dm.HELD_BY_WINDOW},
-                          "serving_device": bindings[0] if len(bindings) == 1 else {"varied": bindings}}) == ["serving_device"]
+        assert unheld(devices=[groups[0]]) == ["serving_device"]
     finally:
         base.sh = saved
 
@@ -200,28 +197,31 @@ def test_an_engine_library_line_nobody_can_parse_is_unreadable():
 
 
 def test_a_guessed_binary_is_not_held():
-    # S1. Perturbation: drop the guessed clause in unheld.
-    held = {k: {"status": "unchanged", "reading": {}} for k in dm.HELD_BY_WINDOW}
-    held["weaver_binaries"] = {"status": "unchanged", "reading": {
-        "spu-binary": {"path": "/x", "sha256": "a" * 64, "resolved_by": "guessed beside admin_bin, the admin config naming none"}}}
-    assert dm.unheld(dict(held, serving_device=CARD)) == ["weaver_binaries"]
+    # S1. Perturbation: drop the guessed clause in run_verdict.
+    held = dict(HELD, weaver_binaries={"status": "unchanged", "reading": {
+        "spu-binary": {"path": "/x", "sha256": "a" * 64, "resolved_by": "guessed beside admin_bin, the admin config naming none"}}})
+    assert unheld(held) == ["weaver_binaries"]
 
 
-def test_the_cells_window_is_never_held_by_default():
-    # RC3: an empty `all()` held a report carrying no closing window.
-    # Perturbation: restore the vacuous form and the first two pass.
-    unchanged = {"status": "unchanged"}
-    assert not base.windows_held([])
-    assert not base.windows_held([{"metadata": {}}])
-    assert not base.windows_held([{"metadata": {"provenance_at_close": {}}}])
-    assert not base.windows_held([{"metadata": {"provenance_at_close": {"toolchain": {"status": "varied"}}}}])
-    assert base.windows_held([{"metadata": {"provenance_at_close": {"toolchain": unchanged}}}])
+def test_a_run_is_never_held_by_default():
+    # RC3: an empty `all()` held a report carrying no closing window. The
+    # run-wide verdict holds nothing it did not read: no session, no window,
+    # or a window missing a stack field. Perturbation: take the fields from
+    # the windows alone, or test `all()` over no sessions, and a case passes.
+    one = [{"verdict": "REPRODUCED", "devices": CARD}]
+    assert base.run_verdict([], HELD) == (False, ["serving_device"])
+    assert base.run_verdict(one, {}) == (True, list(base.STACK_WINDOW))
+    assert base.run_verdict(one, {"toolchain": {"status": "unchanged"}}) == (True, ["engine_libraries", "weaver_binaries"])
+    assert base.run_verdict(one, dict(HELD, toolchain={"status": "varied"})) == (True, ["toolchain"])
+    assert base.run_verdict(one, HELD) == (True, [])
 
 
 def test_a_non_numeric_entropy_is_counted_not_hidden():
     # E1. Perturbation: drop the `non_numeric` count.
     turn = {"payload": {"model.measurement": {"entropies": [0.5, None, 1.5]}}}
     assert dm.entropies_of(turn)["non_numeric"] == 1
+    # A boolean is not an entropy, though Python counts it an int.
+    assert dm.entropies_of({"payload": {"model.measurement": {"entropies": [0.5, True]}}})["non_numeric"] == 1
     assert "non_numeric" not in dm.entropies_of({"payload": {"model.measurement": {"entropies": [0.5]}}})
 
 

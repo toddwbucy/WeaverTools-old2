@@ -172,45 +172,6 @@ def weights(path):
     return read
 
 
-def run_binding(results):
-    """The one binding every session read, or why there is none: the
-    sessions' own per-load reads, not a window the journal may have lost."""
-    seen = []
-    for r in results:
-        d = r.get("devices")
-        if d is not None and d not in seen:
-            seen.append(d)
-    if len(seen) == 1:
-        return seen[0]
-    if not seen:
-        return {"unreadable": "no session read its serving device"}
-    return {"varied": seen}
-
-
-# The fields read at both ends of a run, each held where both reads agree.
-HELD_BY_WINDOW = ("weights", "engine_libraries", "weaver_binaries", "toolchain")
-
-
-def unheld(summary):
-    """The held fields the summary cannot show held, which the exit gate
-    counts. The window fields must read `unchanged`. The serving device must
-    be one binding for the whole run, read and not varied: one list of
-    devices, none unreadable."""
-    out = [k for k in HELD_BY_WINDOW if (summary.get(k) or {}).get("status") != "unchanged"]
-    # A binary resolved by a guess, the admin configuration unread, was read
-    # identically at both ends and still never shown to be the one the
-    # runtime launches (#716 round three).
-    binaries = ((summary.get("weaver_binaries") or {}).get("reading") or {})
-    if "weaver_binaries" not in out and any(
-            isinstance(e, dict) and str(e.get("resolved_by", "")).startswith("guessed")
-            for e in binaries.values()):
-        out.append("weaver_binaries")
-    device = summary.get("serving_device")
-    if not (isinstance(device, list) and device
-            and all(isinstance(d, dict) and "unreadable" not in d for d in device)):
-        out.append("serving_device")
-    return out
-
 # **The prompt set spans the draw's confidence, which is the axis that
 # matters.** Each carries the character it was chosen for, so a reader
 # grading a failure can see what the turn was meant to be rather than
@@ -253,7 +214,8 @@ def entropies_of(turn):
     e = base.pointer(turn["payload"]["model.measurement"], "/entropies")
     if not isinstance(e, list) or not e:
         return None
-    vals = [x for x in e if isinstance(x, (int, float))]
+    # A boolean is not a number here, though Python counts it one.
+    vals = [x for x in e if isinstance(x, (int, float)) and not isinstance(x, bool)]
     if not vals:
         return None
     summary = {
@@ -341,11 +303,10 @@ def main():
     except ValueError as e:
         refuse(str(e))
 
-    with open(args.config) as f:
-        cfg = json.load(f)
     try:
         if not args.outdir:
             raise ValueError("--outdir is empty")
+        cfg = base.read_config(args.config)
         base.config_values(cfg)
         base.loop_digest(cfg)
     except ValueError as e:
@@ -359,13 +320,18 @@ def main():
         refuse(f"a previous run left the declaration unrestored: its backup stands at"
                f" {pending}. Restore the declaration from it and remove it first.")
 
-    with open(cfg["declaration"]) as f:
-        original = f.read()
-    # `standing` is the declaration this run works from: the operator's own,
-    # or the artifact-swapped one, and the seed rewrite per session starts
-    # from it so the two overrides compose rather than overwrite each other.
-    standing = original
+    # The run rewrites the declaration where it overrides the artifact or
+    # the seed, and only there.
+    rewrites = args.artifact is not None or schedule is not None
     try:
+        # The files the run opens, the declaration among them, checked as
+        # the run will use them (#716 round nine).
+        original = base.run_files(cfg, rewrites)
+        # `standing` is the declaration this run works from: the operator's
+        # own, or the artifact-swapped one, and the seed rewrite per session
+        # starts from it so the two overrides compose rather than overwrite
+        # each other.
+        standing = original
         if args.artifact is not None:
             standing = base.with_artifact(original, args.artifact)
         # A declaration without exactly one seed line is not one the
@@ -388,6 +354,18 @@ def main():
         if stale:
             refuse(f"the outdir already holds a run's output: {', '.join(stale)}."
                    " A run writes into a deposit no earlier run has written.")
+    # The artifact opened and hashed, and the stack read, as the run opens
+    # and before it writes anything (#716 round nine): an artifact the run
+    # cannot read, or a stack reading the exit could never count held, is
+    # refused here rather than failing every session or the run's exit.
+    try:
+        weights_open = weights(artifact)(cfg)
+        if not base.is_reading(weights_open):
+            raise ValueError(f"the artifact cannot be read: {json.dumps(weights_open)}")
+        opening = base.opening_readings(cfg)
+    except ValueError as e:
+        refuse(str(e))
+    libraries, binaries, tools = (opening[k] for k in base.STACK_WINDOW)
     os.makedirs(args.outdir, exist_ok=True)
 
     deadline = time.time() + args.hours * 3600.0
@@ -396,22 +374,6 @@ def main():
     run_started = time.strftime(
         "%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 1))
     results, iteration, invocations = [], 0, set()
-    # **Bound before the try, because the interrupt is caught rather than
-    # fatal.** `except KeyboardInterrupt` below swallows the interrupt so a
-    # run cut short still deposits its summary, which means the summary path
-    # runs even when the library read never finished. Left unbound, a Ctrl-C
-    # during the 142 MiB hash would reach the summary as a `NameError` and
-    # lose every session the run had already recorded. The placeholder says
-    # why it is empty rather than reading as "nothing to record", per the
-    # same rule the reader itself follows.
-    libraries = {"unreadable": "the run ended before the libraries were read"}
-    binaries = {"unreadable": "the run ended before the binaries were read"}
-    tools = {"unreadable": "the run ended before the toolchain was read"}
-    weights_open = {"unreadable": "the run ended before the weights were read"}
-    standing_sha = None
-    # The placeholders above are not readings, which is what `base.is_reading`
-    # tests at the close: an interrupted at-start read and a failed one leave
-    # the same shape, and neither may be compared against a good closing read.
     logpath = os.path.join(args.outdir, "matrix.log")
 
     def log(msg):
@@ -424,7 +386,7 @@ def main():
         f"{len(PROMPTS)} prompts x {len(DEPTHS)} depths")
     if schedule is not None:
         log(f"declared seed schedule: {schedule}")
-    if args.artifact is not None or schedule is not None:
+    if rewrites:
         # The operator's declaration, kept until the run has restored it.
         with open(pending, "x") as fh:
             fh.write(original)
@@ -432,18 +394,11 @@ def main():
         # **The swap itself is inside the cleanup scope**: opening the file
         # for writing truncates it before the write, so a write that fails
         # outside the `try` would leave the operator's declaration empty
-        # with nothing to restore it. Everything after it is here for the
-        # same reason: `ldd` missing raises, hashing 142 MiB can be
-        # interrupted, and either one outside the `try` would leave the
-        # declaration holding this run's artifact.
+        # with nothing to restore it. The stack and the weights were read at
+        # preflight, before anything was written.
         if args.artifact is not None:
             with open(cfg["declaration"], "w") as fh:
                 fh.write(standing)
-        opening_spu = base._resolve_spu(cfg)
-        libraries = base.engine_libraries(cfg, opening_spu)
-        binaries = base.weaver_binaries(cfg, opening_spu)
-        tools = base.toolchain(cfg)
-        weights_open = weights(artifact)(cfg)
         # The declaration as it stands on disk, by the digest every load
         # event records, once the run's own artifact override is written.
         standing_sha = base._sha256(cfg["declaration"])
@@ -474,13 +429,9 @@ def main():
                     rec = run_session(cfg, probe, depth, iteration, declared_seed,
                                       declaration_sha)
                     rec["seconds"] = round(time.time() - started, 1)
-                    # Every load of a run is its own invocation: one an
-                    # earlier session read is a load that did not happen.
-                    reused = [i for i in rec.get("invocations") or [] if i in invocations]
-                    if reused:
-                        rec["verdict"] = f"a load read invocation {reused[0]}, which an earlier session read"
-                    invocations.update(rec.get("invocations") or [])
-                    results.append(rec)
+                    # Every load of a run is its own invocation, held as
+                    # the cross-precision entry point holds it.
+                    results.append(base.hold_invocations(rec, invocations))
                     ent = ""
                     for t in rec["turns"]:
                         if t.get("is_probe") and t.get("entropy"):
@@ -496,7 +447,7 @@ def main():
         # Restored only where this run swapped it: rewriting unconditionally
         # would turn an unrelated edit made during the run into a silent
         # revert of the operator's own declaration.
-        if args.artifact is not None or schedule is not None:
+        if rewrites:
             with open(cfg["declaration"], "w") as fh:
                 fh.write(original)
             os.unlink(pending)
@@ -553,8 +504,7 @@ def main():
     # `Exception` and `except Exception` let it past. The main loop has
     # already absorbed one Ctrl-C by this point and these reads hash 142 MiB,
     # so a second one landed in the window would have killed `main` before
-    # `summary.json` was written - losing every session, which is the loss
-    # the placeholders above exist to prevent.
+    # `summary.json` was written - losing every session the run recorded.
     #
     # **The two reads are wrapped apart.** Together, a library failure
     # discarded a good binary reading and was then recorded under the binary
@@ -610,7 +560,7 @@ def main():
         # Held from every session's own per-load read (#716 round three).
         # The journal window over the whole run is kept as a record and not
         # gated: a journal that keeps minutes cannot answer for hours.
-        "serving_device": run_binding(results),
+        "serving_device": base.run_binding(results),
         "serving_device_journal_window": (bindings[0] if len(bindings) == 1
                                           else {"varied": bindings}),
         "weights": weights_at_close,
@@ -640,11 +590,15 @@ def main():
     # #399's review, and the serving device must be one binding for the run,
     # read and not varied: a run whose sessions all reproduce while a field
     # it claims held moved, or was never read, is not a reproduction result.
-    failing = unheld(summary)
-    if total and good == total and failing:
+    # The verdict is `run_verdict`, the one both entry points exit on (#716
+    # round nine).
+    reproduced, failing = base.run_verdict(results, {
+        "weights": weights_at_close, "engine_libraries": libraries,
+        "weaver_binaries": binaries_at_close, "toolchain": tools})
+    if reproduced and failing:
         log("sessions reproduced but these held fields did not hold:"
             f" {', '.join(failing)} - not a reproduction result")
-    sys.exit(0 if total and good == total and not failing else 1)
+    sys.exit(0 if reproduced and not failing else 1)
 
 
 if __name__ == "__main__":

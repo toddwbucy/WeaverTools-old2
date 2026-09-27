@@ -12,8 +12,8 @@ path the 2026-09-27 runs took every verdict, seed and turn is what it was before
 fields that move named: the declared seed and the device each load logged. The
 `test_*.py` files are the tests of the two, three from that tree and
 `test_recorded_seed.py`, `test_absence_and_evidence.py`, `test_round_five.py`,
-`test_round_seven.py` and `test_round_eight.py` from #716. Each is a plain script and
-exits non-zero on the first failure:
+`test_round_seven.py`, `test_round_eight.py` and `test_round_nine.py` from #716. Each
+is a plain script and exits non-zero on the first failure:
 
 ```
 python3 test_seed_schedule.py
@@ -24,6 +24,7 @@ python3 test_absence_and_evidence.py
 python3 test_round_five.py
 python3 test_round_seven.py
 python3 test_round_eight.py
+python3 test_round_nine.py
 ```
 
 Stdlib only. It needs the installed agent stack, one agent whose declaration it
@@ -44,12 +45,18 @@ One JSON file per box. The matrix reads these fields:
 | `admin_config` | yes | the admin's configuration directory, passed as `WEAVER_ADMIN_CONFIG` |
 | `repo` | yes | the checkout the stack was built from, for the toolchain reading |
 | `spu_bin` | optional | overrides the `spu-binary` the admin configuration names |
-| `build_flags` | yes | a description of the build, recorded and not parsed |
+| `build_flags` | yes | a description of the build, recorded and not parsed, required by `confirm_cells.py`'s own entry point |
 | `loop_sha256` | optional | the sha256 of the loop the agent composes with, 64 lowercase hex digits or refused at preflight, which every load is held to, a load composed by another being a fault. Absent, the loop is unchecked |
 
 **`cells` is not read by the matrix.** It lists artifacts for `confirm_cells.py`'s own
 entry point, the cross-precision protocol, and a config shared with that protocol
 may carry it. The matrix takes its artifact from the declaration or from `--artifact`.
+
+**Every file the config names is opened before the run writes anything.** The artifact
+must be readable, the declaration writable where the run rewrites it, `admin_bin` an
+executable file and `repo` a directory, and the stack's opening readings, the admin
+configuration's entries and the binaries and libraries they name, must be readings and
+not guesses. A run refused there exits 2 and names what it refused.
 
 ## Before a run
 
@@ -82,7 +89,9 @@ and on a box keeping minutes that is the tail of a run.
 weights, the engine libraries, the binaries and the toolchain must read the same at the
 start and the end, the serving device must be one binding for the whole run, and every
 session must bear out its declared seed and serve its declared declaration. Anything
-less exits 1, and the log names the fields that did not hold. Batch composition is
+less exits 1, and the log names the fields that did not hold. Both entry points exit
+on the one verdict, `run_verdict`, so the cross-precision protocol holds the same
+fields. Batch composition is
 recorded rather than held: one caller and one turn at a time by construction, which the
 record cannot show. The Spec's section 5 has the table.
 

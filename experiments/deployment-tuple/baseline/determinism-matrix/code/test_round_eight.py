@@ -13,7 +13,7 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import determinism_matrix as dm  # noqa: E402
-from test_recorded_seed import CFG, SEED, Agent, Reloading, run_main, session  # noqa: E402
+from test_recorded_seed import CFG, SEED, Agent, Reloading, cells_main, run_main, session  # noqa: E402
 from test_round_five import drive_cell  # noqa: E402
 
 base = dm.base
@@ -124,32 +124,17 @@ def test_an_empty_outdir_is_refused():
 
 def test_the_refusal_fixtures_would_otherwise_run():
     # The control for every preflight refusal test: the full config passes
-    # preflight and the cross-precision entry point reaches its first load,
+    # preflight and the cross-precision entry point reaches its first cell,
     # so each refusal is refused for the reason its test names.
-    with tempfile.TemporaryDirectory() as tmp:
-        decl = os.path.join(tmp, "karl.yaml")
-        with open(decl, "w") as fh:
-            fh.write(DECLARED)
-        path = os.path.join(tmp, "config.json")
-        json.dump(dict(CFG, box="thinkpad", declaration=decl,
-                       cells=[{"name": "q8", "precision": "q8", "artifact": "/m.gguf"}]), open(path, "w"))
-        called, saved, argv = [], (base.admin, base.run_cell), sys.argv
+    called = []
 
-        def stop(*a, **k):
-            called.append("run_cell")
-            raise SystemExit(0)
-        try:
-            base.run_cell = stop
-            sys.argv = ["confirm_cells.py", "--config", path, "--outdir", os.path.join(tmp, "out")]
-            try:
-                base.main()
-            except SystemExit:
-                pass
-        finally:
-            (base.admin, base.run_cell), sys.argv = saved, argv
-            if os.path.exists(decl + ".pre-cells"):
-                os.unlink(decl + ".pre-cells")
-        assert called == ["run_cell"], called
+    def stop(*a, **k):
+        called.append("run_cell")
+        raise SystemExit(0)
+    with tempfile.TemporaryDirectory() as tmp:
+        code, _, _ = cells_main(tmp, fakes={"run_cell": stop})
+        assert not os.path.exists(os.path.join(tmp, "karl.yaml.pre-cells"))
+    assert called == ["run_cell"] and code == 0, (called, code)
 
 
 if __name__ == "__main__":

@@ -4,7 +4,6 @@ hand-parsed formats refused by name (#716 round five).
 Each test holds one site of the three walks and names the perturbation that
 fails it. Run with `python3 test_round_five.py` or under pytest.
 """
-import json
 import os
 import subprocess
 import sys
@@ -13,7 +12,7 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import determinism_matrix as dm  # noqa: E402
-from test_recorded_seed import CFG, SEED, Agent, Reloading, run_main, session  # noqa: E402
+from test_recorded_seed import SEED, Agent, Reloading, cells_main, run_main, session  # noqa: E402
 
 base = dm.base
 BOUNDARY = "ggml_cuda_init: found 1 CUDA devices (Total VRAM: 24075 MiB):"
@@ -149,30 +148,10 @@ def test_the_cells_deposit_and_backup_refuse_an_earlier_run():
     # Perturbation: drop either refusal, and the admin is called.
     for stand in ("report-thinkpad.json", "cell-q8-source.ndjson", "BACKUP"):
         with tempfile.TemporaryDirectory() as tmp:
-            decl = os.path.join(tmp, "karl.yaml")
-            with open(decl, "w") as fh:
-                fh.write(f"artifact: /m.gguf\nseed: {SEED}\n")
-            if stand == "BACKUP":
-                with open(decl + ".pre-cells", "w") as fh:
+            def prepare(tmp, decl, stand=stand):
+                with open(decl + ".pre-cells" if stand == "BACKUP" else os.path.join(tmp, stand), "w") as fh:
                     fh.write("x")
-            else:
-                with open(os.path.join(tmp, stand), "w") as fh:
-                    fh.write("x")
-            cfg = os.path.join(tmp, "config.json")
-            with open(cfg, "w") as fh:
-                json.dump(dict(CFG, box="thinkpad", declaration=decl, cells=[{"name": "q8", "precision": "q8", "artifact": "/m.gguf"}]), fh)
-            called = []
-            saved, argv = base.admin, sys.argv
-            try:
-                base.admin = lambda c, v: called.append(v) or {"kind": "state"}
-                sys.argv = ["confirm_cells.py", "--config", cfg, "--outdir", tmp]
-                try:
-                    base.main()
-                    code = 0
-                except SystemExit as e:
-                    code = e.code
-            finally:
-                base.admin, sys.argv = saved, argv
+            code, called, _ = cells_main(tmp, prepare=prepare, outdir=tmp)
             assert code == 2 and called == [], (stand, code, called)
 
 
@@ -252,7 +231,7 @@ def test_malformed_events_and_requests_are_named():
     assert base.cut_turns(events)[0]["incomplete"] == ["the request is not one text part"]
     events[0]["payload"]["content"] = [{"type": "text", "text": "a"}]
     events.append({"run": "r", "turn": "t-1", "payload": {}})
-    assert base.cut_turns(events)[0]["incomplete"] == ["1 events with no kind"]
+    assert base.cut_turns(events)[0]["incomplete"] == ["1 events with no string kind"]
 
 
 def test_a_surplus_replay_turn_is_a_fault_not_a_divergence():

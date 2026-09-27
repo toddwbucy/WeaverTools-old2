@@ -11,7 +11,7 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import determinism_matrix as dm  # noqa: E402
-from test_recorded_seed import CFG, Reloading, run_main  # noqa: E402
+from test_recorded_seed import CFG, MODEL, Reloading, cells_main, run_main  # noqa: E402
 
 base = dm.base
 U64_MAX = 2 ** 64 - 1
@@ -124,32 +124,13 @@ def test_the_cells_refuse_at_preflight_and_write_nothing():
     # is refused before the outdir, the backup or a load. Perturbation: drop
     # the preflight, and the bad name writes outside the outdir or the bad
     # artifact reaches its cell's load.
-    for change in (dict(box="../elsewhere"), dict(cells=[{"name": "q8/..", "precision": "q8", "artifact": "/m.gguf"}]),
+    for change in (dict(box="../elsewhere"), dict(cells=[{"name": "q8/..", "precision": "q8", "artifact": MODEL}]),
                    dict(cells=[{"name": "q8", "precision": "q8", "artifact": "/my model.gguf"}]),
                    dict(loop_sha256="short")):
         with tempfile.TemporaryDirectory() as tmp:
-            decl = os.path.join(tmp, "karl.yaml")
-            with open(decl, "w") as fh:
-                fh.write("artifact: /m.gguf\nseed: 7\n")
-            out = os.path.join(tmp, "out")
-            cfg = dict(CFG, box="thinkpad", declaration=decl,
-                       cells=[{"name": "q8", "precision": "q8", "artifact": "/m.gguf"}])
-            cfg.update(change)
-            path = os.path.join(tmp, "config.json")
-            json.dump(cfg, open(path, "w"))
-            called, saved, argv = [], base.admin, sys.argv
-            try:
-                base.admin = lambda c, v: called.append(v) or {"kind": "state"}
-                sys.argv = ["confirm_cells.py", "--config", path, "--outdir", out]
-                try:
-                    base.main()
-                    code = 0
-                except SystemExit as e:
-                    code = e.code
-            finally:
-                base.admin, sys.argv = saved, argv
-            assert code == 2 and called == [] and not os.path.exists(out) \
-                and not os.path.exists(decl + ".pre-cells"), (change, code, called)
+            code, called, _ = cells_main(tmp, change)
+            assert code == 2 and called == [] and not os.path.exists(os.path.join(tmp, "out")) \
+                and not os.path.exists(os.path.join(tmp, "karl.yaml.pre-cells")), (change, code, called)
 
 
 if __name__ == "__main__":
