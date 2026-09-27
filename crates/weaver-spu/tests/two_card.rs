@@ -3,13 +3,12 @@
 //! by layer, 18.2 GiB on ordinal 0 beside 17.0 GiB on ordinal 1, and both
 //! cards return to idle at release.
 //!
-//! **A split GGUF cannot ride this path today and the reason is the pin.**
-//! llama.cpp finds `-00002-of-00002` siblings by the filename pattern, and
-//! the admission hands it the descriptor's `/proc/self/fd/N`, which carries
-//! no pattern, so the load nulls in under two seconds. The collision between
-//! the descriptor discipline and split artifacts is filed rather than worked
-//! around here, because handing the real path back would undo what the pin
-//! is for.
+//! **A split GGUF rides this path since #200, through the pin rather than
+//! around it.** llama.cpp finds `-00002-of-00002` siblings by the filename
+//! pattern, and the descriptor's `/proc/self/fd/N` carries none, so the pin
+//! reaches every shard and the loader names the whole set through the
+//! fork's explicit splits door. Handing the real path back would have undone
+//! what the pin is for.
 #![cfg(all(feature = "gguf", feature = "cuda"))]
 
 use std::path::PathBuf;
@@ -22,9 +21,9 @@ use weaver_spu::residency::{Headroom, Residency};
 use weaver_spu::sampling::EffectiveKnobs;
 use weaver_types::{ArtifactRef, DeviceOrdinal, ModelBinding};
 
-/// One test in this binary today, and the lock stands anyway: a second
-/// two-card measurement added later must not race the first for the same
-/// devices, which is `loaded.rs`'s discipline carried over.
+/// Every test in this binary takes the lock, so no two-card measurement
+/// races another for the same devices, which is `loaded.rs`'s discipline
+/// carried over.
 fn device_lock() -> std::sync::MutexGuard<'static, ()> {
     static DEVICE: OnceLock<Mutex<()>> = OnceLock::new();
     DEVICE

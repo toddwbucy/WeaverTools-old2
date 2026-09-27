@@ -108,7 +108,7 @@ The four `-gencode` lines are `sm_86` (A6000, Ampere), `sm_89` (RTX Ada),
 `sm_120` (RTX PRO Blackwell, needing CUDA >= 12.8), and a `compute_86` PTX
 fallback that JITs to any architecture at or above 86.
 
-**What has been verified, and on what, 2026-08-06.** Two machines, and the
+**What has been verified, and on what.** Two machines, and the
 coverage they give is uneven in a way worth stating rather than averaging.
 
 | Machine | Toolkit | Compiles and links | Suite runs | Device-side |
