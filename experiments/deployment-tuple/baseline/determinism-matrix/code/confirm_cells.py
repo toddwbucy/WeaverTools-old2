@@ -96,7 +96,22 @@ DEVICE_LINE = re.compile(
 LOAD_BOUNDARY = re.compile(r"ggml_cuda_init: found \d+ CUDA device")
 
 
-def serving_device(cfg, since):
+def unit_invocation(cfg):
+    """The InvocationID of the agent's worker unit as it stands now, the
+    identity a device read is bound to (#716 round five). A time window is
+    not an identity: a fast reload or a journal trailing its writer leaves
+    the previous load inside any slack. Empty while the unit is inactive,
+    and anything but 32 hex digits is refused by name."""
+    unit = f"weaver-worker@{cfg['agent']}.service"
+    r = sh(["systemctl", "show", "-p", "InvocationID", "--value", unit])
+    said = r.stdout.strip()
+    if r.returncode != 0 or re.fullmatch(r"[0-9a-f]{32}", said) is None:
+        return {"unreadable": f"the unit's invocation id reads {said!r}"
+                              f" (systemctl exit {r.returncode})"}
+    return said
+
+
+def serving_device(cfg, since, invocation=None):
     """The devices that actually answered, read from the worker's own load.
 
     `nvidia-smi` reports the machine, not the run. On a box holding more
@@ -125,10 +140,14 @@ def serving_device(cfg, since):
     load that succeeded, so zero lines of any kind means the read failed,
     and that is recorded as its own answer.
     """
-    groups = _device_groups(cfg, since)
+    groups = _device_groups(cfg, since, invocation)
     if "unreadable" in groups:
         return groups
     found = groups["groups"]
+    # Bound to one invocation, the read is one load's, and a second load
+    # under it is not a shape this reader can attribute.
+    if invocation is not None and len(found) > 1:
+        return {"unreadable": f"invocation {invocation} logged {len(found)} loads"}
     if found:
         # A device this reader could not parse is no device at all, and two
         # of them would otherwise compare equal across the halves.
@@ -136,6 +155,23 @@ def serving_device(cfg, since):
             return {"unreadable": f"the load named a device this reader cannot parse: {found[-1]}"}
         return {"devices": found[-1]}
     return {"devices": [], "note": "the load named no CUDA device"}
+
+
+def load_devices(cfg, tries=15, pause=0.2):
+    """The devices the load that now stands bound, read by its unit's
+    invocation, and that invocation (#716 round five). Retried briefly,
+    since journald can trail the load it records. Answers the reading, a
+    `devices` list or an `unreadable` note, and the invocation or None."""
+    invocation = unit_invocation(cfg)
+    if not isinstance(invocation, str):
+        return invocation, None
+    seen = None
+    for _ in range(tries):
+        seen = serving_device(cfg, None, invocation)
+        if isinstance(seen, dict) and seen.get("devices"):
+            break
+        time.sleep(pause)
+    return seen, invocation
 
 
 def device_bindings(cfg, since):
@@ -155,7 +191,7 @@ def device_bindings(cfg, since):
     return seen
 
 
-def _device_groups(cfg, since):
+def _device_groups(cfg, since, invocation=None):
     """The window's `using device` blocks, one list of devices per load.
 
     **The load boundary is read explicitly and not inferred from adjacency.**
@@ -172,6 +208,8 @@ def _device_groups(cfg, since):
     """
     unit = f"weaver-worker@{cfg['agent']}.service"
     base = ["journalctl", "-u", unit, "--since", since, "--no-pager", "-o", "cat"]
+    if invocation is not None:
+        base = ["journalctl", f"_SYSTEMD_INVOCATION_ID={invocation}", "--no-pager", "-o", "cat"]
     # Grepped in the journal rather than in this process: an unfiltered read
     # spans every load in the window and llama.cpp is verbose.
     r = sh(base + ["-g", "ggml_cuda_init: found|using device CUDA"])
@@ -212,6 +250,68 @@ def _device_groups(cfg, since):
         return {"unreadable": "the unit's journal read back empty; this user "
                               "is likely in neither systemd-journal nor adm"}
     return {"groups": []}
+
+
+# **The declaration's artifact is read as the YAML scalar it is** (#716 round
+# five). The value was taken as source text, so a quoted path kept its
+# quotes and an inline comment hid the key. Stdlib only, so the reading
+# covers the scalar shapes a path takes and refuses every other by name.
+ARTIFACT_KEY = re.compile(r"^([ \t]*)artifact:(.*)$", re.M)
+PLAIN_START = re.compile(r"[\[\]{}&*!|>'\"%@`,#?:-]")
+
+
+def yaml_scalar(raw):
+    """One YAML scalar from a key's value text: double or single quoted with
+    no escapes, or plain, each optionally followed by a comment. Anything
+    else raises, naming what it met."""
+    s = raw.strip()
+    if not s:
+        raise ValueError("the value is empty or a block, not a scalar")
+    if s[0] in "\"'":
+        q = s[0]
+        end = s.find(q, 1)
+        if end < 0:
+            raise ValueError(f"the quoted value {s!r} is not closed")
+        inner, rest = s[1:end], s[end + 1:].strip()
+        if (q == '"' and "\\" in inner) or (q == "'" and s[end:end + 2] == "''"):
+            raise ValueError(f"the quoted value {s!r} carries an escape this reader does not take")
+        if rest and not rest.startswith("#"):
+            raise ValueError(f"the quoted value {s!r} is followed by {rest!r}")
+        if not inner:
+            raise ValueError("the quoted value is empty")
+        return inner
+    value = re.split(r"\s#", s, maxsplit=1)[0].strip()
+    if PLAIN_START.match(value) or ": " in value or value.endswith(":"):
+        raise ValueError(f"the value {value!r} is not a plain scalar this reader takes")
+    return value
+
+
+def declared_artifact(declaration):
+    """The one artifact the declaration binds, read as a scalar."""
+    found = ARTIFACT_KEY.findall(declaration)
+    if len(found) != 1:
+        raise ValueError(f"the declaration names {len(found)} artifacts, not one")
+    try:
+        return yaml_scalar(found[0][1])
+    except ValueError as e:
+        raise ValueError(f"the declaration's artifact: {e}") from None
+
+
+def with_artifact(declaration, path):
+    """The declaration with its one artifact line set to `path`, written as a
+    plain scalar. A path a plain scalar cannot carry unchanged is refused,
+    as is a declaration without exactly one artifact line: the old rewrite's
+    `\\s*` could run past a line end into the next key."""
+    if (not path or any(c.isspace() for c in path) or "#" in path
+            or PLAIN_START.match(path) or ": " in path or path.endswith(":")):
+        raise ValueError(f"the artifact path {path!r} is not one a plain YAML scalar carries unchanged")
+    found = ARTIFACT_KEY.findall(declaration)
+    if len(found) != 1:
+        raise ValueError(f"the declaration names {len(found)} artifacts, not one")
+    swapped = ARTIFACT_KEY.sub(lambda m: f"{m.group(1)}artifact: {path}", declaration, count=1)
+    if declared_artifact(swapped) != path:
+        raise ValueError(f"the rewritten declaration does not read back {path!r}")
+    return swapped
 
 
 def spu_binary(cfg):
@@ -570,7 +670,9 @@ def engine_libraries(cfg, spu=None):
                               f"{r.stderr.strip()[:200]}"}
     out = {}
     for line in r.stdout.splitlines():
-        m = re.search(r"(lib(?:ggml[\w-]*|llama)\.so[\w.]*)\s+=>\s+(\S+)", line)
+        # The path runs to ldd's load address, not to the first space, so a
+        # path holding a space is read whole rather than cut (#716 round five).
+        m = re.search(r"(lib(?:ggml[\w-]*|llama)\.so[\w.]*)\s+=>\s+(.+?)(?:\s+\(0x[0-9a-fA-F]+\))?\s*$", line)
         if not m:
             # A line naming an engine library that this pattern cannot read
             # is unreadable evidence, kept as such (#716 round three).
@@ -870,16 +972,23 @@ def cut_turns(events):
         if t not in by:
             by[t] = {}
             order.append(t)
-        by[t].setdefault(e["kind"], []).append(e)
+        by[t].setdefault(e.get("kind"), []).append(e)
     turns = []
     for t in order:
         k = by[t]
         users = k.get("message.user", [])
         text = None
+        # The request is exactly one text part. A request of several parts
+        # would be reissued as its first alone and read as a divergence, so
+        # any other shape is incomplete by name (#716 round five).
+        request_shape = None
         if users:
             c = users[-1].get("payload", {}).get("content", [])
-            if c and c[0].get("type") == "text":
+            if (isinstance(c, list) and len(c) == 1 and isinstance(c[0], dict)
+                    and c[0].get("type") == "text" and isinstance(c[0].get("text"), str)):
                 text = c[0]["text"]
+            else:
+                request_shape = "the request is not one text part"
         payload = {kind: (k[kind][0].get("payload") if kind in k else None)
                    for kind in ("model.request", "model.output",
                                 "model.measurement")}
@@ -891,8 +1000,12 @@ def cut_turns(events):
         # compare whole, and dropping it could hide surplus traffic in a
         # replay. Callers wait on complete turns and refuse incomplete ones.
         incomplete = []
-        if text is None:
+        if request_shape:
+            incomplete.append(request_shape)
+        elif text is None:
             incomplete.append("no request text")
+        if None in k:
+            incomplete.append(f"{len(k[None])} events with no kind")
         for kind in ("model.request", "model.output", "model.measurement"):
             n = len(k.get(kind, []))
             if n == 0:
@@ -1060,10 +1173,10 @@ def run_cell(cfg, cell, outdir, libraries, binaries, tools,
     # the operator wrote it.
     with open(cfg["declaration"]) as f:
         decl = f.read()
-    swapped, n = re.subn(r"(artifact:\s*).*", r"\g<1>" + cell["artifact"],
-                         decl, count=1)
-    if n != 1:
-        report["verdict"] = "no artifact line in the declaration"
+    try:
+        swapped = with_artifact(decl, cell["artifact"])
+    except ValueError as e:
+        report["verdict"] = f"the cell's artifact cannot be declared: {e}"
         return report
     with open(cfg["declaration"], "w") as f:
         f.write(swapped)
@@ -1078,12 +1191,9 @@ def run_cell(cfg, cell, outdir, libraries, binaries, tools,
     # holding the device, whichever return path it takes.
     try:
         step("unload")  # whatever held the device before this cell
-        # The window opens before the load so the journal read below cannot
-        # reach back to a previous cell's load, and a second of slack
-        # absorbs the clock skew between this process and the journal's
-        # own timestamps.
-        since = time.strftime(
-            "%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 1))
+        # The device read below is bound to the load's own unit invocation,
+        # not to a time window, which a fast reload or a trailing journal
+        # can hold the previous load inside (#716 round five).
         before = newest_load(cfg["trace"])[0]
         if step("load").get("kind") != "state":
             report["verdict"] = "load refused"
@@ -1103,7 +1213,8 @@ def run_cell(cfg, cell, outdir, libraries, binaries, tools,
         # per issue #370's third ask. Read after the socket stands, so the
         # load has reached the point of binding a device rather than merely
         # having been asked to.
-        report["metadata"]["serving_device"]["source"] = serving_device(cfg, since)
+        source_read, source_invocation = load_devices(cfg)
+        report["metadata"]["serving_device"]["source"] = source_read
         log(f"source devices: "
             f"{json.dumps(report['metadata']['serving_device']['source'])}")
 
@@ -1148,8 +1259,6 @@ def run_cell(cfg, cell, outdir, libraries, binaries, tools,
                     return report
 
         step("unload")
-        replay_since = time.strftime(
-            "%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 1))
         before = source_run
         if step("load").get("kind") != "state":
             report["verdict"] = "reload refused"
@@ -1170,8 +1279,14 @@ def run_cell(cfg, cell, outdir, libraries, binaries, tools,
         # A disagreement fails the cell rather than being recorded and
         # passed over: the comparison the cell exists to make is not
         # between these two runs.
-        report["metadata"]["serving_device"]["replay"] = serving_device(
-            cfg, replay_since)
+        replay_read, replay_invocation = load_devices(cfg)
+        report["metadata"]["serving_device"]["replay"] = replay_read
+        report["metadata"]["invocations"] = [source_invocation, replay_invocation]
+        # The reload is its own unit invocation, or the replay was never
+        # reloaded and its device read is the source's.
+        if source_invocation is not None and source_invocation == replay_invocation:
+            report["verdict"] = f"the reload is the load's own invocation {source_invocation}"
+            return report
         src = report["metadata"]["serving_device"]["source"]
         rep = report["metadata"]["serving_device"]["replay"]
         log(f"replay devices: {json.dumps(rep)}")
@@ -1237,8 +1352,6 @@ def run_cell(cfg, cell, outdir, libraries, binaries, tools,
         if len(replay_all) != len(source_turns):
             log(f"turn count differs: source {len(source_turns)} replay {len(replay_all)}")
 
-        # A replay with surplus turns is interleaved traffic and is
-        # never a match, even when every source turn agrees.
         # A short replay read is the sink rather than the model, and it
         # reaches its own verdict rather than being folded into a mismatch.
         if len(replay_all) < len(source_turns):
@@ -1252,7 +1365,7 @@ def run_cell(cfg, cell, outdir, libraries, binaries, tools,
             report["verdict"] = (f"replay {broken['turn']} is incomplete:"
                                  f" {', '.join(broken['incomplete'])}")
             return report
-        all_match = len(replay_all) == len(source_turns)
+        all_match = True
         for st in source_turns:
             rt = replay_turns.get(st["turn"])
             # A source turn the replay does not carry is the record, not the
@@ -1281,6 +1394,15 @@ def run_cell(cfg, cell, outdir, libraries, binaries, tools,
 
         report["source_run"] = source_run
         report["replay_run"] = replay_run
+        # A replay carrying turns the source did not is interleaved traffic:
+        # the record, never the model, so a fault and not a divergence, and
+        # never a match however well the shared turns agree (#716 round five,
+        # the surplus-turn item on #698).
+        surplus = sorted({t["turn"] for t in replay_all} - {st["turn"] for st in source_turns})
+        if len(replay_all) != len(source_turns) or surplus:
+            report["verdict"] = (f"the replay carries {len(replay_all) - len(source_turns)} turns"
+                              f" the source did not: {', '.join(surplus)}")
+            return report
         report["verdict"] = "REPRODUCED" if all_match else "NOT REPRODUCED"
 
         # **Deposited from a fresh read rather than from the snapshots the
@@ -1304,6 +1426,17 @@ def run_cell(cfg, cell, outdir, libraries, binaries, tools,
         step("unload")
 
 
+def stale_outputs(outdir, names, pattern=None):
+    """The outputs a run writes that already stand in `outdir`: a run
+    writes into a deposit no earlier run has written, so its record and its
+    summary are of one invocation (#716 round five)."""
+    import glob
+    found = [n for n in names if os.path.lexists(os.path.join(outdir, n))]
+    if pattern:
+        found += sorted(os.path.basename(p) for p in glob.glob(os.path.join(outdir, pattern)))
+    return found
+
+
 def windows_held(reports):
     """Every report carries its closing window and every field of it reads
     unchanged. A report with none was never shown held, and an empty `all()`
@@ -1323,8 +1456,20 @@ def main():
     with open(args.config) as f:
         cfg = json.load(f)
     os.makedirs(args.outdir, exist_ok=True)
+    stale = stale_outputs(args.outdir, [f"report-{cfg['box']}.json"], "cell-*.ndjson")
+    if stale:
+        print(f"the outdir already holds a run's output: {', '.join(stale)}."
+              " A run writes into a deposit no earlier run has written.", file=sys.stderr)
+        sys.exit(2)
 
+    # A backup already standing is a run that never restored the
+    # declaration, whose file is then not the operator's: refused rather
+    # than overwritten with the unrestored text (#716 round five).
     backup = cfg["declaration"] + ".pre-cells"
+    if os.path.lexists(backup):
+        print(f"a previous run left the declaration unrestored: its backup stands at"
+              f" {backup}. Restore the declaration from it and remove it first.", file=sys.stderr)
+        sys.exit(2)
     shutil.copy2(cfg["declaration"], backup)
     # Read once for the run: the libraries cannot change under it, and
     # `libggml-cuda` built for four architectures is 142 MiB to hash.

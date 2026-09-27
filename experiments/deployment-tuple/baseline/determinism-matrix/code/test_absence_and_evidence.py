@@ -123,8 +123,8 @@ def test_each_load_reads_its_own_device():
     # read as it stands. Perturbation: skip load_device, or the halves'
     # comparison, and a case here reads REPRODUCED.
     other = [dict(CARD[0], ordinal=1, pci_bus_id="0000:02:00.0")]
-    saved = dm.load_device.__defaults__
-    dm.load_device.__defaults__ = (1, 0)
+    saved = base.load_devices.__defaults__
+    base.load_devices.__defaults__ = (1, 0)
     try:
         for devices, want in [(({"unreadable": "journal"}, {"devices": CARD}), "the source load's serving device could not be read"),
                               (({"devices": CARD}, {"devices": []}), "the replay load's serving device could not be read"),
@@ -132,7 +132,7 @@ def test_each_load_reads_its_own_device():
             rec = session(Agent(devices=devices))
             assert rec["verdict"].startswith(want), rec["verdict"]
     finally:
-        dm.load_device.__defaults__ = saved
+        base.load_devices.__defaults__ = saved
     assert dm.run_binding([{"devices": CARD}, {"devices": CARD}, {}]) == CARD
     assert dm.run_binding([{"devices": CARD}, {"devices": other}]) == {"varied": [CARD, other]}
     assert "unreadable" in dm.run_binding([{}, {}])

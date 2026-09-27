@@ -11,8 +11,8 @@ carry the fixes of #716, named in the Spec's section 0, with a test holding that
 path the 2026-09-27 runs took every verdict, seed and turn is what it was before, the
 fields that move named: the declared seed and the device each load logged. The
 `test_*.py` files are the tests of the two, three from that tree and
-`test_recorded_seed.py` and `test_absence_and_evidence.py` from #716. Each is a plain
-script and exits non-zero on the first failure:
+`test_recorded_seed.py`, `test_absence_and_evidence.py` and `test_round_five.py` from
+#716. Each is a plain script and exits non-zero on the first failure:
 
 ```
 python3 test_seed_schedule.py
@@ -20,6 +20,7 @@ python3 test_loop_digest.py
 python3 test_provenance_close.py
 python3 test_recorded_seed.py
 python3 test_absence_and_evidence.py
+python3 test_round_five.py
 ```
 
 Stdlib only. It needs the installed agent stack, one agent whose declaration it
@@ -65,6 +66,12 @@ python3 determinism_matrix.py --config <deposit>/config.json \
 
 Its `summary.json` names the worker, SPU and gate binaries and every engine library
 by sha256. They must be the ones the box facts name, and the faults must be zero.
+
+**Record the journal's retention**, `journalctl --disk-usage` and the oldest entry
+`journalctl -o short | head -1`, in the box facts. The harness reads each load's device
+by its unit invocation as the load stands, so retention does not limit the gate, but the
+journal window it also records at the close covers only what the journal still holds,
+and on a box keeping minutes that is the tail of a run.
 
 ## What the exit code says
 
@@ -126,7 +133,11 @@ driver's, which stays in `weaver-experiments`. A laptop part may not hold one at
 
 ## The deposit
 
-One directory per run, never appended to by a second run:
+One directory per run, never appended to by a second run. The harness refuses an outdir
+already holding `matrix.jsonl`, `matrix.log` or `summary.json`, and refuses to start
+while a `.pre-matrix` backup of the declaration stands, which a run leaves only when it
+was killed before restoring the declaration. Restore the declaration from it by hand and
+remove it first:
 
 | File | What it holds |
 | --- | --- |

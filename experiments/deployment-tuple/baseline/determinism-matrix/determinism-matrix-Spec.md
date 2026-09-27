@@ -130,9 +130,11 @@ and never a match.
 session that could not complete records the step it stopped at as its verdict: a load or
 reload refused, a socket that never stood, a load composed by a loop other than the
 config's, a load that served a declaration other than the session's or wrote no load
-event, a load whose serving device cannot be read or names none, source and replay loads
-on different devices, a turn not answered, a turn missing its request or a payload kind
-or carrying a compared kind twice, a source turn the replay does not carry, a check a
+event, a load whose unit invocation or serving device cannot be read, or which names no
+device, a reload under the load's own invocation, a load under an invocation an earlier
+session read, source and replay loads on different devices, a replay carrying turns the
+source did not, a turn not answered, a turn missing its request or a payload kind or
+carrying a compared kind twice, a source turn the replay does not carry, a check a
 record carries no value for, source or replay turns split across runs or short of the
 depth, a replay read short, a seed mismatch under section 4, or an exception. A replay
 read short is the sink one turn behind and is kept apart from DIVERGED, which is the
@@ -148,17 +150,20 @@ sha256 of its emission.
 ## 4. The seed
 
 **Every session is declared under a seed, the declaration's own where no schedule
-stands.** The declaration's one `seed:` line is read at the start on every path, and a
-declaration carrying other than exactly one, or a seed that is not an integer, is
-refused before anything loads. With `--seed-schedule`, a comma-separated list of
-distinct integers, that line is rewritten before each session. Both halves of a session
-read the same seed and successive sessions read different ones. The seed a matrix cell
-takes rotates by matrix cell and is offset by sweep, so over as many sweeps as the
-schedule has seeds every matrix cell meets every seed and no matrix cell keeps one seed
-from one sweep to the next. A schedule that cannot hold both properties with the sweep
-boundary, one seed or two, is refused. The declaration is restored when the run ends, by
-its clock or by an interrupt, and not by a hangup, per section 5. `--artifact` overrides
-the declaration's artifact for every session in the same way and is restored with it.
+stands.** The declaration's one `seed:` line is read at the start on every path, as a
+YAML scalar, quoted or plain with any comment dropped, and a declaration carrying other
+than exactly one, or a seed that is not a decimal integer, is refused by name before
+anything loads. The artifact is read the same way, and `--artifact` rewrites only its
+own line, refusing a path a plain scalar cannot carry unchanged. With `--seed-schedule`,
+a comma-separated list of distinct integers, that line is rewritten before each session.
+Both halves of a session read the same seed and successive sessions read different ones.
+The seed a matrix cell takes rotates by matrix cell and is offset by sweep, so over as
+many sweeps as the schedule has seeds every matrix cell meets every seed and no matrix
+cell keeps one seed from one sweep to the next. A schedule that cannot hold both
+properties with the sweep boundary, one seed or two, is refused. The declaration is
+restored when the run ends, by its clock or by an interrupt, and not by a hangup, per
+section 5. `--artifact` overrides the declaration's artifact for every session in the
+same way and is restored with it.
 
 **A session whose seed the record does not bear out is a fault, not a verdict.** The
 source turns must carry one recorded seed, `sampling.seed` on each `model.request`, with
@@ -175,12 +180,14 @@ libraries the SPU links, the worker, SPU and gate binaries, and the toolchain ar
 read when the run opens and again when it closes. A field that reads the same at both
 ends is `unchanged`, and one that differs says so with both readings, a changed claim
 being made only where both sides are readings and not where a closing read failed. The
-serving device is read from the worker's journal for each load as it stands, both halves
-of a session on one binding, since a journal kept by size holds minutes and a read at
-the close would miss most of a run. The window read at the close is kept as a record and
-not counted. The summary carries these with the counts: sessions, reproduced, diverged,
-faults, the verdicts by prompt character and by declared seed, and the first twenty
-divergences and faults.
+serving device is read from the worker's journal for each load as it stands, bound to
+that load by its unit's InvocationID and never by a time window, which a fast reload or
+a trailing journal holds the previous load inside. Both halves of a session are on one
+binding under two invocations, and no invocation recurs in a run. A journal kept by size
+holds minutes, so a read at the close would miss most of a run. The window read at the
+close is kept as a record and not counted. The summary carries these with the counts:
+sessions, reproduced, diverged, faults, the verdicts by prompt character and by declared
+seed, and the first twenty divergences and faults.
 
 **Every load is held to the session's declaration and loop.** Each load event records
 the digest of the declaration it served, the sha256 of the declaration file, and the
@@ -196,7 +203,7 @@ loop leaves the loop unchecked.
 | --- | --- | --- |
 | weights | the artifact's path held per load by the declaration's digest, and its bytes read at both ends | yes, `weights` must read `unchanged` |
 | precision | fixed by the weights hash | yes, with the weights |
-| device | each load's binding read as it stands, both halves on one, and every session on the same one | yes, `serving_device` must be one binding |
+| device | each load's binding read by its unit invocation as it stands, both halves on one under two invocations, and every session on the same one | yes, `serving_device` must be one binding |
 | kernel stack | the engine libraries, the binaries and the toolchain read at both ends | yes, each must read `unchanged` |
 | batch composition | recorded, not held: one caller and one turn at a time by construction, and the record carries nothing a second caller would change | no |
 | sampler and seed | the declared seed on every session's recorded seed, the replay's equal to the source's, the knobs compared per turn and held per load by the declaration's digest | yes, every session's verdict |
@@ -240,7 +247,8 @@ comments, and it holds these parts in this order:
 
 1. **A header**: the source commit and how it was installed, the pinned revisions, the
    device line, the driver, the CUDA toolkit and the reduction library, the host
-   compiler, the toolchain, and the kernel.
+   compiler, the toolchain, the kernel, and the journal's retention, its disk use and
+   its oldest entry.
 2. **Binaries**: one `sha256sum` line per installed weaver binary.
 3. **Engine libraries**: one `sha256sum` line per library the SPU links, and where the
    set was installed from.
@@ -256,6 +264,13 @@ A second run on an unchanged stack copies the file and records at its head when 
 re-read the stack and found it unchanged.
 
 ## 7. What a run requires
+
+**A run writes into a deposit no earlier run wrote.** An outdir already holding
+`matrix.jsonl`, `matrix.log` or `summary.json` is refused before anything is written,
+since an appended record under a summary of one invocation disagrees with it. A run that
+rewrites the declaration keeps the operator's text beside it as `.pre-matrix` until it
+has restored it, and a run finding one standing refuses, since the declaration on disk
+is then not the operator's.
 
 **Every load and unload is a privileged step.** The harness calls the admin through
 `sudo -n` four times a session, so a run needs a sudo credential that holds for its

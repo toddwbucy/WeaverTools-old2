@@ -128,7 +128,7 @@ class _Served(Exception):
 def _drive_run_cell(composer_digest):
     """`run_cell` with the box stubbed, up to the first turn."""
     saved = {n: getattr(g, n) for n in
-             ("admin", "wait_socket", "gate_turn", "serving_device")}
+             ("admin", "wait_socket", "gate_turn", "serving_device", "unit_invocation")}
     td = tempfile.mkdtemp()
     # An older run at the declared digest already stands in the trace, so a
     # check that read the wrong load would pass on it. The fake load below
@@ -161,7 +161,10 @@ def _drive_run_cell(composer_digest):
         g.admin = fake_admin
         g.wait_socket = lambda cfg, timeout=120: True
         g.gate_turn = fake_gate
-        g.serving_device = lambda cfg, since: {"devices": [{"ordinal": 0}]}
+        g.serving_device = lambda cfg, since, invocation=None: {"devices": [{"ordinal": 0}]}
+        # Each load its own unit invocation, as systemd starts each.
+        invocations = iter(f"{i:032x}" for i in range(1, 1000))
+        g.unit_invocation = lambda cfg: next(invocations)
         outcome = "returned"
         report = None
         try:

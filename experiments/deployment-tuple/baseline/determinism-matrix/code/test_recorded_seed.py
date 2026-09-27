@@ -30,14 +30,25 @@ class Agent:
                  devices=({"devices": CARD}, {"devices": CARD})):
         self.seeds, self.loads, self.runs = (source_seed, replay_seed), 0, {}
         self.served, self.loops, self.run, self.devices = served, loops, None, devices
+        self.starts = 0
 
-    def serving_device(self, cfg, since):
-        """The device each half's load logs, as the journal read answers it."""
+    def serving_device(self, cfg, since, invocation=None):
+        """The device each half's load logs, as the journal read by that
+        load's invocation answers it."""
+        assert invocation == self.invocation(), (invocation, self.invocation())
         return self.devices[self.loads - 1]
+
+    def invocation(self):
+        return f"{self.starts:032x}"
+
+    def unit_invocation(self, cfg):
+        """The unit's invocation: a new one at every load, as systemd starts."""
+        return self.invocation()
 
     def admin(self, cfg, verb):
         if verb == "load":
             self.loads += 1
+            self.starts += 1
             self.run = f"run-{self.loads}"
             self.runs[self.run] = []
         return {"kind": "state"}
@@ -83,7 +94,7 @@ class Agent:
 def session(agent, depth=2, declared_seed=None, declaration_sha=None, cfg=CFG):
     saved = {k: getattr(base, k)
              for k in ("admin", "wait_socket", "gate_turn", "await_turns", "newest_load",
-                       "serving_device")}
+                       "serving_device", "unit_invocation")}
     try:
         for k in saved:
             setattr(base, k, getattr(agent, k))
@@ -147,7 +158,7 @@ BEFORE = json.loads("""
 
 # The fields a session record gains since d04da2a on today's path, named so
 # that nothing else may move: the device each load logged (round three).
-ADDED = {"devices": CARD}
+ADDED = {"devices": CARD, "invocations": [f"{1:032x}", f"{2:032x}"]}
 
 
 def test_the_path_the_runs_took_is_unchanged():
@@ -278,7 +289,7 @@ def test_a_divergence_still_reads_as_one():
     assert session(agent)["verdict"] == "DIVERGED"
 
 
-def run_main(agent, device=None, hours="0.00003"):
+def run_main(agent, device=None, hours="0.00003", extra=(), prepare=None, inspect=None):
     """`main` whole on the fake agent: a real declaration and config in a
     temporary directory, the stack's readers answering a fixed reading, and
     the exit code and the per-session records returned."""
@@ -301,20 +312,22 @@ def run_main(agent, device=None, hours="0.00003"):
         cfg = os.path.join(tmp, "config.json")
         with open(cfg, "w") as fh:
             json.dump(dict(CFG, declaration=decl), fh)
+        if prepare:
+            prepare(tmp, decl)
         fakes = {"_resolve_spu": lambda c: "/spu", "engine_libraries": lambda c, s: fixed,
                  "weaver_binaries": lambda c, s: fixed,
                  "toolchain": lambda c: {"rustc": {"path": "/rustc", "sha256": "e" * 64}},
                  "closing_resolution": lambda c: ("/spu", None),
                  "device_bindings": lambda c, since: [device if device is not None else card]}
         for k in ("admin", "wait_socket", "gate_turn", "await_turns", "newest_load",
-                  "serving_device"):
+                  "serving_device", "unit_invocation"):
             fakes[k] = getattr(agent, k)
         saved = {k: getattr(base, k) for k in fakes}
         argv = sys.argv
         try:
             for k, v in fakes.items():
                 setattr(base, k, v)
-            sys.argv = ["determinism_matrix.py", "--config", cfg, "--outdir", tmp, "--hours", hours]
+            sys.argv = ["determinism_matrix.py", "--config", cfg, "--outdir", tmp, "--hours", hours, *extra]
             with contextlib.redirect_stdout(io.StringIO()):
                 try:
                     dm.main()
@@ -325,10 +338,16 @@ def run_main(agent, device=None, hours="0.00003"):
             sys.argv = argv
             for k, v in saved.items():
                 setattr(base, k, v)
-        with open(os.path.join(tmp, "matrix.jsonl")) as fh:
-            records = [json.loads(line) for line in fh]
-        with open(os.path.join(tmp, "summary.json")) as fh:
-            summary_read = json.load(fh)
+        if inspect:
+            inspect(tmp, decl)
+        records, summary_read = None, None
+        try:
+            with open(os.path.join(tmp, "matrix.jsonl")) as fh:
+                records = [json.loads(line) for line in fh]
+            with open(os.path.join(tmp, "summary.json")) as fh:
+                summary_read = json.load(fh)
+        except (OSError, ValueError):
+            pass
     return code, records, summary_read
 
 

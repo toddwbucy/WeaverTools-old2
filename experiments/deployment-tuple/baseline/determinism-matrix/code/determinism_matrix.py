@@ -128,8 +128,7 @@ def seed_for(schedule, iteration, cell_index):
 # artifact's bytes are read at both ends of the run, and the exit gate counts
 # every field. Batch composition is one by construction and is recorded, not
 # verified: the record carries nothing a second caller would change.
-SEED_VALUE = re.compile(r"^[ \t]*seed:[ \t]*(\S+)", re.M)
-ARTIFACT_VALUE = re.compile(r"^[ \t]*artifact:[ \t]*(\S+)[ \t]*$", re.M)
+SEED_VALUE = re.compile(r"^[ \t]*seed:(.*)$", re.M)
 
 
 def standing_seed(declaration):
@@ -139,9 +138,12 @@ def standing_seed(declaration):
     if len(values) != 1:
         raise ValueError(f"the declaration carries {len(values)} seed lines, not one")
     try:
-        return int(values[0])
-    except ValueError:
-        raise ValueError(f"the declaration's seed {values[0]!r} is not an integer") from None
+        value = base.yaml_scalar(values[0])
+    except ValueError as e:
+        raise ValueError(f"the declaration's seed: {e}") from None
+    if re.fullmatch(r"[0-9]+", value) is None:
+        raise ValueError(f"the declaration's seed {value!r} is not a decimal integer")
+    return int(value)
 
 
 def session_seed(schedule, standing, iteration, cell_index):
@@ -151,12 +153,10 @@ def session_seed(schedule, standing, iteration, cell_index):
 
 
 def artifact_of(declaration):
-    """The one artifact the declaration binds, whose bytes the run reads at
-    both ends as the weights field."""
-    found = ARTIFACT_VALUE.findall(declaration)
-    if len(found) != 1:
-        raise ValueError(f"the declaration names {len(found)} artifacts, not one")
-    return found[0]
+    """The one artifact the declaration binds, read as the YAML scalar it is
+    (#716 round five), whose bytes the run reads at both ends as the weights
+    field."""
+    return base.declared_artifact(declaration)
 
 
 def weights(path):
@@ -204,21 +204,24 @@ def load_held(cfg, before, declaration_sha, half, rec, timeout=15.0):
     return True
 
 
-def load_device(cfg, since, half, rec, tries=15, pause=0.2):
-    """The devices this half's load bound, read from the worker's journal
-    right after the load stands, while the journal still holds it (#716
-    round three). A read at the end of the run cannot stand in for this: on
-    a box whose journal keeps minutes, the window a run spans is mostly gone
-    by its close, and the loads it lost would pass unread. A load whose
-    device cannot be read, or which names none, is a fault. Retried briefly,
-    since journald can trail the load it records."""
-    for _ in range(tries):
-        seen = base.serving_device(cfg, since)
-        if isinstance(seen, dict) and seen.get("devices"):
-            return seen["devices"]
-        time.sleep(pause)
-    rec["verdict"] = f"the {half} load's serving device could not be read: {json.dumps(seen)}"
-    return None
+def load_device(cfg, half, rec):
+    """The devices this half's load bound, read from the worker's journal by
+    the load's own unit invocation as soon as it stands (#716 rounds three
+    and five). A read at the end of the run cannot stand in for this: on a
+    box whose journal keeps minutes, most of a run is gone by its close. And
+    a time window cannot either: a fast reload or a trailing journal holds
+    the previous load inside any slack. A load whose invocation or device
+    cannot be read, or which names none, is a fault. Answers the devices and
+    the invocation, or (None, None) with the session's verdict set."""
+    seen, invocation = base.load_devices(cfg)
+    if invocation is None:
+        rec["verdict"] = f"the {half} load's unit invocation could not be read: {json.dumps(seen)}"
+        return None, None
+    if not (isinstance(seen, dict) and seen.get("devices")):
+        rec["verdict"] = (f"the {half} load's serving device could not be read under"
+                          f" invocation {invocation}: {json.dumps(seen)}")
+        return None, None
+    return seen["devices"], invocation
 
 
 def run_binding(results):
@@ -342,7 +345,6 @@ def run_session(cfg, probe, depth, iteration, declared_seed=None, declaration_sh
     try:
         base.admin(cfg, "unload")
         before = base.newest_load(cfg["trace"])[0]
-        since = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 1))
         if base.admin(cfg, "load").get("kind") != "state":
             rec["verdict"] = "load refused"
             return rec
@@ -351,7 +353,7 @@ def run_session(cfg, probe, depth, iteration, declared_seed=None, declaration_sh
             return rec
         if not load_held(cfg, before, declaration_sha, "source", rec):
             return rec
-        source_devices = load_device(cfg, since, "source", rec)
+        source_devices, source_invocation = load_device(cfg, "source", rec)
         if source_devices is None:
             return rec
 
@@ -413,7 +415,6 @@ def run_session(cfg, probe, depth, iteration, declared_seed=None, declaration_sh
 
         base.admin(cfg, "unload")
         before = base.newest_load(cfg["trace"])[0]
-        since = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 1))
         if base.admin(cfg, "load").get("kind") != "state":
             rec["verdict"] = "reload refused"
             return rec
@@ -422,8 +423,14 @@ def run_session(cfg, probe, depth, iteration, declared_seed=None, declaration_sh
             return rec
         if not load_held(cfg, before, declaration_sha, "replay", rec):
             return rec
-        replay_devices = load_device(cfg, since, "replay", rec)
+        replay_devices, replay_invocation = load_device(cfg, "replay", rec)
         if replay_devices is None:
+            return rec
+        rec["invocations"] = [source_invocation, replay_invocation]
+        # The reload is its own unit invocation, or it never happened and the
+        # replay's device read is the source's.
+        if replay_invocation == source_invocation:
+            rec["verdict"] = f"the reload is the load's own invocation {source_invocation}"
             return rec
         # Both halves on one binding, or the comparison is across silicon.
         if replay_devices != source_devices:
@@ -483,9 +490,7 @@ def run_session(cfg, probe, depth, iteration, declared_seed=None, declaration_sh
             return rec
         replay_by = {t["turn"]: t for t in replay_all}
 
-        # A replay carrying surplus turns is interleaved traffic and is
-        # never a match, however well the turns it shares agree.
-        all_match = len(replay_all) == len(source_turns)
+        all_match = True
         for st in source_turns:
             rt = replay_by.get(st["turn"])
             # A source turn the replay does not carry is the record and not
@@ -518,6 +523,15 @@ def run_session(cfg, probe, depth, iteration, declared_seed=None, declaration_sh
                 "emission_sha256": hashlib.sha256(
                     json.dumps(emission, sort_keys=True).encode()).hexdigest(),
             })
+        # A replay carrying turns the source did not is interleaved traffic:
+        # the record, never the model, so a fault and not a divergence, and
+        # never a match however well the shared turns agree (#716 round five,
+        # the surplus-turn item on #698).
+        surplus = sorted({t["turn"] for t in replay_all} - {st["turn"] for st in source_turns})
+        if len(replay_all) != len(source_turns) or surplus:
+            rec["verdict"] = (f"the replay carries {len(replay_all) - len(source_turns)} turns"
+                              f" the source did not: {', '.join(surplus)}")
+            return rec
         rec["verdict"] = "REPRODUCED" if all_match else "DIVERGED"
         return rec
     except Exception as exc:  # an unattended run records rather than dies
@@ -552,6 +566,24 @@ def main():
     with open(args.config) as f:
         cfg = json.load(f)
     os.makedirs(args.outdir, exist_ok=True)
+    # A run writes into a deposit no earlier run has written: an appended
+    # record under a summary of the new invocation alone disagrees with it
+    # (#716 round five). What the operator's shell writes beside the run,
+    # the config, the box facts and the clock log, is not the run's.
+    stale = base.stale_outputs(args.outdir, ["matrix.jsonl", "matrix.log", "summary.json"])
+    if stale:
+        print(f"the outdir already holds a run's output: {', '.join(stale)}."
+              " A run writes into a deposit no earlier run has written.", file=sys.stderr)
+        sys.exit(2)
+    # A run that rewrites the declaration leaves this backup until it has
+    # restored it, so one standing now is a run that never did, and the file
+    # on disk is not the operator's: a seed a killed schedule left would be
+    # read as the declaration's own.
+    pending = cfg["declaration"] + ".pre-matrix"
+    if os.path.lexists(pending):
+        print(f"a previous run left the declaration unrestored: its backup stands at"
+              f" {pending}. Restore the declaration from it and remove it first.", file=sys.stderr)
+        sys.exit(2)
 
     with open(cfg["declaration"]) as f:
         original = f.read()
@@ -560,12 +592,11 @@ def main():
     # from it so the two overrides compose rather than overwrite each other.
     standing = original
     if args.artifact:
-        swapped, n = re.subn(r"(artifact:\s*).*", r"\g<1>" + args.artifact,
-                             original, count=1)
-        if n != 1:
-            print("no artifact line in the declaration", file=sys.stderr)
+        try:
+            standing = base.with_artifact(original, args.artifact)
+        except ValueError as e:
+            print(str(e), file=sys.stderr)
             sys.exit(2)
-        standing = swapped
     if schedule:
         # Refused before any load and before anything is written: a
         # declaration without exactly one seed line is not one this override
@@ -589,7 +620,7 @@ def main():
     # cannot reach back past this run.
     run_started = time.strftime(
         "%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 1))
-    results, iteration = [], 0
+    results, iteration, invocations = [], 0, set()
     # **Bound before the try, because the interrupt is caught rather than
     # fatal.** `except KeyboardInterrupt` below swallows the interrupt so a
     # run cut short still deposits its summary, which means the summary path
@@ -618,6 +649,10 @@ def main():
         f"{len(PROMPTS)} prompts x {len(DEPTHS)} depths")
     if schedule:
         log(f"declared seed schedule: {schedule}")
+    if args.artifact or schedule:
+        # The operator's declaration, kept until the run has restored it.
+        with open(pending, "x") as fh:
+            fh.write(original)
     try:
         # **The swap itself is inside the cleanup scope**: opening the file
         # for writing truncates it before the write, so a write that fails
@@ -664,6 +699,12 @@ def main():
                     rec = run_session(cfg, probe, depth, iteration, declared_seed,
                                       declaration_sha)
                     rec["seconds"] = round(time.time() - started, 1)
+                    # Every load of a run is its own invocation: one an
+                    # earlier session read is a load that did not happen.
+                    reused = [i for i in rec.get("invocations") or [] if i in invocations]
+                    if reused:
+                        rec["verdict"] = f"a load read invocation {reused[0]}, which an earlier session read"
+                    invocations.update(rec.get("invocations") or [])
                     results.append(rec)
                     ent = ""
                     for t in rec["turns"]:
@@ -683,6 +724,7 @@ def main():
         if args.artifact or schedule:
             with open(cfg["declaration"], "w") as fh:
                 fh.write(original)
+            os.unlink(pending)
         base.admin(cfg, "unload")
 
     total = len(results)
