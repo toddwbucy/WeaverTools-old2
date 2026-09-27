@@ -52,7 +52,7 @@
 
 # **A probe's results are dated records and are not ingested**, per Working
 # Process section 5 as amended 2026-09-25: `experiments/` returned for the
-# randomness-tuple experiment, each probe's Spec and `code/` read like a crate's
+# deployment-tuple experiment, each probe's Spec and `code/` read like a crate's
 # and its `results/` answering to the other clock. The earlier form of this
 # stanza excluded `experiments/` whole, from the departure of 2026-09-13.
 experiments/**/results/

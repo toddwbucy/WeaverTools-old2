@@ -1,7 +1,7 @@
 # TB preparation (issue #679)
 
 **The authority is `blackwell-probe-Spec`** (`../blackwell-probe-Spec.md`, the
-Blackwell probe's Spec, one measurement under the randomness tuple's device arm);
+Blackwell probe's Spec, one measurement under the deployment tuple's device arm);
 this file is the run instructions. Every unit here
 cites the Spec's assertion records it holds an instrument for, in its header.
 
@@ -33,7 +33,7 @@ ordinal beside it; do not substitute a current replay binary into this stack.
 Run the nonprivileged staging command once, supplying local absolute paths:
 
 ```
-python3 experiments/randomness-tuple/device/blackwell/code/prepare.py --handoffs /path/to/handoffs --deposit /path/to/blackwell-deposit
+python3 experiments/deployment-tuple/device/blackwell/code/prepare.py --handoffs /path/to/handoffs --deposit /path/to/blackwell-deposit
 ```
 
 It creates `handoffs/tb/`, `handoffs/tb-evidence/tb-plan.json`,
@@ -132,7 +132,7 @@ sudo install -d -o root -g root -m 0755 /usr/local/libexec/weaver-tb
 sudo install -o root -g root -m 0755 handoffs/tb/tb_root.py \
   /usr/local/libexec/weaver-tb/tb-root
 sudo sha256sum /usr/local/libexec/weaver-tb/tb-root
-git show MERGE:experiments/randomness-tuple/device/blackwell/code/tb_root.py \
+git show MERGE:experiments/deployment-tuple/device/blackwell/code/tb_root.py \
   | sha256sum
 ```
 
@@ -238,7 +238,7 @@ each host ELF's header, program headers and sections. Extract with the local `cu
 No library is loaded and no kernel runs. Compare with:
 
 ```
-python3 experiments/randomness-tuple/device/blackwell/code/sections.py compare B1-MANIFEST B2-MANIFEST OUTPUT.json
+python3 experiments/deployment-tuple/device/blackwell/code/sections.py compare B1-MANIFEST B2-MANIFEST OUTPUT.json
 ```
 
 The result distinguishes cubin container hashes from code-section hashes. All
@@ -252,7 +252,7 @@ inventory. An identity verdict cannot be inferred from equal file counts or
 .text alone.
 
 ```
-cd experiments/randomness-tuple/device/blackwell/code
+cd experiments/deployment-tuple/device/blackwell/code
 python3 -B -m unittest test_tb
 python3 -B perturb.py > /tmp/tb-perturbations.json
 ```

@@ -448,7 +448,7 @@ one, a crate's or a probe's. The Document Format's section 2 carries the contain
 and section 3 the kinds, review reads every document under `experiments/` outside a
 `results/`, the charter and each probe's Spec among them, and every probe's `code/`,
 and `.hadesignore` excludes `results/` alone. The first experiment is
-`experiments/randomness-tuple/`, and its first probe is `device/blackwell/`.
+`experiments/deployment-tuple/`, and its first probe is `device/blackwell/`.
 
 ### Closing checklist
 

@@ -4,7 +4,7 @@
 
 **Date filed:** 2026-09-25
 **Document ID:** `blackwell-probe-Spec`
-**Parent:** `randomness-tuple-PRD`
+**Parent:** `deployment-tuple-PRD`
 **Editorial:** Per the Working Rules.
 **Landing PR:** #713
 
@@ -13,9 +13,9 @@
 ## 0. What this document is
 
 The Spec of the Blackwell probe, one measurement of the device field of the
-randomness tuple, filed at `experiments/randomness-tuple/device/blackwell/` beside its
+deployment tuple, filed at `experiments/deployment-tuple/device/blackwell/` beside its
 code and its results. The experiment's charter, the root `README.md` of
-`experiments/randomness-tuple/`, registers the tuple, the device field's claims and
+`experiments/deployment-tuple/`, registers the tuple, the device field's claims and
 this probe's place among them, and this document states what the probe's code
 enforces, per the operator's rulings of 2026-09-25 recorded at Working Process
 section 5 and Document Format section 3: a Spec belongs to any code that requires
@@ -61,7 +61,7 @@ kind: probe
 
 edge: parent
 from: blackwell-probe
-to: randomness-tuple
+to: deployment-tuple
 ```
 
 ## 1. What the probe is
