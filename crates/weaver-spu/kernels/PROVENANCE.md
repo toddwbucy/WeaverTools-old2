@@ -108,12 +108,12 @@ The four `-gencode` lines are `sm_86` (A6000, Ampere), `sm_89` (RTX Ada),
 `sm_120` (RTX PRO Blackwell, needing CUDA >= 12.8), and a `compute_86` PTX
 fallback that JITs to any architecture at or above 86.
 
-**What has been verified, and on what, 2026-08-06.** Two machines, and the
+**What has been verified, and on what.** Two machines, and the
 coverage they give is uneven in a way worth stating rather than averaging.
 
 | Machine | Toolkit | Compiles and links | Suite runs | Device-side |
 |---|---|---|---|---|
-| A6000 pair, Ampere | CUDA 13.0 | yes, all four lines | yes | yes, three device tests |
+| A6000 pair, Ampere | CUDA 13.4.92 | yes, all four lines | yes | suite tests yes, these kernels not run |
 | RTX PRO Blackwell laptop | CUDA 13.4 | yes, all four lines | yes | suite tests yes, these kernels not run |
 
 On the Blackwell box the linked archive was read back with `cuobjdump`: both
@@ -141,6 +141,25 @@ tests skipped. **These kernels did not run.** Nothing in the crate calls into
 below that has not crossed, so they are known to be present and linkable on
 Blackwell and not known to produce correct numbers there. That gap closes when
 the comparison code crosses, not before.
+
+**The Ampere row was re-measured 2026-09-26**, at the new pins, cudarc
+`0.19.10` and candle `aee9af9c`, on the A6000 pair under CUDA 13.4.92, driver
+615.71.09, with the box's third card, an RTX 2000 Ada, held out of the run. The
+seven carried files hash to the table above. The archive read back with
+`cuobjdump` carries native SASS for `sm_86`, `sm_89` and `sm_120` in both
+members, and the `compute_86` PTX in the `transformer.o` member only, the
+device-link member carrying none. The suite ran there under `cuda,gguf`, 211
+passing, and **no device test skipped**: every artifact the suite reads was
+present or named, so the count is of tests that ran with their assertions. What
+ran on the pair was the GGUF seam tests through llama.cpp's CUDA backend, the
+native candle tests against the Qwen2.5-0.5B safetensors export including the
+pair's agreement with the single card and its pace, a sharded Qwen2.5-32B
+safetensors export serving across the pair, a 35 GiB GGUF split by layer across
+the pair and a 64.6 GiB split set admitted across it, and the readout tap's
+neutrality on the device. One probe inside a passing test stayed unverified, the llama
+family's flush declaration, its vocab-only fixture carrying no chat template.
+**These kernels did not run here either**, for the reason the Blackwell
+paragraph gives.
 
 
 ## What has not crossed yet, named so the gap is not read as completeness
