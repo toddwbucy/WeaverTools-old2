@@ -86,7 +86,7 @@ deployable proto-stateful agent -> autonomic calculator tool -> then memory.
 
 **Four process documents in `WeaverTools/process/` govern everything and outrank this
 file.** Read them before acting: `WeaverTools-Working-Process` (phases, seats, gates),
-`WeaverTools-Document-Format` (the graph notation), `WeaverTools-Working-Rules`
+`WeaverTools-Document-Format` (the document notation), `WeaverTools-Working-Rules`
 (editorial), `WeaverTools-Handoff-Format`. They carry versions and change often, so read
 the file rather than trusting a version remembered from a summary.
 
@@ -94,40 +94,24 @@ the file rather than trusting a version remembered from a summary.
 
 1. **Phase one, authoring.** PRDs, contracts, Specs. Closed 2026-08-04.
 2. **Phase two, graph mapping.** The graph was built on the HADES server as
-   `WeaverTools_v3` per `HANDOFF-2026-08-04-hades-graph-build`, and **the set is
+   `WeaverTools_v3` per `HANDOFF-2026-08-04-hades-graph-build`, and **the set was
    RATIFIED 2026-08-04** per the operator's ruling recorded at Working Process
-   section 5 - the set ratifies as the complete document set for the toolless
-   inference deliverable, the tool workflow's later arrival a planned re-entry.
-   Checklist item 7 (quarry deletion) outlives ratification and waits on G6.
-3. **Phase three, coding.** Open, gates H1-H6 in force per Working Process
-   section 6. The floor (`weaver-traits`, `weaver-types`) and the recorder
-   (`weaver-trace`) are the first acts, and every source unit carries its
-   citations in one of the four comment forms `WeaverTools-Document-Format`
-   section 4 admits, of which `//!` is the file-level header H6 reads, and
-   code accrues into the graph as it merges. No version is pinned here
-   because the Format moves and this file has carried a stale pin before.
+   section 5. **Phase two and ratification are suspended until release**, on the
+   operator's ruling of 2026-09-27, and HADES is not part of this project until then.
+3. **Phase three, coding.** Open, gates H1-H5 in force per Working Process
+   section 6, H6 and the census having retired 2026-09-27. A merged Spec
+   authorizes code, and where code and a Spec disagree the act changes whichever
+   is wrong and moves on. No version is pinned here because the Format moves and
+   this file has carried a stale pin before.
 
-As of 2026-08-05 the corpus holds 8 PRDs, 8 contracts, 7 Specs, and **245 assertion
-records across the seven Specs**. Survey it rather than guessing:
-
-```bash
-cd WeaverTools
-find docs -name '*-Spec.md' | while read f; do
-  printf '%3d  %s\n' "$(grep -c '^kind: assertion' "$f")" "$(basename "$f")"
-done
-```
-
-**An assertion record is the middle term of apex section 11's `code -> assertion -> doc`
-chain.** Each names a claim a Spec makes and tags the instrument that holds it:
-`compile-pin`, `compile-fail`, `perturbation`, `manifest`, or `review`. Two rules earned
-the hard way and worth knowing before you touch one: **a tag follows the mechanism the
-clause names, not the heading it sits under**, and **`review` must mean an instrument was
-not bought, never that none exists** - the inverse overclaim forecloses tests the corpus
-may later want.
+**Assertion records are suspended until release**, per Document Format section 0 as
+of 2026-09-27. The records that stand stay legal and unmaintained, and no new one is
+required. The conformance check meanwhile is review against the Spec sections a pull
+request names, per Working Process section 6.
 
 **Gates G1-G7 run on every act** (mechanical, level discipline, graph facts, vocabulary,
-duplication authority, extraction completeness, rulings landed). H1-H6 are phase
-three's, in force per Working Process section 6, H6 having joined 2026-09-11.
+duplication authority, extraction completeness, rulings landed). H1-H5 are phase
+three's, in force per Working Process section 6, H6 having retired 2026-09-27.
 
 **A ruling is a claim about the whole corpus.** A review finding names one sighting of its
 violation, so an act that lands a ruling ends with a corpus-wide sweep for every wording
@@ -197,8 +181,7 @@ cache and an unreadable manifest, because cargo fails before it reaches the
 refusal that names the lock. So 2 means unchecked rather than drifted, the
 message says which it might be, and a run after `cargo clean` or on a fresh
 clone answers it for a tree that may be fine. It compiles nothing, so it
-costs well under a second and it goes first, ahead of the commands above and of
-the census. An
+costs well under a second and it goes first, ahead of the commands above. An
 instrument that runs inside a test binary cannot do this job at all, `cargo
 test` having resolved and repaired the lock before the binary is spawned, which
 is the defect #551 was filed against.
@@ -276,37 +259,29 @@ Unix sockets for all internal IPC.
 
 ## Enforcement, and the graph
 
-**Phase two stands up a HADES graph from the merged documents, and closing its
-checklist is what ratifies the set**, per `WeaverTools-Working-Process` section 5. The
-graph stood up 2026-08-04 as `WeaverTools_v3` and the set ratified the same day.
+**The graph is deferred to release**, on the operator's ruling of 2026-09-27, which
+`WeaverTools-Working-Process` sections 5 and 6 carry. HADES is not part of this
+project until release, when it returns as a lookup and a diff of documents against
+code. No rebuild is owed on document movement, and ratification, phase two's
+checklist, the census and H6's header rule are suspended with it. Existing assertion
+records and `conforms:` headers stay in place and are not maintained, and no new ones
+are required. The graph was a second source of truth every change had to keep true,
+and it had not once helped write code.
 
-The sequence:
+**The conformance check is review against the Spec.** Every pull request body carries
+`Implements: <Spec> <sections>`, and the Planner's grade gives each named section one
+verdict: conforms, drifted (fix the code), better way (change the Spec in the same
+pull request, a design-level change going to the operator), or Spec gap (extend the
+Spec, a new capability being the operator's ruling). H1 is applied as documents are
+written: where code and a Spec disagree, change whichever is wrong in the same act,
+contracts included and reaching every party. Working Process section 6 owns the rule.
 
-1. **Graph from the documents.** Phase two. This is ratification, not an audit.
-2. **Code**, with code nodes accruing into the graph as work merges. The graph is a code
-   generation input and a ledger the operator follows during generation.
-3. **A GraphSAGE GNN**, trained only once the graph has seen conforming code. It waits
-   because the signal worth learning is `code -> assertion`, and the quarry is no bootstrap:
-   25 files carry a conformance header and they cite 7 distinct spec node ids. GraphSAGE is
-   the right family because it is inductive, so code nodes added at merge time get
-   embeddings with no retrain.
-
-The quarry's own graph (`weavertools_v2`, ArangoDB) is the cautionary case, not the
-counterargument. At freeze its bilateral-contract certificate had 0 edges and its axiom
-basis covered 7 of 71 claims - the two things a graph uniquely provides had never been
-delivered. **The structure was right and the edges were never drawn.** The new program's
-guard against repeating that is a rule the operator settled before any labelling began:
-an assertion that grounds in no invariant is **representation, not an omission**, and the
-coverage number is a fact to read rather than a target to reach. Writing that down first
-is what stops a low number from being argued away once someone sees it. **That rule has
-one stated exception and Document Format section 4 carries it**, per the ruling of
-2026-09-14. Read it there rather than from a copy here.
-
-**Enforcement rests on six devices**, enumerated by `weaver-agents-PRD` section 11,
-which this list restates. The graph has landed and they do not retire - the graph
-indexes them, it does not replace them:
+**Enforcement rests on the devices `weaver-agents-PRD` section 11 enumerates**, which
+this list restates, the first suspended until release and the sixth retired:
 
 1. Conformance trace headers in source carrying `code -> assertion -> doc`.
+   **Suspended until release**: existing headers stand unmaintained and nothing
+   reads them.
 2. **Compile-time pins** for invariants that are type properties. A runtime test
    structurally cannot pin the *absence* of a trait impl.
 3. **Perturbation-verified tests** for invariants that are behaviours. Always confirm the
@@ -371,84 +346,11 @@ indexes them, it does not replace them:
    linted at all and `--workspace` answers a smaller question than eleven
    per-crate runs do.
 
-6. **The census**, on the operator's ruling of 2026-09-11.
-   `python3 process/gates/census.py`, run from the repository root wherever
-   clippy and fmt are run - **before the first review and again after the
-   rework**, since a fix is an act and can regress what it is fixing.
-
-   **It counts what the other five devices structurally cannot see.** Each of
-   those verifies an artifact against itself: a test against its code, a lint
-   against its crate, a compile pin against its types. **None compares a claim
-   in a document against a fact in code.**
-
-   ```text
-   dangling_citations                      a citation naming no node
-   uncited_perturbations                   a tag claiming an instrument
-   untagged_assertions                     a node no tag query can reach
-   unknown_tags                            a tag outside the format's five
-   duplicate_node_ids                      one identifier, two declarations
-   malformed_node_ids                      a declaration this gate cannot read
-   malformed_citations                     a citation this gate cannot read
-   enforcement_table_mismatch              a document against its own table
-   documents_without_an_enforcement_table  the table a row is owed in
-   sources_without_a_header                phase three's rule, per unit
-   archive_directories                     a frozen copy of live code
-   ```
-
-   **The last one is not a claim against a fact and is here anyway**, because
-   the census is the only device that reads the tracked set.
-   `WeaverTools-Working-Process` section 1 carries the rule, section 6 carries
-   what this reading owes it, and the ingest half is `.hadesignore`.
-
-   **`WeaverTools-Working-Process` section 6 owns the rule**, as H6, and this
-   file carries the invocation and not a second copy of it: two authorities
-   for one gate is the duplication G5 refuses. **The rule is section 6's, in
-   full, and is not restated here.** `process/gates/test_census.py` is the
-   gate's fixture and runs beside it.
-
-   **The chunk plan is not tracked and no gate reads it**, on the operator's
-   ruling of 2026-09-15. `process/ingest/chunk-plan.json` names the files too
-   large for the embedder's window and the offsets they would be cut at, and it
-   is coordination state between one working tree and one database rather than
-   a member of the corpus. It is gitignored beside `docs/project/open-items.md`
-   and excluded in `.hadesignore`, and `process/ingest/chunk_plan.py` regenerates
-   it on demand against whatever commit is being ingested.
-
-   **Nothing reads it but the script that writes it.** The ingest does not:
-   HADES chunks by its own analyzers regardless of what the manifest says. A
-   whole-tree artifact under version control is what two parallel acts collide
-   on, and the collision is the lucky case.
-
-   **An act whose reading differs from the committed baseline regenerates it in
-   the same act, or names in its body why it does not.** Nothing told an act it
-   owed a regeneration when its own edits moved a counter, so a header act
-   correctly reported the movement and the baseline stayed behind. Every act
-   after it then printed a `down` it did not cause, which is the gate crying
-   wolf and is how a reading stops being read. It happened twice: #601 moved
-   `documents_without_an_enforcement_table` and #610 regenerated only while
-   fixing something else, then three header acts of 2026-09-16 moved
-   `sources_without_a_header` by nine and none regenerated. **Where several acts
-   are in flight at once the regeneration waits**, per the parallel-batch rule
-   above, and one run against settled `main` follows them.
-
-   **Issue #558 is the backlog** and records how it came about: nineteen of
-   the first thirty-three uncited perturbations were born in documents-only
-   commits, the Spec authoring an assertion that phase three would code later,
-   with nothing holding the receipt.
-
-   **The backlog is paused, not the gate**, on the operator's ruling of
-   2026-09-26, after three overnight acts showed the gate generating work for
-   itself: acts that exist to clear the backlog stop, the no-new-defect rule
-   stands, every new unit carries its header and every new perturbation its
-   citation, and the baseline holds where it is.
-
-   **Its docstring lists every time this gate has been wrong**, which is
-   worth reading before trusting a number it prints. The length of that list
-   is not written here, a length copied out of a list arguing with the list
-   the first time the list grows. The shape repeats: a regular expression too
-   strict about where text sits, printing a count that is confidently too
-   low. Read the docstring rather than a copy of it here. There are no
-   untagged assertions in this corpus.
+6. **The census**, H6 from the operator's ruling of 2026-09-11, **retired
+   2026-09-27** with the graph. Its scripts left the tree in #713, git being the
+   archive. Section 1's archive rule is held by review meanwhile, an archive
+   directory in a diff being a finding. `process/ingest/chunk_plan.py` and
+   `.hadesignore` are dormant until release.
 
 Every real defect found in the quarry's final week came from items 2-4, while
 `gate-check.py` returned 0 findings on four consecutive PRs and the graph returned zero
@@ -458,9 +360,12 @@ evidence the gate did not fire, not evidence of correctness.
 ## The pull request path
 
 All pull requests open as drafts, from a worktree, and the arrangement runs as the
-#683 trial of 2026-09-25 settled it: the Executor seat opens the draft, Codex's
-GitHub review is the third-party reviewer, the Planner seat grades, and the
-operator merges. CodeRabbit is retired since 2026-09-22.
+#683 trial of 2026-09-25 settled it and the operator's word of 2026-09-27 fixed it:
+the Executor seat opens the draft and never takes it out of draft, the Planner seat
+grades the draft and undrafts it when it passes, Codex's GitHub review is the
+third-party reviewer, and the operator merges. CodeRabbit is retired since
+2026-09-22. **Edits to this file and to `AGENTS.md` go straight to `main` from the
+Planning seat**, on the operator's word of 2026-09-27, so the Executor stays on code.
 
 **A pull request in draft gets no pass.** Undrafting fires one, every push to an
 undrafted pull request fires one, and `@codex review` or `@codex security review` on the
@@ -489,15 +394,15 @@ returns to authoring, which is the rule that stopped #683 at twenty-eight passes
 findings were valid to the last pass, each the next site of a few classes, and the
 series stopped because a review that long is authoring by another name.
 
-**Gates before review, and do not spend a pass on what the census counts**: a
-reviewer's attention on "is this perturbation cited" is attention not on "does
-this fix hold", and the first is deterministic. The order, then, is this. Gates
-including the census come first, then the Planner's verification of the head against a
-clean extract, then out of draft, which fires the Codex pass. Every finding of the pass
-is graded and answered, fixed or declined with the reason on the pull request. The fixes
-pass the gates and then are pushed, that push fires a pass and the Planner grades it,
-and the loop repeats until a pass leaves nothing to push, more than four rounds of it
-being the bound above. Then the operator's merge.
+**Gates before review**: a reviewer's attention on what a command can check is attention
+not on "does this fix hold". The order, then, is this. The gates come first - `lock.sh`,
+fmt, clippy for the touched crate, and the G1 greps where documents moved - then the
+Planner's grade of the draft against a clean extract, carrying a conformance verdict for
+every section the `Implements:` line names, then out of draft, which fires the Codex
+pass. Every finding of the pass is graded and answered, fixed or declined with the
+reason on the pull request. The fixes pass the gates and then are pushed, that push
+fires a pass and the Planner grades it, and the loop repeats until a pass leaves nothing
+to push, more than four rounds of it being the bound above. Then the operator's merge.
 
 **A pull request names what it answers, and a merge is not done until the ledger
 is.** On the operator's ruling of 2026-09-26, after an audit of the eleven epics
