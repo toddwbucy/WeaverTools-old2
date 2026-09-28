@@ -1266,7 +1266,7 @@ span of resident positions, this crate makes it absent, and the
 confirmation carries the resident counts either side, taken around the
 call. The charter permits a rollback to the span's start where a family's
 state allows one - `resident[..from]` is a prefix of what stood, so a family
-declaring truncation could truncate to the span's start and re-decode the
+whose flush truncates could truncate to the span's start and re-decode the
 tail alone, a primitive the backend seam already supplies - and this Spec
 elects the one path anyway: **the session re-establishes and decodes the
 kept sequence whole whatever the family's flush mechanism declares.** One
@@ -1433,7 +1433,10 @@ orchestration quirks the shared kernels are driven by. Nothing family-specific
 lives outside its module, and the kernels beneath are shared, which is the
 archived tree's share-kernels-own-orchestration rule promoted to structure.
 Review's by non-purchase, the placement of a family's code being as readable to
-a module-boundary test as to a reader and neither being bought here.
+a module-boundary test as to a reader and neither being bought here. **A family is
+a template lineage**, per charter section 14 as ruled 2026-09-28, so one module
+carries every architecture entry that shares its template and orchestration, and the
+registry in `family/mod.rs` is where those entries are declared.
 
 **A seated `System` prefix folds where the family's template names no system
 turn, within the render call it arrives in.** The canonical role of an
@@ -1497,15 +1500,20 @@ to: spu-share-kernels-own-orchestration
 ```
 
 **The surface a family implements is small and named.** Render an identity
-prefix from canonical messages, render a turn's delta, parse an emission into
-canonical content with the family's markers recognized, declare the stop
-conditions, declare whether the session's state permits truncation, and
-declare the capabilities admission judges against, per charter section 14,
-which are the readout tap and **the device counts the backend can shard a
-model across**. That last is a set of widths rather than a maximum, because a
-backend that serves one device and a pair is not thereby serving three, and a
-maximum would imply it does. The surface's membership is the charter's
-enumeration and takes no record. The declaration's shape does, being this
+prefix from canonical messages, render a turn's delta, fold messages for a
+template that names no system turn, parse an emission into canonical content
+with the family's markers recognized, declare the stop conditions, and hand
+over the family's declaration. The declaration carries the capabilities
+admission judges against, per charter section 14, which are the readout tap and
+**the device counts the backend can shard a model across**. That last is a set
+of widths rather than a maximum, because a backend that serves one device and a
+pair is not thereby serving three, and a maximum would imply it does. **The
+declaration also names the family's flush mechanism, per section 4.4, and
+whether the session's state permits truncation is derived from it rather than
+declared beside it.** Truncation is permitted exactly where the flush truncates,
+so a second declaration of it on the trait was one fact in two places, and it
+left the trait on 2026-08-17. The surface's membership is the `Family` trait's
+and takes no record. The declaration's shape does, being this
 document's own and what section 3 judges against, and section 10 buys the test:
 a declared set with a pair in it and a binding naming three devices is arithmetic
 that runs with no device present. **The fixture the test uses declares a
@@ -3354,7 +3362,7 @@ Each names what settles it, and none is this Spec's to settle alone.
   measurable.
 - **The elision's rollback-assisted path.** Section 4.5 elects the
   re-establish-whole mechanism for both families and prices the elision at a
-  prefill of the survivors. For a family declaring truncation the primitive
+  prefill of the survivors. For a family whose flush truncates the primitive
   for a cheaper path exists, truncate to the span's start and re-decode the
   tail alone. What settles it is a deployment whose elision spans sit late in
   long sessions, where the tail refill is the difference that matters, and

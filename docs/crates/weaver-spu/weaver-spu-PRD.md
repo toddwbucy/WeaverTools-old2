@@ -562,7 +562,7 @@ worker, applied one level down, and it is what keeps the routing claim of
 domain and it is this crate's, per `weaver-harness-PRD` section 3. The deferral
 rests on order of construction, per the operator's framing recorded on
 issue #93: **memory is a lossy compression of state, and state is the trace's
-faithful account of what actually happened.** There is no memory until
+faithful account of what happened.** There is no memory until
 something can reliably extract from the trace what a compression takes as
 input, so the encoder - the thing that compresses - cannot precede a
 trustworthy trace, whatever anyone wants to build. The trace is this program's
@@ -577,7 +577,7 @@ trustworthy trace could be skipped, which is why the order-of-construction
 ground is the sturdier of the two.
 
 **State and memory are not the same thing, and this charter needs the
-distinction stated.** State is the faithful account; memory is a lossy
+distinction stated.** State is the faithful account. Memory is a lossy
 derivative of it. The memory leg's exclusion is a consequence of that ordering
 rather than a scope decision, and the eventual memory PRDs inherit a
 definition to build against instead of one to invent.
@@ -1405,7 +1405,10 @@ never knew it. The module discipline is the boundary: one module per
 family holding the template, the types, the parsing and rendering, and the
 forward orchestration, with nothing family-specific living outside its
 module and the kernels shared beneath, which is the prior program's own
-share-kernels-own-orchestration rule promoted to a charter line.
+share-kernels-own-orchestration rule promoted to a charter line. **A family here is a
+template lineage**, on the operator's ruling of 2026-09-28: one module may carry
+several architecture entries that share its template and its orchestration, and an
+architecture is an entry in its lineage's module rather than a module of its own.
 
 **Both directions of the end-to-end template requirement live here and are
 tested here.** Inbound, the family module is what makes input formatted
