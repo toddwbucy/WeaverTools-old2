@@ -1384,11 +1384,13 @@ line.
 
 **What sits beneath a lineage, and which of four things owns each fact, read from the
 code as it stands.** The module, the lineage, owns its placement, its shared
-orchestration, and the one or two renderers it holds. A renderer, the format the module
-renders and the thing an entry names, owns the rendering of an identity prefix and of a
-turn's delta, the fold where its template names no system turn, the marker vocabulary,
-the parsing of the emission, the stop conditions and the turn terminator. A registry
-entry, one per architecture, owns the architecture string the artifact's header declares
+orchestration, and the renderers it holds, one or two for a decode lineage and none for
+a classify lineage, whose entries sit in the classify table and render nothing. A
+renderer, the format the module renders and the thing an entry names, owns the rendering
+of an identity prefix and of a turn's delta, the fold where its template names no system
+turn, the marker vocabulary, the parsing of the emission, the stop conditions and the
+turn terminator. A registry entry, which carries one architecture where an architecture
+may carry several entries, owns the architecture string the artifact's header declares
 and the tensor layout it names, the configuration shape, the template identity, the
 generation opener, which renderer it names, the markers that select it where its
 architecture is contested, the flush mechanism with rollback derived from it, the

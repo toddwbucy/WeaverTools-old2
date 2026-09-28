@@ -1432,7 +1432,7 @@ agrees with the table or is a defect.
 |---|---|---|---|---|---|
 | placement, one module per lineage | x | | | | `family/<name>.rs`, declared in `family/mod.rs` |
 | the shared orchestration quirks | x | | | | the lineage's module |
-| the renderers a lineage holds, one or two | x | | | | `qwen2::renderer`, `phi::tag_renderer` and `phi::sep_renderer` |
+| the renderers a lineage holds, one or two for a decode lineage and none for a classify lineage | x | | | | `qwen2::renderer`, `phi::tag_renderer` and `phi::sep_renderer`, and none in `modernbert`, whose entries sit in `modernbert::CLASSIFY_FAMILIES` |
 | rendering an identity prefix and a turn's delta | | x | | | `Family::render_identity`, `Family::render_delta` |
 | the fold where the template names no system turn | | x | | | `Family::fold_for_template` |
 | the marker vocabulary | | x | | | the module's markers, `qwen2::RENDERED_MARKERS` |
