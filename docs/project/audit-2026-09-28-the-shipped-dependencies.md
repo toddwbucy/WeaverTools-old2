@@ -30,17 +30,21 @@ whether any of their code is present in the built binary.
 - **Compiled, each crate alone:** `cargo tree -p <crate> -e normal,no-proc-macro`, the
   crates reached over normal edges with proc-macro crates left out, at the manifest's
   default features and then at each feature the deploy names.
-- **Compiled, per binary as the deploy builds it:** the binary's package subtree of one
-  `cargo tree --workspace` at the deploy's feature string, where features are unified
-  across members. A package with two binaries is split by what each binary's code
-  references: `weaver-harness`'s `pyo3` is referenced only under
-  `src/bin/pyworker/`, so `worker` is the package's subtree less `pyo3`'s addition. No
-  other in-scope package ships more than one binary.
-- **Present in the binary:** a release build at the base with the deploy's member
-  features, and a census of each binary's demangled symbols by crate. A crate that
-  contributes only macros, constants or code inlined into its caller leaves no symbol,
-  and `hashbrown`, `memchr` and `cfg-if` share names with the standard library's own
-  dependencies, so presence is read only for crates where neither applies.
+- **Compiled, per package as the deploy builds it:** the package's subtree of one `cargo
+  tree --workspace` at the deploy's feature string, where features are unified across
+  members. This reading is per package and not per binary: a feature activates its
+  optional dependency for the whole package, and cargo compiles a package's resolved
+  dependencies whichever of its binaries is built, so both binaries of a package share
+  one figure. `weaver-harness` is the one in-scope package that ships two, `worker` and
+  `pyworker`.
+- **Present in the binary, per binary:** a release build at the base with the deploy's
+  member features, and a census of each binary's demangled symbols by crate. A crate
+  that contributes only macros, constants or code inlined into its caller leaves no
+  symbol, and `hashbrown`, `memchr` and `cfg-if` share names with the standard library's
+  own dependencies, so presence is read only for crates where neither applies. This is
+  the reading that tells two binaries of one package apart: `pyo3` is referenced only
+  under the harness's `src/bin/pyworker/`, and it is compiled for both of the package's
+  binaries and present in `pyworker` alone.
 
 **Why the basis changed across this report's readings.** Earlier readings counted
 `cargo tree -e normal`, which carries proc-macro crates that run on the host and link
@@ -226,8 +230,9 @@ carries both lines across its binaries though no one binary compiles both. This 
 
 **`weaver-harness` with `pyworker`: eleven compiled crates become fifteen, four added.**
 `pyo3` 0.27, `pyo3-ffi`, `once_cell` and `unindent`, and the `pyworker` binary links
-`libpython` at run time, which no count here carries. `worker`, the Rust worker in the
-same crate, references none of it and keeps none of it, per the symbol census below.
+`libpython` at run time, which no count here carries. The feature is the package's, so
+the four are compiled for `worker`, the Rust worker in the same crate, as well, and
+`worker` references none of them and keeps none of them, per the symbol census below.
 Which of the two a box runs is its `worker-binary` entry, and the deploy installs both.
 This is **[2]**.
 
@@ -241,18 +246,19 @@ the YAML parser's group, and admin is the one consumer that turns it on.
 
 `deploy/update-stack.sh` builds once, `cargo build --release --locked --workspace
 --features "$FEATURES"`, where `FEATURES` is
-`weaver-spu/cuda,weaver-harness/pyworker,weaver-state/sqlite,weaver-state/postgres`,
-and cargo resolves one set of features per dependency across every member it builds.
-Admin takes `weaver-types` with `config`, so the one build compiles `weaver-types` with
-the YAML parser for every member that depends on it. The compiled closure of each binary
-is its package's subtree of `cargo tree --workspace --features "$FEATURES" -e
-normal,no-proc-macro --locked --offline --prefix depth --no-dedupe`, split per binary
-where a package ships two. The same tree without `weaver-spu` gives every in-scope
-subtree unchanged, `weaver-spu`'s one contribution to them being `nix`'s `dir` feature.
+`weaver-spu/cuda,weaver-harness/pyworker,weaver-state/sqlite,weaver-state/postgres`, and
+cargo resolves one set of features per dependency across every member it builds. Admin
+takes `weaver-types` with `config`, so the one build compiles `weaver-types` with the
+YAML parser for every member that depends on it. The compiled closure of each binary is
+its package's subtree of `cargo tree --workspace --features "$FEATURES" -e
+normal,no-proc-macro --locked --offline --prefix depth --no-dedupe`, one figure per
+package, so `worker` and `pyworker` share the harness's. The same tree without
+`weaver-spu` gives every in-scope subtree unchanged, `weaver-spu`'s one contribution to
+them being `nix`'s `dir` feature.
 
 | Binary | Package | Compiled, crate alone | Compiled, as the deploy builds it | By name |
 |---|---|---|---|---|
-| `worker` | `weaver-harness` | 11 | 17 | 17 |
+| `worker` | `weaver-harness` | 15 | 21 | 21 |
 | `pyworker` | `weaver-harness` | 15 | 21 | 21 |
 | `weaver-gate` | `weaver-gate` | 11 | 17 | 17 |
 | `weaver-admin` | `weaver-admin` | 24 | 24 | 24 |
@@ -310,13 +316,14 @@ carries, and an alternative that neither makes effective is not offered.
    admin carries in its own crate or admin built on its own with the feature, since a
    feature on a shared crate cannot be scoped to one member of a single workspace
    build.
-2. **`pyo3` in `pyworker`.** The Python loop is a documented route, the
-   `worker-binary` entry chooses it per box, and the deploy installs `pyworker`
-   beside `worker` on every box whether or not the entry names it. The cost is four
-   compiled crates and the interpreter at run time, present in `pyworker` and absent
-   from `worker`. The call is whether the deployed stack should carry the
-   interpreter's binary at all where the entry names the Rust worker, and whether
-   `pyworker` belongs in the default deploy or behind an election.
+2. **`pyo3` in `pyworker`.** The Python loop is a documented route, the `worker-binary`
+   entry chooses it per box, and the deploy installs `pyworker` beside `worker` on every
+   box whether or not the entry names it. The cost is four compiled crates, compiled for
+   both of the harness's binaries once the feature is on, and the interpreter at run
+   time, `pyo3` present in `pyworker` and absent from `worker`. The call is whether the
+   deployed stack should carry the interpreter's binary at all where the entry names the
+   Rust worker, and whether `pyworker` belongs in the default deploy or behind an
+   election.
 3. **The `nix` feature sets.** Four named features are not reached by the shipped
    binary, per the table above: `user` in the harness and in state, `process` in
    admin and `uio` in state. A feature no call reaches is compiled and then left out
@@ -394,7 +401,7 @@ identifier.
 | Every direct internal dependency is referenced by its crate's source | the same, and `git grep` of each identifier across the crate, tests included | 7 of 9: `weaver-diagnostic` on `weaver-traits` and `weaver-state` on `weaver-types` referenced nowhere |
 | Each crate's workspace dependencies are the ones its row names | `cargo tree -e normal --depth 1`, workspace members | all ten rows match |
 | `pyo3` is referenced only by `pyworker`'s target | `git grep -l pyo3` under the harness's `src/` | `src/bin/pyworker/main.rs` and `py_loop.rs` only |
-| `worker` carries none of `pyo3` | symbol census of the release build | 0 symbols in `worker`, 569 in `pyworker` |
+| `pyo3` is compiled for both harness binaries and present in `pyworker` alone | the package's tree at the deploy's features, and the symbol census | compiled for both, 0 symbols in `worker`, 569 in `pyworker` |
 | The YAML parser is present in admin alone | the census | present in `weaver-admin`, 0 symbols in `worker`, `pyworker`, the gate and state |
 | The YAML parser serves one purpose | `git grep serde_yaml_ng` in `weaver-types` | two call sites, `config::parse` and the check it calls |
 | `sha2` serves two functions in admin | `git grep sha2` in admin | two call sites, `inventory.rs` lines 603 and 857 |
@@ -403,7 +410,7 @@ identifier.
 | Admin launches nothing through `nix` | `git grep` for `fork`, `waitpid`, `prctl` in admin, and the check above | no call, the five matches being comments, its launches being `std::process::Command` and `systemd-run` |
 | Each crate's compiled closure and its group sums | `cargo tree -p <crate> -e normal,no-proc-macro` per crate | all ten sum from the groups |
 | Each feature's addition is complete | the tree with the feature diffed against the tree without it | `postgres` 50, `pyworker` 4, `config` 6, `sqlite` 8, each list matching |
-| Each binary's compiled closure as the deploy builds it | one workspace tree at the deploy's string, split per package root and per binary | as the table, and unchanged without `weaver-spu` |
+| Each binary's compiled closure as the deploy builds it | one workspace tree at the deploy's string, split per package root, one figure per package | as the table, and unchanged without `weaver-spu` |
 | The host-side set | the tree over normal and build edges less the compiled tree, per crate at the deploy's features | 22 by name and version, 13 and 9 |
 | `weaver-analysis` depends on no workspace crate | `cargo tree --depth 1` and its manifest | holds, its manifest citing its Spec's section 1 |
 
