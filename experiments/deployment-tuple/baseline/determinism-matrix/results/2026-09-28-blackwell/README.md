@@ -6,8 +6,15 @@ Four runs, each with a folder here holding its note, where it has one, a `COMMAN
 saying how it was executed, and every script that produced a number in its note. The
 data stays on the share: the record, the log, the summary, the config, the box facts,
 the clock readings and the journal evidence are in each run's deposit, named below with
-the sha256 of every file as it sits there, and none of it is copied here. The harness is
-not copied in either. Each `COMMANDS.md` names its commit, and git holds it.
+the sha256 of every file as it sits there, and none of it is copied here. Each note is a
+verbatim copy of the note in its deposit, so where a note says "this directory" or
+"here", or names an evidence subdirectory such as `run3-evidence/` or `run2-close/`, it
+means that deposit on the shared bulk store:
+`/bulk-store/weaver-testing/determinism-matrix-thinkpad-2026-09-27-39fe573-run3/` for
+run3 and
+`/bulk-store/weaver-testing/determinism-matrix-thinkpad-2026-09-27-39fe573-run2/` for
+run2, on olympus, and the same paths under `/mnt` on the thinkpad. The harness is not
+copied in either. Each `COMMANDS.md` names its commit, and git holds it.
 
 ## The runs
 
