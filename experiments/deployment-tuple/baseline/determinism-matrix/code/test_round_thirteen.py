@@ -70,6 +70,24 @@ def test_a_block_that_never_completes_is_unreadable():
     assert "did not complete within 3 reads" in seen["unreadable"] and invocation == "c" * 32, seen
 
 
+def test_a_device_line_after_the_marker_undoes_it():
+    # The engine names every device before the loader line, so a device
+    # line after it is a block this reader cannot vouch for. Perturbation:
+    # leave a group complete once its marker is read, and the late card's
+    # block is accepted.
+    late = [BOUNDARY, device_line(0, "0000:01:00.0"), COMPLETE, device_line(1, "0000:02:00.0")]
+    sh, _ = arriving([late])
+    saved = base.sh
+    base.sh = sh
+    try:
+        groups = base._device_groups({"agent": "karl"}, None, "c" * 32)
+        seen, invocation = base.load_devices({"agent": "karl"}, 3, 0)
+    finally:
+        base.sh = saved
+    assert groups == {"groups": [TWO], "complete": [False]}, groups
+    assert "did not complete within 3 reads" in seen["unreadable"], seen
+
+
 def test_a_session_holds_the_whole_binding():
     # Through a session: the first read of each load is the first card
     # alone, and the binding recorded is both cards.
