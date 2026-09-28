@@ -1132,26 +1132,25 @@ from: spu-overflow-refuses-sheds-nothing
 to: axiom-harness-integrates-by-the-loop
 ```
 
-**The turn terminator is made resident before the answer returns, on every
-path.** The archived tree's own hard-won correctness note: a generation that
-stops at the end-of-generation marker without decoding it leaves the
-terminator absent, and the next turn's framing is then malformed at a
-boundary nobody looks at. This crate decodes the terminator after the
-generation loop, **on the clean path and the cancelled path alike**, which is
-what makes the cancel of charter section 13.5 leave a well-framed session.
-**The resident count the generation reports includes it, as `weaver-types-Spec`
+**The turn terminator is made resident before the answer returns, on every path.** The
+archived tree's own hard-won correctness note: a generation that stops at the
+end-of-generation marker without decoding it leaves the terminator absent, and the next
+turn's framing is then malformed at a boundary nobody looks at. This crate decodes the
+terminator after the generation loop, **on the clean path and the cancelled path
+alike**, which is what makes the cancel of charter section 13.5 leave a well-framed
+session. **The resident count the generation reports includes it, as `weaver-types-Spec`
 section 4.4 has defined the member since 2026-08-19, and this is why.** Section 6's
 closing count is taken after the terminator lands, so the count as a generation closed
 exceeds the count as it opened by the turn's delta, the drawn tokens, and the
-terminator, and the terminator is one token by the shape the family declares, a
-single identifier the request's box names as `terminator`. A reader deriving the
-position of a generation's first draw from the closing count therefore subtracts
-the drawn tokens and one, and a reader adding the delta to the previous closing
-count is exact from the second generation and wrong on the first by the identity
-prefix, which the open made resident and no delta carries. Confirmed on 2026-09-05
-against the positions `model.field` reports across three records, nine generations,
-two precisions, and two finish kinds, per issue #461, which found the floor's
-definition unread rather than absent.
+terminator, and the terminator is one token by the shape the resolved entry's renderer
+declares, a single identifier the request's box names as `terminator`. A reader deriving
+the position of a generation's first draw from the closing count therefore subtracts the
+drawn tokens and one, and a reader adding the delta to the previous closing count is
+exact from the second generation and wrong on the first by the identity prefix, which
+the open made resident and no delta carries. Confirmed on 2026-09-05 against the
+positions `model.field` reports across three records, nine generations, two precisions,
+and two finish kinds, per issue #461, which found the floor's definition unread rather
+than absent.
 
 ```graph
 node: spu-closing-count-includes-the-terminator
@@ -1175,12 +1174,12 @@ to: spu-terminator-on-every-path
 
 ### 4.3 The turn, and the cancel
 
-**Append and generate is one call with a token-boundary check.** The delta is
-rendered by the family library, decoded at the resident end, and the
-generation loop samples until the family's stop condition, the harness's
-cancel, or the session's capacity. The cancel is checked between sampled
-tokens, per charter section 13.5, which bounds the stop by one token's decode
-rather than by a kernel's completion.
+**Append and generate is one call with a token-boundary check.** The delta is rendered
+by the family library, decoded at the resident end, and the generation loop samples
+until the stop condition of the renderer the resolved entry names, the harness's cancel,
+or the session's capacity. The cancel is checked between sampled tokens, per charter
+section 13.5, which bounds the stop by one token's decode rather than by a kernel's
+completion.
 
 ```graph
 node: spu-cancel-bounded-by-one-token
@@ -1266,7 +1265,7 @@ state allows one - `resident[..from]` is a prefix of what stood, so a family
 whose flush truncates could truncate to the span's start and re-decode the
 tail alone, a primitive the backend seam already supplies - and this Spec
 elects the one path anyway: **the session re-establishes and decodes the
-kept sequence whole whatever the family's flush mechanism declares.** One
+kept sequence whole whatever the resolved entry's flush mechanism declares.** One
 path, one instrument, and no per-family divergence to keep honest, which is
 the divergence the recurrent-family failure the survey records punishes.
 The cost is therefore a full re-decode of every survivor, and it is stated
@@ -1437,19 +1436,17 @@ may carry different templates where the artifact's own template selects between 
 which is the contested-architecture mechanism below: phi holds two `phi3` entries with
 disjoint templates and renderers.
 
-**A seated `System` prefix folds where the family's template names no system
-turn, within the render call it arrives in.** The canonical role of an
-identity prefix is `System`, per
-`weaver-types-Spec` section 2, and the parse refuses any other. Two families
-in the registry publish templates with no system turn - gemma and mistral -
-and both refused the role at `render_identity`, which after that parse rule
-left them no usable prefix at all: `user` refused above, `system` refused
-here. **The role is the floor's vocabulary and the shape is the family's**, so
-those families render the role rather than refusing it, folding **every**
-`System` message into the user turn that follows it, within the `render_each`
-call the message arrives in. A `System` message with no user turn after it in
-that call becomes a user turn of its own, a prefix that rendered as nothing
-being a prefix the record cannot account for.
+**A seated `System` prefix folds where the resolved entry's template names no system
+turn, within the render call it arrives in.** The canonical role of an identity prefix
+is `System`, per `weaver-types-Spec` section 2, and the parse refuses any other. Two
+families in the registry publish templates with no system turn - gemma and mistral - and
+both refused the role at `render_identity`, which after that parse rule left them no
+usable prefix at all: `user` refused above, `system` refused here. **The role is the
+floor's vocabulary and the shape is the family's**, so those families render the role
+rather than refusing it, folding **every** `System` message into the user turn that
+follows it, within the `render_each` call the message arrives in. A `System` message
+with no user turn after it in that call becomes a user turn of its own, a prefix that
+rendered as nothing being a prefix the record cannot account for.
 
 **The merge is within one render call and does not span the prefix and the
 delta**, which are two: the prefix renders at the open and the delta at the
@@ -1500,32 +1497,31 @@ to: spu-share-kernels-own-orchestration
 
 **The surface a family implements is small and named.** Render an identity prefix from
 canonical messages, render a turn's delta, fold messages for a template that names no
-system turn, parse an emission into canonical content with the family's markers
-recognized, declare the stop conditions, and hand over a declaration. **The facts
-admission and the decode path read are per architecture, not per module:** each is read
-from the registry entry the admitted artifact resolves to, by `lookup` against its
-header's family, and never from the trait's `declaration()`, which answers for the entry
-its module is named after. The entry's declaration carries the capabilities admission
-judges against, per charter section 14, which are the readout tap and **the device
-counts the backend can shard a model across**. That last is a set of widths rather than
-a maximum, because a backend that serves one device and a pair is not thereby serving
-three, and a maximum would imply it does. **The entry's declaration also names its flush
-mechanism, per section 4.4, and whether the session's state permits truncation is
-derived from that entry rather than declared beside it.** Truncation is permitted
-exactly where the flush truncates, so a second declaration of it on the trait was one
-fact in two places, and it left the trait on 2026-08-17. The surface's membership is the
-`Family` trait's and takes no record. The declaration's shape does, being this
-document's own and what section 3 judges against, and section 10 buys the test: a
-declared set with a pair in it and a binding naming three devices is arithmetic that
-runs with no device present. **The fixture the test uses declares a non-contiguous set
-on purpose,** because the set reading and the maximum reading answer alike on every
-contiguous declaration, so a fixture declaring one and two would leave the perturbation
-that matters unwatchable while the test went on passing. **The declaration's field is a
-set type and that half is pinned, per the operator's election of 2026-08-04:** a doctest
-reads a declaration carrying a non-contiguous set literal, so a maximum can no longer be
-declared, only read wrongly, and the perturbation keeps the judgment honest where the
-type cannot reach. The two are two records for that reason, per the division rule of
-Document Format section 3.
+system turn, parse an emission into canonical content with its markers recognized,
+declare the stop conditions, and hand over a declaration. **The facts admission and the
+decode path read are per architecture, not per module:** each is read from the registry
+entry the admitted artifact resolves to, by `lookup` against its header's family, and
+never from the trait's `declaration()`, which answers for the entry its module is named
+after. The entry's declaration carries the capabilities admission judges against, per
+charter section 14, which are the readout tap and **the device counts the backend can
+shard a model across**. That last is a set of widths rather than a maximum, because a
+backend that serves one device and a pair is not thereby serving three, and a maximum
+would imply it does. **The entry's declaration also names its flush mechanism, per
+section 4.4, and whether the session's state permits truncation is derived from that
+entry rather than declared beside it.** Truncation is permitted exactly where the flush
+truncates, so a second declaration of it on the trait was one fact in two places, and it
+left the trait on 2026-08-17. The surface's membership is the `Family` trait's and takes
+no record. The declaration's shape does, being this document's own and what section 3
+judges against, and section 10 buys the test: a declared set with a pair in it and a
+binding naming three devices is arithmetic that runs with no device present. **The
+fixture the test uses declares a non-contiguous set on purpose,** because the set
+reading and the maximum reading answer alike on every contiguous declaration, so a
+fixture declaring one and two would leave the perturbation that matters unwatchable
+while the test went on passing. **The declaration's field is a set type and that half is
+pinned, per the operator's election of 2026-08-04:** a doctest reads a declaration
+carrying a non-contiguous set literal, so a maximum can no longer be declared, only read
+wrongly, and the perturbation keeps the judgment honest where the type cannot reach. The
+two are two records for that reason, per the division rule of Document Format section 3.
 
 ```graph
 node: spu-shard-widths-are-a-set
