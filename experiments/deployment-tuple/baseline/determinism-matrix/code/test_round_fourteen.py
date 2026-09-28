@@ -21,7 +21,7 @@ from test_round_five import drive_cell  # noqa: E402
 from test_round_nine import TWO_CELLS, agent_fakes  # noqa: E402
 
 base = dm.base
-DIGEST = hashlib.sha256(f"artifact: {MODEL}\nseed: {SEED}\n".encode()).hexdigest()
+DIGEST = hashlib.sha256(f'[spu-instruction.decoder.model-binding]\nartifact = "{MODEL}"\n[spu-instruction.decoder.tunable-values]\nseed = {SEED}\n'.encode()).hexdigest()
 
 
 def cells(agent=None, dm_fakes=None, change=None):
@@ -102,7 +102,7 @@ def test_a_reordered_or_altered_source_is_refused_in_both_modes():
         assert rec["verdict"] == f"source t-{first} carries a request other than turn {first} of the texts served", \
             (change.__name__, rec["verdict"])
         with tempfile.TemporaryDirectory() as tmp:
-            digest = hashlib.sha256(f"artifact: /m.gguf\nseed: {SEED}\n".encode()).hexdigest()
+            digest = hashlib.sha256(f'[spu-instruction.decoder.model-binding]\nartifact = "/m.gguf"\n[spu-instruction.decoder.tunable-values]\nseed = {SEED}\n'.encode()).hexdigest()
             cell = drive_cell(Rewriting(change, served=(digest, digest)), tmp)
         assert cell["verdict"] == f"source t-{first} carries a request other than turn {first} of the texts served", \
             (change.__name__, cell["verdict"])
@@ -116,7 +116,7 @@ def test_a_replay_recording_other_requests_is_refused_in_both_modes():
     rec = session(Rewriting(altered, half=2))
     assert rec["verdict"] == "replay t-2 carries a request other than source t-2's", rec["verdict"]
     with tempfile.TemporaryDirectory() as tmp:
-        digest = hashlib.sha256(f"artifact: /m.gguf\nseed: {SEED}\n".encode()).hexdigest()
+        digest = hashlib.sha256(f'[spu-instruction.decoder.model-binding]\nartifact = "/m.gguf"\n[spu-instruction.decoder.tunable-values]\nseed = {SEED}\n'.encode()).hexdigest()
         cell = drive_cell(Rewriting(altered, half=2, served=(digest, digest)), tmp)
     assert cell["verdict"] == "replay t-2 carries a request other than source t-2's", cell["verdict"]
 

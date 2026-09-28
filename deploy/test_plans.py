@@ -124,7 +124,7 @@ class PlanTests(unittest.TestCase):
         (self.config / "agent-config-directory").write_text(str(self.agents))
         (self.config / "worker-binary").write_text(str(self.root / "installed" / "pyworker"))
         (self.config / "allow-list").write_text("existing\n")
-        (self.agents / "existing.yaml").write_text("state-store:\n  engine: none\n")
+        (self.agents / "existing.toml").write_text("[state-store]\nengine = \"none\"\n")
         self.home = self.root / "home"
         (self.home / "fixture-no-home" / ".weaveragents").mkdir(parents=True)
         self.hba = self.root / "pg_hba.conf"
@@ -182,7 +182,7 @@ test() { fixture_args "$@"; builtin test "${fixture_mapped[@]}"; }
         before = {p: p.read_bytes() for p in self.root.rglob("*") if p.is_file()}
         result = self.create()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn(str(self.agents / "m1.yaml"), result.stdout)
+        self.assertIn(str(self.agents / "m1.toml"), result.stdout)
         self.assertIn("PENDING --apply", result.stdout)
         self.assertNotIn("nothing of this agent exists", result.stdout)
         self.assert_unprivileged()
@@ -213,10 +213,10 @@ test() { fixture_args "$@"; builtin test "${fixture_mapped[@]}"; }
         for collision in ("account", "declaration", "allow-list"):
             with self.subTest(collision=collision):
                 self.env.pop("COLLISION", None)
-                (self.agents / "m1.yaml").unlink(missing_ok=True)
+                (self.agents / "m1.toml").unlink(missing_ok=True)
                 (self.config / "allow-list").write_text("existing\n")
                 if collision == "account": self.env["COLLISION"] = "weaver-m1-state"
-                elif collision == "declaration": (self.agents / "m1.yaml").touch()
+                elif collision == "declaration": (self.agents / "m1.toml").touch()
                 else: (self.config / "allow-list").write_text("m1\n")
                 result = self.create()
                 self.assertNotEqual(result.returncode, 0)
@@ -305,7 +305,7 @@ test() { fixture_args "$@"; builtin test "${fixture_mapped[@]}"; }
         self.assertFalse(any(c[0] == "sudo" for c in self.calls()))
 
     def test_apply_uses_privileged_collision_reads(self):
-        for path in (self.agents / "m1.yaml", self.home / "weaver-m1",
+        for path in (self.agents / "m1.toml", self.home / "weaver-m1",
                      self.home / "fixture-no-home" / ".weaveragents" / "weaver-m1"):
             with self.subTest(path=path):
                 self.log.unlink(missing_ok=True)
@@ -328,7 +328,7 @@ test() { fixture_args "$@"; builtin test "${fixture_mapped[@]}"; }
                 result = self.create(*(["--apply"] if apply else []))
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("m1 is already in", result.stderr)
-                self.assertIn(str(self.agents / "m1.yaml"), result.stdout)
+                self.assertIn(str(self.agents / "m1.toml"), result.stdout)
                 self.assert_no_provisioning()
 
     def test_present_unreadable_allow_list_refuses_in_both_modes(self):
@@ -353,7 +353,7 @@ test() { fixture_args "$@"; builtin test "${fixture_mapped[@]}"; }
                 self.assert_no_provisioning()
 
     def test_failed_privileged_path_inspection_is_not_absence(self):
-        self.env.update(ALLOW_APPLY_CHECKS="1", PATH_FAIL=str(self.agents / "m1.yaml"))
+        self.env.update(ALLOW_APPLY_CHECKS="1", PATH_FAIL=str(self.agents / "m1.toml"))
         result = self.create("--apply")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("cannot inspect", result.stderr)
@@ -365,7 +365,7 @@ test() { fixture_args "$@"; builtin test "${fixture_mapped[@]}"; }
         result = self.create("--apply")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("== made", result.stdout)
-        self.assertTrue((self.agents / "m1.yaml").is_file())
+        self.assertTrue((self.agents / "m1.toml").is_file())
         self.assertIn("m1", (self.config / "allow-list").read_text().splitlines())
         self.assertIn("local   weaver_m1", self.hba.read_text())
         self.assertIn("weaver-m1-state", self.ident.read_text())

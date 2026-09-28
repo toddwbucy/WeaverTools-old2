@@ -9,31 +9,32 @@
 use weaver_types::{ConfigErrorKind, FieldName, parse};
 
 fn full_config() -> String {
+    // Top-level keys first, then one table per section: TOML reads a bare key
+    // after a table header as that table's, so a test adding a top-level key
+    // prepends it and a test adding a section appends it.
     concat!(
-        "session: s-1\n",
-        "spu-instruction:\n",
-        "  decoder:\n",
-        "    model-binding:\n",
-        "      artifact: qwen3-4b-instruct\n",
-        "      devices: [0]\n",
-        "    residual-readout-election: false\n",
-        "    identity:\n",
-        "      - role: system\n",
-        "        content:\n",
-        "          - type: text\n",
-        "            text: You answer briefly.\n",
-        "    tunable-values: {}\n",
-        "tool-set: []\n",
-        "permission-mode: ask\n",
-        "gate-instruction:\n",
-        "  access-rule:\n",
-        "    allowed-uids: [1000]\n",
-        "    allowed-gids: []\n",
-        "    denied-uids: [1701]\n",
-        "trace-sink:\n",
-        "  kind: file\n",
-        "  path: /var/lib/weaver/alpha/trace.ndjson\n",
-        "  create: true\n",
+        "session = \"s-1\"\n",
+        "tool-set = []\n",
+        "permission-mode = \"ask\"\n",
+        "\n",
+        "[spu-instruction.decoder]\n",
+        "residual-readout-election = false\n",
+        "identity = [{ role = \"system\", content = [{ type = \"text\", text = \"You answer briefly.\" }] }]\n",
+        "tunable-values = {}\n",
+        "\n",
+        "[spu-instruction.decoder.model-binding]\n",
+        "artifact = \"qwen3-4b-instruct\"\n",
+        "devices = [0]\n",
+        "\n",
+        "[gate-instruction.access-rule]\n",
+        "allowed-uids = [1000]\n",
+        "allowed-gids = []\n",
+        "denied-uids = [1701]\n",
+        "\n",
+        "[trace-sink]\n",
+        "kind = \"file\"\n",
+        "path = \"/var/lib/weaver/alpha/trace.ndjson\"\n",
+        "create = true\n",
     )
     .to_string()
 }
@@ -87,8 +88,7 @@ fn a_complete_config_parses() {
 #[test]
 fn a_non_system_identity_role_refuses() {
     for role in ["user", "assistant", "tool_result"] {
-        let source =
-            full_config().replace("      - role: system\n", &format!("      - role: {role}\n"));
+        let source = full_config().replace("role = \"system\"", &format!("role = \"{role}\""));
         let err = parse(&source).expect_err("refuses");
         assert_eq!(err.kind, ConfigErrorKind::BadValue, "role {role}");
         // The index rides the name, an operator with several messages
@@ -118,8 +118,8 @@ fn a_non_system_identity_role_refuses() {
 #[test]
 fn an_unlicensed_identity_block_refuses() {
     let source = full_config().replace(
-        "        content:\n          - type: text\n            text: You answer briefly.\n",
-        "        content:\n          - type: tool_call\n            name: calculator\n            arguments: \"{}\"\n",
+        "content = [{ type = \"text\", text = \"You answer briefly.\" }]",
+        "content = [{ type = \"tool_call\", name = \"calculator\", arguments = \"{}\" }]",
     );
     let err = parse(&source).expect_err("refuses");
     assert_eq!(err.kind, ConfigErrorKind::BadValue);
@@ -144,8 +144,8 @@ fn an_unlicensed_identity_block_refuses() {
 #[test]
 fn an_identity_message_carrying_nothing_refuses() {
     let source = full_config().replace(
-        "        content:\n          - type: text\n            text: You answer briefly.\n",
-        "        content: []\n",
+        "content = [{ type = \"text\", text = \"You answer briefly.\" }]",
+        "content = []",
     );
     let err = parse(&source).expect_err("refuses");
     assert_eq!(err.kind, ConfigErrorKind::BadValue);
@@ -168,10 +168,7 @@ fn an_identity_message_carrying_nothing_refuses() {
 /// conforms: types-identity-role-is-system
 #[test]
 fn an_identity_text_block_carrying_no_text_refuses() {
-    let source = full_config().replace(
-        "            text: You answer briefly.\n",
-        "            text: \"\"\n",
-    );
+    let source = full_config().replace("text = \"You answer briefly.\"", "text = \"\"");
     let err = parse(&source).expect_err("refuses");
     assert_eq!(err.kind, ConfigErrorKind::BadValue);
     assert_eq!(
@@ -186,16 +183,35 @@ fn an_identity_text_block_carrying_no_text_refuses() {
 /// one to be.
 #[test]
 fn an_empty_identity_still_parses() {
-    let source = full_config()
-        .replace(
-            "    identity:\n      - role: system\n",
-            "    identity: []\n",
-        )
-        .replace("        content:\n", "")
-        .replace("          - type: text\n", "")
-        .replace("            text: You answer briefly.\n", "");
+    let source = full_config().replace(
+        "identity = [{ role = \"system\", content = [{ type = \"text\", text = \"You answer briefly.\" }] }]\n",
+        "identity = []\n",
+    );
     let config = parse(&source).expect("an empty identity parses");
     assert!(config.spu_instruction.decoder.identity.is_empty());
+}
+
+/// **A refusal names the field the parser met, never text the operator wrote.**
+/// The parse sorts the error by its message, and the error's display also
+/// quotes the offending lines of the declaration, so an identity text that
+/// itself reads like a refusal would otherwise be read as one.
+///
+/// Perturbation: classify the error's display instead of its bare message and
+/// the decoy in the identity text is named in place of the missing field.
+/// Watched under exactly that change.
+#[test]
+fn a_refusal_names_the_parsers_field_and_not_the_operators_text() {
+    // The missing field and the decoy share one line, so the display quotes
+    // the decoy ahead of the message it sorts.
+    let source = full_config()
+        .replace(
+            "text = \"You answer briefly.\"",
+            "text = \"missing field `decoy`\"",
+        )
+        .replace("{ role = \"system\", content", "{ content");
+    let err = parse(&source).expect_err("refuses");
+    assert_eq!(err.kind, ConfigErrorKind::MissingField);
+    assert_eq!(err.field, Some(FieldName("role".into())));
 }
 
 /// A missing required field refuses the parse, run separately for the
@@ -207,7 +223,7 @@ fn an_empty_identity_still_parses() {
 /// Watched to fail under exactly that change.
 #[test]
 fn missing_residual_readout_election_refuses() {
-    let source = full_config().replace("    residual-readout-election: false\n", "");
+    let source = full_config().replace("residual-readout-election = false\n", "");
     let err = parse(&source).expect_err("refuses");
     assert_eq!(err.kind, ConfigErrorKind::MissingField);
     assert_eq!(
@@ -219,10 +235,10 @@ fn missing_residual_readout_election_refuses() {
 /// Every field of the declared surface is required, not only the elected one.
 #[test]
 fn missing_model_binding_refuses() {
-    let source = full_config()
-        .replace("    model-binding:\n", "")
-        .replace("      artifact: qwen3-4b-instruct\n", "")
-        .replace("      devices: [0]\n", "");
+    let source = full_config().replace(
+        "[spu-instruction.decoder.model-binding]\nartifact = \"qwen3-4b-instruct\"\ndevices = [0]\n",
+        "",
+    );
     let err = parse(&source).expect_err("refuses");
     assert_eq!(err.kind, ConfigErrorKind::MissingField);
 }
@@ -236,7 +252,7 @@ fn missing_model_binding_refuses() {
 /// fail under exactly that removal.
 #[test]
 fn unknown_key_refuses() {
-    let source = full_config().replace("permission-mode:", "permission-modes:");
+    let source = full_config().replace("permission-mode =", "permission-modes =");
     let err = parse(&source).expect_err("refuses");
     assert_eq!(
         err.kind,
@@ -250,7 +266,7 @@ fn unknown_key_refuses() {
 /// assigning no device is a declaration the operator did not finish.
 #[test]
 fn empty_device_set_refuses() {
-    let source = full_config().replace("devices: [0]", "devices: []");
+    let source = full_config().replace("devices = [0]", "devices = []");
     let err = parse(&source).expect_err("refuses");
     assert_eq!(err.kind, ConfigErrorKind::BadValue);
     assert_eq!(err.field, Some(FieldName("model-binding".into())));
@@ -260,7 +276,7 @@ fn empty_device_set_refuses() {
 /// `weaver-traits` and a mode that crate does not define is a bad value.
 #[test]
 fn unknown_permission_mode_refuses() {
-    let source = full_config().replace("permission-mode: ask", "permission-mode: maybe");
+    let source = full_config().replace("permission-mode = \"ask\"", "permission-mode = \"maybe\"");
     let err = parse(&source).expect_err("refuses");
     assert_eq!(err.kind, ConfigErrorKind::BadValue);
 }
@@ -274,7 +290,7 @@ fn unknown_permission_mode_refuses() {
 /// fail under exactly that removal.
 #[test]
 fn unknown_key_inside_file_sink_refuses() {
-    let source = full_config().replace("  create: true\n", "  create: true\n  mode: append\n");
+    let source = full_config().replace("create = true\n", "create = true\nmode = \"append\"\n");
     let err = parse(&source).expect_err("refuses");
     assert_eq!(err.kind, ConfigErrorKind::UnknownField);
     assert_eq!(err.field, Some(FieldName("trace-sink.mode".into())));
@@ -283,8 +299,8 @@ fn unknown_key_inside_file_sink_refuses() {
 #[test]
 fn unknown_key_inside_pipe_sink_refuses() {
     let source = full_config()
-        .replace("  kind: file\n", "  kind: pipe\n")
-        .replace("  create: true\n", "  create: true\n  buffered: true\n");
+        .replace("kind = \"file\"\n", "kind = \"pipe\"\n")
+        .replace("create = true\n", "create = true\nbuffered = true\n");
     let err = parse(&source).expect_err("refuses");
     assert_eq!(err.kind, ConfigErrorKind::UnknownField);
     assert_eq!(err.field, Some(FieldName("trace-sink.buffered".into())));
@@ -295,8 +311,8 @@ fn unknown_key_inside_pipe_sink_refuses() {
 #[test]
 fn unknown_key_inside_socket_sink_refuses() {
     let source = full_config()
-        .replace("  kind: file\n", "  kind: socket\n")
-        .replace("  create: true\n", "  linger: false\n");
+        .replace("kind = \"file\"\n", "kind = \"socket\"\n")
+        .replace("create = true\n", "linger = false\n");
     let err = parse(&source).expect_err("refuses");
     assert_eq!(err.kind, ConfigErrorKind::UnknownField);
     assert_eq!(err.field, Some(FieldName("trace-sink.linger".into())));
@@ -311,10 +327,10 @@ fn unknown_key_inside_socket_sink_refuses() {
 /// test fails, `.nan` reaching a sampler through a config that parsed clean.
 #[test]
 fn a_non_finite_tunable_value_refuses() {
-    for bad in [".nan", ".inf", "-.inf"] {
+    for bad in ["nan", "inf", "-inf"] {
         let source = full_config().replace(
-            "    tunable-values: {}\n",
-            &format!("    tunable-values:\n      temperature: {bad}\n"),
+            "tunable-values = {}\n",
+            &format!("tunable-values = {{ temperature = {bad} }}\n"),
         );
         let err = parse(&source).expect_err("refuses");
         assert_eq!(err.kind, ConfigErrorKind::BadValue, "{bad} must not parse");
@@ -331,8 +347,8 @@ fn a_non_finite_tunable_value_refuses() {
 #[test]
 fn a_finite_tunable_value_parses() {
     let source = full_config().replace(
-        "    tunable-values: {}\n",
-        "    tunable-values:\n      temperature: 0.2\n",
+        "tunable-values = {}\n",
+        "tunable-values = { temperature = 0.2 }\n",
     );
     let config = parse(&source).expect("parses");
     assert_eq!(
@@ -360,15 +376,12 @@ fn an_absent_binding_kind_is_none() {
 /// checks each field alone.
 #[test]
 fn a_diagnostic_declaration_parses_without_a_gate_instruction() {
-    let source = full_config().replace(
-        "gate-instruction:
-  access-rule:
-    allowed-uids: [1000]
-    allowed-gids: []
-    denied-uids: [1701]
-",
-        "binding-kind: diagnostic
-",
+    let source = format!(
+        "binding-kind = \"diagnostic\"\n{}",
+        full_config().replace(
+            "[gate-instruction.access-rule]\nallowed-uids = [1000]\nallowed-gids = []\ndenied-uids = [1701]\n",
+            "",
+        )
     );
     let config = parse(&source).expect("parses");
     assert_eq!(
@@ -384,9 +397,7 @@ fn a_diagnostic_declaration_parses_without_a_gate_instruction() {
 /// admin refuse it with the field named, before any unit starts.
 #[test]
 fn the_kind_gate_disagreement_is_the_inventorys_not_the_parses() {
-    let source = full_config()
-        + "binding-kind: diagnostic
-";
+    let source = format!("binding-kind = \"diagnostic\"\n{}", full_config());
     let config = parse(&source).expect("parses");
     assert_eq!(
         config.binding_kind,
@@ -421,7 +432,7 @@ fn the_loop_file_is_optional_and_names_a_path_when_present() {
     let config = parse(&full_config()).expect("parses");
     assert_eq!(config.loop_file, None);
     let source = format!(
-        "{}loop-file: /etc/weaver/agents/alpha.loop.py\n",
+        "loop-file = \"/etc/weaver/agents/alpha.loop.py\"\n{}",
         full_config()
     );
     let config = parse(&source).expect("parses");
@@ -441,7 +452,7 @@ fn the_restore_is_optional_and_names_a_record_and_a_cut() {
     let config = parse(&full_config()).expect("parses");
     assert_eq!(config.restore, None);
     let whole = format!(
-        "{}restore:\n  record: /var/lib/weaver/s-1.ndjson\n",
+        "{}\n[restore]\nrecord = \"/var/lib/weaver/s-1.ndjson\"\n",
         full_config()
     );
     let config = parse(&whole).expect("parses");
@@ -452,7 +463,7 @@ fn the_restore_is_optional_and_names_a_record_and_a_cut() {
     );
     assert_eq!(restore.through, None, "no cut, the record whole");
     let cut = format!(
-        "{}restore:\n  record: /var/lib/weaver/s-1.ndjson\n  through:\n    run: r-a\n    turn: 2\n",
+        "{}\n[restore]\nrecord = \"/var/lib/weaver/s-1.ndjson\"\nthrough = {{ run = \"r-a\", turn = 2 }}\n",
         full_config()
     );
     let config = parse(&cut).expect("parses");
@@ -466,13 +477,12 @@ fn the_restore_is_optional_and_names_a_record_and_a_cut() {
 fn a_present_state_election_parses() {
     let source = format!(
         concat!(
-            "{}state-election:\n",
-            "  all-kinds: true\n",
-            "  keys:\n",
-            "    - kind: turn.closed\n",
-            "      paths: [close]\n",
-            "    - kind: message.user\n",
-            "      paths: [content]\n",
+            "{}\n[state-election]\n",
+            "all-kinds = true\n",
+            "keys = [\n",
+            "  {{ kind = \"turn.closed\", paths = [\"close\"] }},\n",
+            "  {{ kind = \"message.user\", paths = [\"content\"] }},\n",
+            "]\n",
         ),
         full_config()
     );
@@ -489,10 +499,10 @@ fn a_present_state_election_parses() {
 #[test]
 fn a_partial_state_election_refuses() {
     for tail in [
-        "state-election:\n  keys: []\n",
-        "state-election:\n  all-kinds: true\n",
-        "state-election:\n  all-kinds: true\n  keys: []\n  extra: 1\n",
-        "state-election:\n  all-kinds: true\n  keys:\n    - kind: load\n",
+        "\n[state-election]\nkeys = []\n",
+        "\n[state-election]\nall-kinds = true\n",
+        "\n[state-election]\nall-kinds = true\nkeys = []\nextra = 1\n",
+        "\n[state-election]\nall-kinds = true\nkeys = [{ kind = \"load\" }]\n",
     ] {
         let source = format!("{}{}", full_config(), tail);
         assert!(parse(&source).is_err(), "{tail} must refuse");
@@ -508,15 +518,13 @@ fn the_classify_role_is_optional_by_presence() {
     let without = parse(&full_config()).expect("parses");
     assert!(without.spu_instruction.classify.is_none());
 
-    let with = full_config().replace(
-        "    tunable-values: {}\n",
+    let with = format!(
         concat!(
-            "    tunable-values: {}\n",
-            "  classify:\n",
-            "    model-binding:\n",
-            "      artifact: modernbert-base-zeroshot\n",
-            "      devices: [0]\n",
+            "{}\n[spu-instruction.classify.model-binding]\n",
+            "artifact = \"modernbert-base-zeroshot\"\n",
+            "devices = [0]\n",
         ),
+        full_config()
     );
     let config = parse(&with).expect("parses with the role");
     let classify = config.spu_instruction.classify.expect("present");
@@ -525,23 +533,19 @@ fn the_classify_role_is_optional_by_presence() {
         vec![weaver_types::DeviceOrdinal(0)]
     );
 
-    let missing_binding = full_config().replace(
-        "    tunable-values: {}\n",
-        concat!("    tunable-values: {}\n", "  classify: {}\n"),
-    );
+    let missing_binding = format!("{}\n[spu-instruction.classify]\n", full_config());
     let err = parse(&missing_binding).expect_err("a present section is whole");
     assert!(matches!(err.kind, ConfigErrorKind::MissingField), "{err:?}");
 
-    let unknown_key = full_config().replace(
-        "    tunable-values: {}\n",
+    let unknown_key = format!(
         concat!(
-            "    tunable-values: {}\n",
-            "  classify:\n",
-            "    model-binding:\n",
-            "      artifact: modernbert-base-zeroshot\n",
-            "      devices: [0]\n",
-            "    threshold: 0.5\n",
+            "{}\n[spu-instruction.classify]\n",
+            "threshold = 0.5\n",
+            "\n[spu-instruction.classify.model-binding]\n",
+            "artifact = \"modernbert-base-zeroshot\"\n",
+            "devices = [0]\n",
         ),
+        full_config()
     );
     let err = parse(&unknown_key).expect_err("an unknown key inside the section refuses");
     assert!(matches!(err.kind, ConfigErrorKind::UnknownField), "{err:?}");
@@ -572,8 +576,8 @@ fn an_absent_field_election_renders_nothing() {
 #[test]
 fn a_declared_field_election_carries_its_depth() {
     let source = full_config().replace(
-        "    residual-readout-election: false\n",
-        "    residual-readout-election: false\n    field-election:\n      depth: 50\n",
+        "residual-readout-election = false\n",
+        "residual-readout-election = false\nfield-election = { depth = 50 }\n",
     );
     let config = parse(&source).expect("parses");
     let election = config
@@ -604,8 +608,8 @@ fn an_absent_surprisal_election_declines_the_vector() {
 #[test]
 fn a_declared_surprisal_election_parses() {
     let source = full_config().replace(
-        "    residual-readout-election: false\n",
-        "    residual-readout-election: false\n    surprisal-election: true\n",
+        "residual-readout-election = false\n",
+        "residual-readout-election = false\nsurprisal-election = true\n",
     );
     let config = parse(&source).expect("parses");
     assert!(
@@ -621,8 +625,8 @@ fn a_declared_surprisal_election_parses() {
 #[test]
 fn a_misspelled_surprisal_election_refuses() {
     let source = full_config().replace(
-        "    residual-readout-election: false\n",
-        "    residual-readout-election: false\n    surprisal-elections: true\n",
+        "residual-readout-election = false\n",
+        "residual-readout-election = false\nsurprisal-elections = true\n",
     );
     assert!(
         parse(&source).is_err(),

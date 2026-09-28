@@ -17,7 +17,7 @@ from test_recorded_seed import CFG, SEED, Agent, Reloading, cells_main, run_main
 from test_round_five import drive_cell  # noqa: E402
 
 base = dm.base
-DECLARED = f"artifact: /m.gguf\nseed: {SEED}\n"
+DECLARED = f'[spu-instruction.decoder.model-binding]\nartifact = "/m.gguf"\n[spu-instruction.decoder.tunable-values]\nseed = {SEED}\n'
 
 
 def test_a_seed_the_record_does_not_bear_out_refuses_in_both_modes():
@@ -107,7 +107,7 @@ def test_an_empty_or_missing_config_value_is_refused():
 def test_an_empty_outdir_is_refused():
     # Perturbation: drop the empty-outdir check, and makedirs raises unnamed.
     with tempfile.TemporaryDirectory() as tmp:
-        decl = os.path.join(tmp, "karl.yaml")
+        decl = os.path.join(tmp, "karl.toml")
         with open(decl, "w") as fh:
             fh.write(DECLARED)
         path = os.path.join(tmp, "config.json")
@@ -136,7 +136,7 @@ def test_the_refusal_fixtures_would_otherwise_run():
         raise SystemExit(0)
     with tempfile.TemporaryDirectory() as tmp:
         code, *_ = cells_main(tmp, dm_fakes={"run_session": stop})
-        assert not os.path.exists(os.path.join(tmp, "karl.yaml.pre-matrix"))
+        assert not os.path.exists(os.path.join(tmp, "karl.toml.pre-matrix"))
     assert called == ["run_session"] and code == 0, (called, code)
 
 

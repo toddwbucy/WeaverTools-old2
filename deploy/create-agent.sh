@@ -157,7 +157,7 @@ if [ "$APPLY" -eq 1 ]; then
   require_path -w "$AGENTS_DIR" "declaration directory is not writable"
 fi
 ALLOW_LIST="$ADMIN_CONFIG/allow-list"
-DECLARATION="$AGENTS_DIR/$NAME.yaml"
+DECLARATION="$AGENTS_DIR/$NAME.toml"
 
 # **Whose identity the store admits is settled and derived.** The charter has
 # the member hold a uid of its own and dial the store under it, and as of
@@ -327,58 +327,64 @@ say "declaration"
 # sink at another's directory, so two agents were configured to write one
 # record, and it survived three weeks because nothing checked. The path is
 # derived here rather than accepted.
-sudo tee "$DECLARATION" >/dev/null <<YAML
-session: $SESSION
-spu-instruction:
-  decoder:
-    model-binding:
-      artifact: $ARTIFACT
-      devices: [0]
-    residual-readout-election: false
-    surprisal-election: true
-    tunable-values:
-      context-capacity: 32768
-      max-tokens-per-turn: 4096
-      seed: 451234785645
-    identity:
-      - role: system
-        content:
-          - type: text
-            text: |
-              You are a careful assistant. Answer from what you know, say
-              plainly when you do not know, and keep answers as short as the
-              question allows.
-tool-set: []
-permission-mode: deny
+# The format is TOML, per weaver-types-Spec section 2: the top-level keys come
+# first and each section is its own table after them, since TOML reads a bare
+# key after a table header as that table's.
+sudo tee "$DECLARATION" >/dev/null <<TOML
+session = "$SESSION"
+tool-set = []
+permission-mode = "deny"
 # **A serving binding carries a gate instruction and the inventory refuses it
 # absent.** An unstated binding-kind resolves to serving, so both are written
 # rather than left to a default a reader cannot see.
-binding-kind: serving
-gate-instruction:
-  access-rule:
-    allowed-uids: [$(id -u "$OPERATOR")]
-    allowed-gids: []
-    denied-uids: []
-trace-sink:
-  kind: file
-  path: $HOME_DIR/trace.ndjson
-  create: true
-state-election:
-  all-kinds: true
-  keys:
-    - kind: message.user
-      paths: [content]
-    - kind: message.assistant
-      paths: [content]
+binding-kind = "serving"
+
+[spu-instruction.decoder]
+residual-readout-election = false
+surprisal-election = true
+tunable-values = { context-capacity = 32768, max-tokens-per-turn = 4096, seed = 451234785645 }
+
+[spu-instruction.decoder.model-binding]
+artifact = "$ARTIFACT"
+devices = [0]
+
+[[spu-instruction.decoder.identity]]
+role = "system"
+
+[[spu-instruction.decoder.identity.content]]
+type = "text"
+text = """
+You are a careful assistant. Answer from what you know, say
+plainly when you do not know, and keep answers as short as the
+question allows.
+"""
+
+[gate-instruction.access-rule]
+allowed-uids = [$(id -u "$OPERATOR")]
+allowed-gids = []
+denied-uids = []
+
+[trace-sink]
+kind = "file"
+path = "$HOME_DIR/trace.ndjson"
+create = true
+
+[state-election]
+all-kinds = true
+keys = [
+  { kind = "message.user", paths = ["content"] },
+  { kind = "message.assistant", paths = ["content"] },
+]
+
 # **The engine, the database and the role are members of the binding**, per
 # weaver-state-PRD section 4: declared here, changing only across the load
 # boundary, and named on the load event like every fact that decides a
 # record.
-state-store:
-  engine: $ENGINE
-  database: $DATABASE
-  role: $ROLE
-YAML
+[state-store]
+engine = "$ENGINE"
+database = "$DATABASE"
+role = "$ROLE"
+TOML
 
 say "allow-list"
 # Without this every admin verb answers NoSuchAgent for the agent just made,

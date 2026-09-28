@@ -128,15 +128,15 @@ fn the_derived_sink_carries_the_shape_the_analyst_elected() {
     };
     let declaration =
         weaver_analysis::derive(&parse_record(SOURCE), &piped).expect("the record is whole");
-    assert!(declaration.contains("kind: pipe"), "{declaration}");
+    assert!(declaration.contains("kind = \"pipe\""), "{declaration}");
     assert!(
-        declaration.contains("create: true"),
+        declaration.contains("create = true"),
         "a pipe is created where absent"
     );
 
     let filed =
         weaver_analysis::derive(&parse_record(SOURCE), &inputs()).expect("the record is whole");
-    assert!(filed.contains("kind: file"), "{filed}");
+    assert!(filed.contains("kind = \"file\""), "{filed}");
 }
 
 /// **A record holding two sessions or two runs refuses before any member
@@ -293,12 +293,12 @@ fn the_declaration_derives_every_source_run_fact() {
     let declaration =
         weaver_analysis::derive(&parse_record(SOURCE), &inputs()).expect("the record is whole");
     assert!(declaration.contains(
-        "artifact: \"/bulk-store/weaver-testing/cross-precision-repro/qwen2.5-0.5b-instruct-q8_0.gguf\""
+        "artifact = \"/bulk-store/weaver-testing/cross-precision-repro/qwen2.5-0.5b-instruct-q8_0.gguf\""
     ));
-    assert!(declaration.contains("seed: 451234785645"));
-    assert!(declaration.contains("context-capacity: 16384"));
-    assert!(declaration.contains("max-tokens-per-turn: 1024"));
-    assert!(declaration.contains("binding-kind: diagnostic"));
+    assert!(declaration.contains("seed = 451234785645"));
+    assert!(declaration.contains("context-capacity = 16384"));
+    assert!(declaration.contains("max-tokens-per-turn = 1024"));
+    assert!(declaration.contains("binding-kind = \"diagnostic\""));
     assert!(
         declaration.contains("You are Karl"),
         "the seated prefix crosses verbatim"
@@ -308,17 +308,17 @@ fn the_declaration_derives_every_source_run_fact() {
         "a diagnostic declaration carries no gate"
     );
 
-    // A sink path holding YAML-significant characters crosses as the value
+    // A sink path holding TOML-significant characters crosses as the value
     // it is rather than as markup.
     let hostile = AnalystInputs {
-        sink_path: "/tmp/x: {y}".to_string(),
+        sink_path: "/tmp/x = \"{y}\" [z]".to_string(),
         ..inputs()
     };
     let declaration =
         weaver_analysis::derive(&parse_record(SOURCE), &hostile).expect("the record is whole");
     assert!(
-        declaration.contains("  path: \"/tmp/x: {y}\""),
-        "a YAML-significant path stays a value: {declaration}"
+        declaration.contains("path = \"/tmp/x = \\\"{y}\\\" [z]\""),
+        "a TOML-significant path stays a value: {declaration}"
     );
 }
 
@@ -676,7 +676,7 @@ fn derive_requires_and_renders_a_distinct_destination() {
         );
         if succeeds {
             assert!(
-                String::from_utf8_lossy(&result.stdout).starts_with("session: \"diagnostic\"\n")
+                String::from_utf8_lossy(&result.stdout).starts_with("session = \"diagnostic\"\n")
             );
         } else {
             assert!(String::from_utf8_lossy(&result.stderr).contains("destination"));

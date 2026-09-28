@@ -71,10 +71,7 @@ fn one_floor_link_and_no_direct_traits_line() {
         names.iter().any(|n| n == "weaver-traits"),
         "transitively present"
     );
-    assert!(
-        names.iter().any(|n| n == "serde_yaml_ng"),
-        "the parser is linked"
-    );
+    assert!(names.iter().any(|n| n == "toml"), "the parser is linked");
 }
 
 /// No async runtime, no bus crate, no logging crate: the surface's traffic is

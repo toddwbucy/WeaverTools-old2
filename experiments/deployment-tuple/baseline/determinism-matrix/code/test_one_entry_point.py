@@ -34,8 +34,8 @@ def test_the_matrix_has_one_session_loop():
     # record_session once. Perturbation: give the cells a loop of their own
     # in main, and the count or the shapes differ.
     assert inspect.getsource(dm.main).count("record_session(") == 1
-    cell = next(dm.cell_sessions(f"artifact: {MODEL}\nseed: {SEED}\n", TWO_CELLS))
-    matrix = next(dm.matrix_sessions(f"artifact: {MODEL}\nseed: {SEED}\n", SEED, None))
+    cell = next(dm.cell_sessions(f'[spu-instruction.decoder.model-binding]\nartifact = "{MODEL}"\n[spu-instruction.decoder.tunable-values]\nseed = {SEED}\n', TWO_CELLS))
+    matrix = next(dm.matrix_sessions(f'[spu-instruction.decoder.model-binding]\nartifact = "{MODEL}"\n[spu-instruction.decoder.tunable-values]\nseed = {SEED}\n', SEED, None))
     assert set(cell) == set(matrix), (set(cell), set(matrix))
 
 
@@ -45,7 +45,7 @@ def test_a_cells_run_serves_each_cell_once_and_labels_it():
     # cell and reading each cell's artifact under its name. Perturbation:
     # drop the label, by_cell or the weights keys, and a clause fails.
     agent = Reloading()
-    digest = hashlib.sha256(f"artifact: {MODEL}\nseed: {SEED}\n".encode()).hexdigest()
+    digest = hashlib.sha256(f'[spu-instruction.decoder.model-binding]\nartifact = "{MODEL}"\n[spu-instruction.decoder.tunable-values]\nseed = {SEED}\n'.encode()).hexdigest()
     agent.served = (digest, digest)
     served = []
     real = agent.gate_turn
@@ -91,11 +91,11 @@ def test_each_cell_is_served_its_own_artifact_and_the_declaration_restored():
         agent = DiskServing()
         with tempfile.TemporaryDirectory() as tmp:
             code, _, _, records, _ = cells_main(tmp, dict(cells=cells), fakes=agent_fakes(agent))
-            restored = open(os.path.join(tmp, "karl.yaml")).read()
-            left = os.path.lexists(os.path.join(tmp, "karl.yaml.pre-matrix"))
+            restored = open(os.path.join(tmp, "karl.toml")).read()
+            left = os.path.lexists(os.path.join(tmp, "karl.toml.pre-matrix"))
     assert code == 0 and [r["verdict"] for r in records] == ["REPRODUCED", "REPRODUCED"], (code, records)
-    assert [t.split("\n")[0] for t in agent.texts] == [f"artifact: {MODEL}"] * 2 + [f"artifact: {other}"] * 2, agent.texts
-    assert restored == f"artifact: {MODEL}\nseed: {SEED}\n" and not left, restored
+    assert [t.split("\n")[1] for t in agent.texts] == [f'artifact = "{MODEL}"'] * 2 + [f'artifact = "{other}"'] * 2, agent.texts
+    assert restored == f'[spu-instruction.decoder.model-binding]\nartifact = "{MODEL}"\n[spu-instruction.decoder.tunable-values]\nseed = {SEED}\n' and not left, restored
 
 
 def test_a_cells_run_takes_neither_override():

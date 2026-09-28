@@ -185,20 +185,22 @@ fi
 # while something compares them, so this is that something: edit one and not
 # the other and the run refuses by name before it spends the build.
 for agent in $ALLOW_LIST; do
-  decl="$AGENT_DIR/$agent.yaml"
+  decl="$AGENT_DIR/$agent.toml"
   [ -f "$decl" ] || continue
-  # The engine under `state-store`, not the first `engine:` in the file, and
-  # an absent election means the crate's own default rather than none.
-  elected=$(sed -n '/^state-store:/,/^[^[:space:]]/p' "$decl" \
-    | sed -n 's/^[[:space:]]*engine:[[:space:]]*//p' | head -1)
-  # **The value is what YAML means by it, not the characters after the colon.**
-  # `engine: "postgres"` is the same election as `engine: postgres`, and taking
-  # the raw run of non-space characters compared `weaver-state/"postgres"`
-  # against the feature list and refused a build that carried it. A trailing
-  # comment goes, then surrounding quotes of either kind, then the space
-  # between. This is not a YAML parser and does not pretend to be one: the
-  # field is a bare scalar on one line, and there is no yaml module on either
-  # seat to do it properly.
+  # The engine under the `[state-store]` table, not the first `engine =` in
+  # the file, and an absent election means the crate's own default rather
+  # than none.
+  elected=$(sed -n '/^\[state-store\]/,/^\[/p' "$decl" \
+    | sed -n 's/^[[:space:]]*engine[[:space:]]*=[[:space:]]*//p' | head -1)
+  # **The value is what TOML means by it, not the characters after the equals
+  # sign.** `engine = "postgres"` names the election `postgres`, and taking the
+  # raw run of characters compared `weaver-state/"postgres"` against the
+  # feature list and refused a build that carried it. A trailing comment goes,
+  # then surrounding quotes of either kind, then the space between. This is not
+  # a TOML parser and does not pretend to be one: the field is one string on
+  # one line of the `[state-store]` table, the form every declaration here is
+  # written in, and a declaration spelling it as a dotted key or an inline
+  # table reads as absent.
   elected=${elected%%#*}
   elected=$(printf '%s' "$elected" \
     | sed -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/")
@@ -504,7 +506,7 @@ validate() {
 # -------------------------------------------------------- 8. reconcile agents
 say "reconcile declarations"
 for agent in $ALLOW_LIST; do
-  decl="$AGENT_DIR/$agent.yaml"
+  decl="$AGENT_DIR/$agent.toml"
   if [ ! -f "$decl" ]; then
     printf '  %-12s no declaration at %s\n' "$agent" "$decl"
     continue
@@ -516,16 +518,16 @@ for agent in $ALLOW_LIST; do
   fi
   # The one reconciliation this script knows how to make, and only where the
   # box cannot stand a leg at all. Anything else is the operator's.
-  if [ ! -f "$STATE_BINARY" ] && ! grep -q '^state-store:' "$decl"; then
+  if [ ! -f "$STATE_BINARY" ] && ! grep -q '^\[state-store\]' "$decl"; then
     printf '  %-12s %s\n' "$agent" "$verdict"
     cp -a "$decl" "$decl.pre-$AFTER-bak"
     PATCHED+=("$decl|$decl.pre-$AFTER-bak")
-    printf 'state-store:\n  engine: none\n' >> "$decl"
+    printf '\n[state-store]\nengine = "none"\n' >> "$decl"
     verdict=$(validate "$agent")
     if [ "$verdict" != '{"kind":"validated"}' ]; then
       rollback "$agent still refuses after the declaration: $verdict"
     fi
-    printf '  %-12s declared `state-store: engine: none`, validated (backup %s)\n' \
+    printf '  %-12s declared `[state-store] engine = "none"`, validated (backup %s)\n' \
       "$agent" "$(basename "$decl.pre-$AFTER-bak")"
   else
     rollback "$agent refuses and this script will not guess the fix: $verdict"
@@ -562,12 +564,13 @@ sink_lines() {
 say "verify"
 VERIFIED=0
 for AGENT in $ALLOW_LIST; do
-  decl="$AGENT_DIR/$AGENT.yaml"
+  decl="$AGENT_DIR/$AGENT.toml"
   if [ ! -f "$decl" ]; then
     printf '  %-12s no declaration, not verified\n' "$AGENT"
     continue
   fi
-  SINK=$(sed -n 's/^[[:space:]]*path:[[:space:]]*\(.*\)$/\1/p' "$decl" | head -1)
+  SINK=$(sed -n '/^\[trace-sink\]/,/^\[/p' "$decl" \
+    | sed -n 's/^[[:space:]]*path[[:space:]]*=[[:space:]]*"\(.*\)"[[:space:]]*$/\1/p' | head -1)
   [ -n "$SINK" ] || rollback "cannot find the trace sink for $AGENT"
   printf '  %s\n' "$AGENT"
   LINES=$(sink_lines "$SINK") || rollback "$AGENT: $SINK is not a regular file, and this step reads the load event back out of one"

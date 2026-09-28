@@ -21,7 +21,7 @@ from test_round_five import drive_cell  # noqa: E402
 
 base = dm.base
 OTHER = [dict(CARD[0], ordinal=1, pci_bus_id="0000:02:00.0")]
-CELL_DECL = f"artifact: {MODEL}\nseed: {SEED}\n"
+CELL_DECL = f'[spu-instruction.decoder.model-binding]\nartifact = "{MODEL}"\n[spu-instruction.decoder.tunable-values]\nseed = {SEED}\n'
 TWO_CELLS = [{"name": "q8", "precision": "q8", "artifact": MODEL},
              {"name": "bf16", "precision": "bf16", "artifact": MODEL}]
 
@@ -190,7 +190,7 @@ def test_a_recorded_seed_of_another_type_is_refused_in_both_modes():
     for value in (float(SEED), True, -1, 2 ** 64, "451234785645"):
         rec = session(Agent(source_seed=value, replay_seed=value), declared_seed=SEED)
         assert "is not an integer within the sampler's u64" in rec["verdict"], (value, rec["verdict"])
-    digest = hashlib.sha256(f"artifact: /m.gguf\nseed: {SEED}\n".encode()).hexdigest()
+    digest = hashlib.sha256(f'[spu-instruction.decoder.model-binding]\nartifact = "/m.gguf"\n[spu-instruction.decoder.tunable-values]\nseed = {SEED}\n'.encode()).hexdigest()
     with tempfile.TemporaryDirectory() as tmp:
         cell = drive_cell(Agent(source_seed=float(SEED), replay_seed=float(SEED), served=(digest, digest)), tmp)
     assert "is not an integer within the sampler's u64" in cell["verdict"], cell["verdict"]
@@ -331,8 +331,8 @@ def test_the_matrix_opens_every_file_at_preflight():
     refused_without_writing("cannot be opened: [Errno 13]", prepare=read_only, extra=["--artifact", MODEL])
     refused_without_writing("admin_bin", prepare=config_change(admin_bin=lambda t: os.path.join(t, "none")))
     refused_without_writing("is not an executable file",
-                            prepare=config_change(admin_bin=lambda t: os.path.join(t, "karl.yaml")))
-    refused_without_writing("is not a directory", prepare=config_change(repo=lambda t: os.path.join(t, "karl.yaml")))
+                            prepare=config_change(admin_bin=lambda t: os.path.join(t, "karl.toml")))
+    refused_without_writing("is not a directory", prepare=config_change(repo=lambda t: os.path.join(t, "karl.toml")))
     refused_without_writing("cannot be read: Expecting property name", prepare=not_json)
     # The control: the declaration read-only is refused only where the run
     # rewrites it.
@@ -363,7 +363,7 @@ def test_a_cells_run_opens_every_file_and_reads_every_key_at_preflight():
         with tempfile.TemporaryDirectory() as tmp, contextlib.redirect_stderr(err):
             code, called, *_ = cells_main(tmp, **case)
             assert code == 2 and called == [] and not os.path.exists(os.path.join(tmp, "out")) \
-                and not os.path.exists(os.path.join(tmp, "karl.yaml.pre-matrix")), (case, code, called)
+                and not os.path.exists(os.path.join(tmp, "karl.toml.pre-matrix")), (case, code, called)
         assert want in err.getvalue(), (want, err.getvalue())
 
 

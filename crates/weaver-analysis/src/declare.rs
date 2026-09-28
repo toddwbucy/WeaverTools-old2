@@ -104,10 +104,12 @@ fn one_value(
     held.ok_or(DeriveRefusal::MemberAbsent { member })
 }
 
-/// The derived declaration, rendered as the YAML the operator loads. The
-/// identity messages are embedded in JSON flow spelling, YAML carrying JSON
-/// whole, so the seated prefix crosses verbatim from the record's own
-/// `message.system` payloads rather than through a re-rendering.
+/// The derived declaration, rendered as the TOML the operator loads, per
+/// `weaver-types-Spec` section 2. The identity messages cross from the
+/// record's own `message.system` payloads by [`toml_inline`], which keeps
+/// every string and number exactly as the record spelled it and changes only
+/// the punctuation between them, so the seated prefix is the record's rather
+/// than a re-rendering.
 pub fn derive(events: &[Event], inputs: &AnalystInputs) -> Result<String, DeriveRefusal> {
     let session = events
         .first()
@@ -184,51 +186,101 @@ pub fn derive(events: &[Event], inputs: &AnalystInputs) -> Result<String, Derive
     if prefix.is_empty() {
         return Err(DeriveRefusal::MemberAbsent { member: "identity" });
     }
+    // A payload TOML cannot spell - one holding `null` - is a prefix the
+    // declaration cannot carry, and refuses as the member it would have been.
+    let prefix: Vec<String> = prefix
+        .iter()
+        .map(|payload| toml_inline(payload))
+        .collect::<Option<_>>()
+        .ok_or(DeriveRefusal::MemberAbsent { member: "identity" })?;
 
-    // Every interpolated string scalar is serialized as a JSON string,
-    // which YAML carries whole: a session, artifact, or sink path holding a
-    // colon, a quote, or any other YAML-significant character crosses as
-    // the value it is rather than as markup.
+    // Every interpolated string scalar is serialized as a JSON string, which
+    // is a TOML basic string as it stands: a session, artifact, or sink path
+    // holding a quote, a bracket, or any other TOML-significant character
+    // crosses as the value it is rather than as markup. Top-level keys come
+    // first and each section follows as its own table, TOML reading a bare
+    // key after a table header as that table's.
     let mut declaration = String::new();
     declaration.push_str(&format!(
-        "session: {}\n",
+        "session = {}\n",
         serde_json::json!(inputs.destination)
     ));
-    declaration.push_str("binding-kind: diagnostic\n");
-    declaration.push_str("spu-instruction:\n  decoder:\n");
-    declaration.push_str("    model-binding:\n");
-    declaration.push_str(&format!(
-        "      artifact: {}\n",
-        serde_json::json!(artifact)
-    ));
-    let devices: Vec<String> = inputs.devices.iter().map(|d| d.to_string()).collect();
-    declaration.push_str(&format!("      devices: [{}]\n", devices.join(", ")));
-    declaration.push_str(&format!(
-        "    residual-readout-election: {}\n",
-        inputs.readout
-    ));
-    if let Some(depth) = inputs.field_depth {
-        declaration.push_str(&format!("    field-election:\n      depth: {depth}\n"));
-    }
-    declaration.push_str(&format!("    surprisal-election: {}\n", inputs.surprisal));
-    declaration.push_str(&format!("    identity: [{}]\n", prefix.join(", ")));
-    declaration.push_str("    tunable-values:\n");
-    declaration.push_str(&format!("      seed: {seed}\n"));
-    declaration.push_str(&format!("      context-capacity: {capacity}\n"));
-    declaration.push_str(&format!("      max-tokens-per-turn: {max_tokens}\n"));
+    declaration.push_str("binding-kind = \"diagnostic\"\n");
     // The fixed spellings, per the Spec: members the record does not carry
     // and a run under this binding never reads take a spelling rather than
     // a guess.
-    declaration.push_str("tool-set: []\n");
-    declaration.push_str("permission-mode: ask\n");
+    declaration.push_str("tool-set = []\n");
+    declaration.push_str("permission-mode = \"ask\"\n");
+    declaration.push_str("\n[spu-instruction.decoder]\n");
+    declaration.push_str(&format!("residual-readout-election = {}\n", inputs.readout));
+    if let Some(depth) = inputs.field_depth {
+        declaration.push_str(&format!("field-election = {{ depth = {depth} }}\n"));
+    }
+    declaration.push_str(&format!("surprisal-election = {}\n", inputs.surprisal));
+    declaration.push_str(&format!("identity = [{}]\n", prefix.join(", ")));
     declaration.push_str(&format!(
-        "trace-sink:\n  kind: {}\n",
-        inputs.sink_kind.declared()
+        "tunable-values = {{ seed = {seed}, context-capacity = {capacity}, max-tokens-per-turn = {max_tokens} }}\n"
     ));
-    declaration.push_str(&format!(
-        "  path: {}\n",
-        serde_json::json!(inputs.sink_path)
-    ));
-    declaration.push_str("  create: true\n");
+    declaration.push_str("\n[spu-instruction.decoder.model-binding]\n");
+    declaration.push_str(&format!("artifact = {}\n", serde_json::json!(artifact)));
+    let devices: Vec<String> = inputs.devices.iter().map(|d| d.to_string()).collect();
+    declaration.push_str(&format!("devices = [{}]\n", devices.join(", ")));
+    declaration.push_str("\n[trace-sink]\n");
+    declaration.push_str(&format!("kind = \"{}\"\n", inputs.sink_kind.declared()));
+    declaration.push_str(&format!("path = {}\n", serde_json::json!(inputs.sink_path)));
+    declaration.push_str("create = true\n");
     Ok(declaration)
+}
+
+/// A JSON value's text respelled as a TOML inline value: every string and
+/// every number is copied as the record spelled it, and only the punctuation
+/// between them changes, `:` becoming ` = ` and the whitespace between tokens
+/// dropping so the value stays on one line. A JSON string is a TOML basic
+/// string as it stands except for the escaped solidus, which TOML does not
+/// admit and which means the solidus itself. `None` where the value holds
+/// `null`, which TOML has no spelling for.
+fn toml_inline(json: &str) -> Option<String> {
+    let mut out = String::with_capacity(json.len() + 16);
+    let mut chars = json.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => {
+                out.push('"');
+                while let Some(c) = chars.next() {
+                    match c {
+                        '\\' => match chars.next()? {
+                            '/' => out.push('/'),
+                            escaped => {
+                                out.push('\\');
+                                out.push(escaped);
+                            }
+                        },
+                        '"' => {
+                            out.push('"');
+                            break;
+                        }
+                        other => out.push(other),
+                    }
+                }
+            }
+            ':' => out.push_str(" = "),
+            ',' => out.push_str(", "),
+            '{' => {
+                while chars.peek().is_some_and(|c| c.is_whitespace()) {
+                    chars.next();
+                }
+                if chars.peek() == Some(&'}') {
+                    chars.next();
+                    out.push_str("{}");
+                } else {
+                    out.push_str("{ ");
+                }
+            }
+            '}' => out.push_str(" }"),
+            'n' => return None,
+            c if c.is_whitespace() => {}
+            other => out.push(other),
+        }
+    }
+    Some(out)
 }

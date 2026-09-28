@@ -424,7 +424,7 @@ fn take_inventory_against(
         // **`BoundaryUnverified` and not `ConfigInvalid`.** The declaration is
         // well formed and the fault is the box's: the operator wrote a uid
         // that ought to reach the socket and the provisioning has not put it
-        // in the agent's group. `ConfigInvalid` names the YAML, and a
+        // in the agent's group. `ConfigInvalid` names the TOML, and a
         // deployer following that reading deletes the uid from
         // `allowed-uids` - which makes validate pass and breaks the connector
         // for good, the credential check then denying it at `accept` with
@@ -1358,14 +1358,13 @@ mod tests {
         // instruction its kind excludes removed. No access rule is present,
         // so nothing but the group can refuse it.
         let source = format!(
-            "{}binding-kind: diagnostic\n",
+            "binding-kind = \"diagnostic\"\n{}",
             config_source(&sink_dir).replace(
                 concat!(
-                    "gate-instruction:\n",
-                    "  access-rule:\n",
-                    "    allowed-uids: [0]\n",
-                    "    allowed-gids: []\n",
-                    "    denied-uids: [1701]\n"
+                    "[gate-instruction.access-rule]\n",
+                    "allowed-uids = [0]\n",
+                    "allowed-gids = []\n",
+                    "denied-uids = [1701]\n"
                 ),
                 ""
             )
@@ -1436,10 +1435,8 @@ mod tests {
             gid: u32::MAX - 1,
             members: Vec::new(),
         };
-        let source = config_source(&sink_dir).replace(
-            "    allowed-uids: [0]\n",
-            &format!("    allowed-uids: [{me}]\n"),
-        );
+        let source = config_source(&sink_dir)
+            .replace("allowed-uids = [0]\n", &format!("allowed-uids = [{me}]\n"));
         let refused = take_inventory_against(&name, &source, &allow, &bound, Some(&group));
         assert!(
             matches!(refused, Err(LifecycleRefusal::BoundaryUnverified)),
@@ -1514,26 +1511,28 @@ mod tests {
     fn config_source(sink_dir: &std::path::Path) -> String {
         format!(
             concat!(
-                "session: s-1\n",
-                "spu-instruction:\n",
-                "  decoder:\n",
-                "    model-binding:\n",
-                "      artifact: qwen3-4b-instruct\n",
-                "      devices: [0]\n",
-                "    residual-readout-election: false\n",
-                "    identity: []\n",
-                "    tunable-values: {{}}\n",
-                "tool-set: []\n",
-                "permission-mode: ask\n",
-                "gate-instruction:\n",
-                "  access-rule:\n",
-                "    allowed-uids: [0]\n",
-                "    allowed-gids: []\n",
-                "    denied-uids: [1701]\n",
-                "trace-sink:\n",
-                "  kind: file\n",
-                "  path: {}/trace.ndjson\n",
-                "  create: true\n"
+                "session = \"s-1\"\n",
+                "tool-set = []\n",
+                "permission-mode = \"ask\"\n",
+                "\n",
+                "[spu-instruction.decoder]\n",
+                "residual-readout-election = false\n",
+                "identity = []\n",
+                "tunable-values = {{}}\n",
+                "\n",
+                "[spu-instruction.decoder.model-binding]\n",
+                "artifact = \"qwen3-4b-instruct\"\n",
+                "devices = [0]\n",
+                "\n",
+                "[gate-instruction.access-rule]\n",
+                "allowed-uids = [0]\n",
+                "allowed-gids = []\n",
+                "denied-uids = [1701]\n",
+                "\n",
+                "[trace-sink]\n",
+                "kind = \"file\"\n",
+                "path = \"{}/trace.ndjson\"\n",
+                "create = true\n"
             ),
             sink_dir.display()
         )
@@ -1541,7 +1540,7 @@ mod tests {
 
     /// The fixture with a store election appended, the rest unchanged.
     fn config_source_electing(sink_dir: &std::path::Path, store: &str) -> String {
-        format!("{}state-store:\n{store}", config_source(sink_dir))
+        format!("{}\n[state-store]\n{store}", config_source(sink_dir))
     }
 
     /// **The store election's declaration half**, per `weaver-admin-Spec`
@@ -1563,13 +1562,22 @@ mod tests {
         let boundary = boundary(&home, 65533);
         let cases: [(&str, &str); 5] = [
             (
-                "  engine: none\nstate-election:\n  all-kinds: true\n  keys: []\n",
+                "engine = \"none\"\n\n[state-election]\nall-kinds = true\nkeys = []\n",
                 "state-election",
             ),
-            ("  engine: none\n  database: d\n", "state-store.database"),
-            ("  engine: sqlite\n  role: r\n", "state-store.role"),
-            ("  engine: postgres\n  role: r\n", "state-store.database"),
-            ("  engine: postgres\n  database: d\n", "state-store.role"),
+            (
+                "engine = \"none\"\ndatabase = \"d\"\n",
+                "state-store.database",
+            ),
+            ("engine = \"sqlite\"\nrole = \"r\"\n", "state-store.role"),
+            (
+                "engine = \"postgres\"\nrole = \"r\"\n",
+                "state-store.database",
+            ),
+            (
+                "engine = \"postgres\"\ndatabase = \"d\"\n",
+                "state-store.role",
+            ),
         ];
         for (store, field) in cases {
             let source = config_source_electing(&home, store);
@@ -1615,7 +1623,7 @@ mod tests {
             ),
             "an absent election is the embedded engine and requires the member"
         );
-        let declined = config_source_electing(&sink_dir, "  engine: none\n");
+        let declined = config_source_electing(&sink_dir, "engine = \"none\"\n");
         assert!(
             take_inventory(&name, &declined, &allow, &without_binary).is_ok(),
             "none declines the member and requires nothing"
@@ -1623,8 +1631,10 @@ mod tests {
 
         let mut without_socket = boundary(&home, 65533);
         without_socket.store_socket = root.join("no-such-store");
-        let service =
-            config_source_electing(&sink_dir, "  engine: postgres\n  database: d\n  role: r\n");
+        let service = config_source_electing(
+            &sink_dir,
+            "engine = \"postgres\"\ndatabase = \"d\"\nrole = \"r\"\n",
+        );
         assert!(
             matches!(
                 take_inventory(&name, &service, &allow, &without_socket),
@@ -1678,7 +1688,7 @@ mod tests {
             ),
             "an absent election is the embedded engine and requires the account"
         );
-        let declined = config_source_electing(&sink_dir, "  engine: none\n");
+        let declined = config_source_electing(&sink_dir, "engine = \"none\"\n");
         assert!(
             take_inventory(&name, &declined, &allow, &unprovisioned).is_ok(),
             "none declines the member and requires nothing"
@@ -2100,7 +2110,7 @@ mod tests {
         let bound = boundary(&root.join("absent-home"), 65533);
 
         // Diagnostic, carrying the instruction its kind excludes.
-        let source = format!("{}binding-kind: diagnostic\n", config_source(&root));
+        let source = format!("binding-kind = \"diagnostic\"\n{}", config_source(&root));
         let refused = take_inventory(&name, &source, &allow, &bound);
         assert!(
             matches!(
@@ -2113,11 +2123,10 @@ mod tests {
         // Serving, with the instruction its kind requires removed.
         let source = config_source(&root).replace(
             concat!(
-                "gate-instruction:\n",
-                "  access-rule:\n",
-                "    allowed-uids: [0]\n",
-                "    allowed-gids: []\n",
-                "    denied-uids: [1701]\n"
+                "[gate-instruction.access-rule]\n",
+                "allowed-uids = [0]\n",
+                "allowed-gids = []\n",
+                "denied-uids = [1701]\n"
             ),
             "",
         );
@@ -2150,8 +2159,8 @@ mod tests {
         let bound = boundary(&root.join("absent-home"), 65533);
 
         let source = config_source(&root).replace(
-            "    residual-readout-election: false\n",
-            "    residual-readout-election: false\n    refeed-permission: true\n",
+            "residual-readout-election = false\n",
+            "residual-readout-election = false\nrefeed-permission = true\n",
         );
         assert_ne!(
             source,
@@ -2169,8 +2178,8 @@ mod tests {
         );
         // The sibling, on the same terms.
         let source = config_source(&root).replace(
-            "    residual-readout-election: false\n",
-            "    residual-readout-election: false\n    column-permission: true\n",
+            "residual-readout-election = false\n",
+            "residual-readout-election = false\ncolumn-permission = true\n",
         );
         let refused = take_inventory(&name, &source, &allow, &bound);
         assert!(
@@ -2323,7 +2332,7 @@ mod tests {
         let root = scratch("allow");
         let allow = AllowList::new(["alpha".to_string()]);
         let bound = boundary(&root, 65533);
-        // The source is not even valid YAML: if the allow-list were consulted
+        // The source is not even valid TOML: if the allow-list were consulted
         // second, the parse error would surface instead.
         let refused = take_inventory(&AgentName("beta".into()), "%%%", &allow, &bound);
         assert!(matches!(refused, Err(LifecycleRefusal::NoSuchAgent)));
@@ -2368,7 +2377,7 @@ mod tests {
         let allow = AllowList::new(["alpha".to_string()]);
         let name = AgentName("alpha".into());
         let bound = boundary(&home, 65533);
-        let restore = |cut: &str| format!("restore:\n  record: {}\n{cut}", record.display());
+        let restore = |cut: &str| format!("\n[restore]\nrecord = \"{}\"\n{cut}", record.display());
 
         // A resume: the record's own session, whole, resolves to r-b's turn 3.
         let source = format!("{}{}", config_source(&sink_dir), restore(""));
@@ -2382,7 +2391,7 @@ mod tests {
         let source = format!(
             "{}{}",
             config_source(&sink_dir),
-            restore("  through:\n    run: r-b\n    turn: 1\n")
+            restore("through = { run = \"r-b\", turn = 1 }\n")
         );
         let refused = take_inventory(&name, &source, &allow, &bound);
         assert!(
@@ -2391,10 +2400,10 @@ mod tests {
         );
 
         // A branch: a new session name at a named cut.
-        let branched = config_source(&sink_dir).replace("session: s-1", "session: s-2");
+        let branched = config_source(&sink_dir).replace("session = \"s-1\"", "session = \"s-2\"");
         let source = format!(
             "{branched}{}",
-            restore("  through:\n    run: r-a\n    turn: 2\n")
+            restore("through = { run = \"r-a\", turn = 2 }\n")
         );
         let taken = take_inventory(&name, &source, &allow, &bound).expect("a branch admits");
         let lineage = taken.lineage.expect("a branch carries its lineage");
@@ -2411,10 +2420,10 @@ mod tests {
         // lacks, a turn past the run's last, a turn the run skips where it
         // holds one and three, and a run a foreign session's line named.
         for cut in [
-            "  through:\n    run: r-zz\n    turn: 1\n",
-            "  through:\n    run: r-a\n    turn: 9\n",
-            "  through:\n    run: r-b\n    turn: 2\n",
-            "  through:\n    run: r-x\n    turn: 9\n",
+            "through = { run = \"r-zz\", turn = 1 }\n",
+            "through = { run = \"r-a\", turn = 9 }\n",
+            "through = { run = \"r-b\", turn = 2 }\n",
+            "through = { run = \"r-x\", turn = 9 }\n",
         ] {
             let source = format!("{branched}{}", restore(cut));
             let refused = take_inventory(&name, &source, &allow, &bound);
@@ -2426,7 +2435,7 @@ mod tests {
 
         // A record that does not read refuses the boundary.
         let source = format!(
-            "{branched}restore:\n  record: {}\n",
+            "{branched}\n[restore]\nrecord = \"{}\"\n",
             root.join("no-such-record.ndjson").display()
         );
         let refused = take_inventory(&name, &source, &allow, &bound);
@@ -2488,8 +2497,8 @@ mod tests {
         let bound = boundary(&home, 65533);
 
         let absent = config_source(&sink_dir).replace(
-            "artifact: qwen3-4b-instruct",
-            "artifact: /no/such/directory/model.gguf",
+            "artifact = \"qwen3-4b-instruct\"",
+            "artifact = \"/no/such/directory/model.gguf\"",
         );
         let admitted = take_inventory(&name, &absent, &allow, &bound);
         assert!(
@@ -2498,7 +2507,7 @@ mod tests {
         );
 
         let unnamed =
-            config_source(&sink_dir).replace("artifact: qwen3-4b-instruct", "artifact: \"\"");
+            config_source(&sink_dir).replace("artifact = \"qwen3-4b-instruct\"", "artifact = \"\"");
         let refused = take_inventory(&name, &unnamed, &allow, &bound);
         match refused {
             Err(LifecycleRefusal::ConfigInvalid { field: Some(ref f) })

@@ -7,7 +7,7 @@ Code is written against it under the gates of Working Process section 6.
 **Document ID:** `weaver-spu-Spec`
 **Parent:** `weaver-spu-PRD`
 **Editorial:** Per the Working Rules.
-**Landing PR:** #724
+**Landing PR:** #731
 
 ---
 
@@ -2483,11 +2483,11 @@ feature, changing a value mid-session, and it wants the engine to rebuild its
 sampler between turns. When that is built it brings its own carrier back rather
 than finding one waiting.
 
-**What this buys is the iteration loop the disposition mechanism was for.** A
-parameter left tunable is set in `agent.yaml` and reaches the engine on the next
-load, so a developer moves it by reloading the agent. A parameter frozen for a
-production binary cannot be moved by any declaration and never travels. Which is
-which stays one line and a recompile at the composition root.
+**What this buys is the iteration loop the disposition mechanism was for.** A parameter
+left tunable is set in the agent's declaration and reaches the engine on the next load,
+so a developer moves it by reloading the agent. A parameter frozen for a production
+binary cannot be moved by any declaration and never travels. Which is which stays one
+line and a recompile at the composition root.
 
 ```graph
 node: spu-tunables-arrive-in-the-declaration

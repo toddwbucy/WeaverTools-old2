@@ -123,25 +123,21 @@ for the elections it carries.
 
 **The format is TOML, on the operator's ruling of 2026-09-28, which reverses the YAML
 election that stood here on a ground that election did not weigh.** `weaver-types-PRD`
-section 2.1 states the criterion: the file's reader is a human writing it, so the format
-answers to a writer rather than a parser, carries nesting without ceremony, and survives
-an operator's comments. TOML meets it: it is a writer's format, its `#` comments survive
-every edit an operator makes, and it carries the nesting the declaration uses. What it
-costs is ceremony on the deeper tables, a section header where YAML would indent, and
-the ruling accepts that cost. The ground the YAML election did not weigh is its parser.
-`serde_yaml_ng` sits on `unsafe-libyaml`, the C library `libyaml` translated into Rust
-under `unsafe`, compiled into the binary that runs as root for one purpose, parsing a
-declaration, and the shipped-dependency audit of #725 measured it at six crates compiled
-for every binary that links this crate under the deploy's unified build. The `toml`
-crate, Cargo's own format, is safe Rust. JSON stays rejected on the criterion's second
-clause: it has no comments, and a trailing-comma error at three in the morning on a file
-that gates a load is a bad way to learn about JSON.
-
-**The code and the declarations follow this election in the later items of issue #730**,
-after the current baseline closes, because a declaration's bytes are a deployment-tuple
-input and a format change is a new baseline. Until those items land, the tree at this
-commit still parses YAML and every deployed declaration is YAML, and the election here
-is what that code is next written against.
+section 2.1 states the criterion, as amended on the same ruling: the file's reader is a
+human writing it, so the format answers to a writer rather than a parser, carries the
+declaration's nesting, and survives an operator's comments, and the parser's surface in
+the binary that runs as root is part of the criterion, ceremony accepted where that
+safety is bought. TOML meets it: it is a writer's format, its `#` comments survive every
+edit an operator makes, and it carries the nesting the declaration uses, at the cost of
+ceremony on the deeper tables, a section header where YAML would indent. The ground the
+YAML election did not weigh is its parser. `serde_yaml_ng` sits on `unsafe-libyaml`, the
+C library `libyaml` translated into Rust under `unsafe`, compiled into the binary that
+runs as root for one purpose, parsing a declaration, and the shipped-dependency audit of
+pull request #725 measured it at six crates compiled for every binary that links this
+crate under the deploy's unified build. The `toml` crate, Cargo's own format, is safe
+Rust, and five crates compiled where the YAML parser was six. JSON stays rejected on the
+criterion's comments clause: it has none, and a trailing-comma error at three in the
+morning on a file that gates a load is a bad way to learn about JSON.
 
 ```graph
 node: types-config-format-toml
@@ -170,12 +166,13 @@ are identifiers rather than numbers, which is what lets a run reference carry a
 stamp that distinguishes without anything being remembered between invocations,
 per the identity ruling of 2026-08-14.
 
-**One file per agent, named for the agent, in a directory the operator owns.**
-This Spec fixes neither the directory nor the naming convention, which are
-operator provisioning and outside what this program governs, per
-`weaver-admin-PRD` section 1. What it fixes is that admin resolves an agent name
-to exactly one config file and refuses a load where it resolves to none or to
-more than one.
+**One file per agent, named for the agent, in a directory the operator owns.** Admin
+resolves an agent's declaration as `<agent>.toml` in the agent-config directory its own
+configuration names, per `weaver-admin-Spec` section 9: the name is the agent's and the
+extension is the format's, and the operator provisions the file at that name. The
+directory's place stays operator provisioning, outside what this program governs, per
+`weaver-admin-PRD` section 1. Admin resolves an agent name to exactly one config file
+and refuses a load where it resolves to none.
 
 ```rust
 pub struct AgentConfig {
@@ -2163,12 +2160,10 @@ the claim divides are both open and section 6 carries them together.
   first measurement crosses rather than carried as an open election. It is filed
   against `weaver-spu` rather than here, this crate no longer having a stake in
   it.
-- **The config file's directory and naming convention.** Operator provisioning,
-  outside what this program governs, per section 2. What this Spec fixes is that
-  admin resolves one file or refuses.
+- **The config file's directory.** Operator provisioning, outside what this program
+  governs, per section 2. The file's name within it is fixed there, `<agent>.toml`.
 - **The TOML implementation.** The `toml` crate, confirmed maintained at the moment the
-  manifest is written, per section 2. The parser change is the second item of issue
-  #730.
+  manifest is written, per section 2.
 - **The decode seam's encoding.** The token workflow's, with the hot-path
   measurement, per section 4.3, the channel question having closed with the
   decoder-cut ruling, decode on its own socket. **The trio's representation

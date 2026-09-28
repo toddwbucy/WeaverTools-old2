@@ -901,9 +901,7 @@ the declaration's TOML, the format `weaver-types-Spec` section 2 elects, and a d
 reading it that way deletes the uid - which makes validate pass and breaks the connector
 for good, the credential check then denying it at `accept` with nothing saying why. This
 is the same fault an unprovisioned home or sink is, and it answers as they do, naming
-the group on the way out. The declarations and the parse follow the TOML election in the
-later items of issue #730, after the current baseline closes, so at this commit
-`ConfigInvalid` still reports a YAML parse.
+the group on the way out. 
 
 **A user without its group is named too.** `Group={identity}` is a hard
 start-time requirement, so a box that provisioned the agent user and not its
@@ -1709,14 +1707,16 @@ election alone. The operator socket's path left this list with the socket on 202
 and the coordination name stayed but changed hands: the operator places it, the harness
 binds it, and admin dials it, so one value reaches two crates and the operator's file is
 where they agree. They are not the agent config and no seam carries them, which is why
-the file takes no contract of its own. **The file and its values part company at the
-start ask, and the distinction is worth holding.** This crate is the only one that reads
-the file. Three of the values do not stay in it: the coordination socket's name and the
-two organ binary paths reach the worker in section 6's argument vector, over the
-external boundary `weaver-admin-systemd-contract` holds rather than over any seam. The
-shape is a satellite of section 11: what is fixed here is that these values exist, that
-they are the operator's to place, and that none of them is discovered at runtime by
-searching.
+the file takes no contract of its own. **The agent config directory holds one
+declaration per agent, `<agent>.toml`**, which this crate resolves by the agent's name
+and the format's extension, per `weaver-types-Spec` section 2, and a name that resolves
+to no file answers `NoSuchAgent`. **The file and its values part company at the start
+ask, and the distinction is worth holding.** This crate is the only one that reads the
+file. Three of the values do not stay in it: the coordination socket's name and the two
+organ binary paths reach the worker in section 6's argument vector, over the external
+boundary `weaver-admin-systemd-contract` holds rather than over any seam. The shape is a
+satellite of section 11: what is fixed here is that these values exist, that they are
+the operator's to place, and that none of them is discovered at runtime by searching.
 
 **The organ binaries are on this list and not in the agent's declaration, and
 the placement is the ruling rather than a convenience.** They are one

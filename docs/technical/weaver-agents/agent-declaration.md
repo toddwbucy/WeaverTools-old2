@@ -1,11 +1,6 @@
----
-title: the agent declaration
-summary: agent.yaml, field by field - what the operator declares, what refuses, and what this build leaves tunable
-version: v0.1
-date: 2026-08-25
-commit: unreleased
-parent: WeaverTools Technical Documentation
----
+--- title: the agent declaration summary: agent.toml, field by field - what the operator
+declares, what refuses, and what this build leaves tunable version: v0.1 date:
+2026-08-25 commit: unreleased parent: WeaverTools Technical Documentation ---
 
 # The agent declaration
 
@@ -15,7 +10,7 @@ parent: WeaverTools Technical Documentation
 second box was declared, refused twice by name, corrected from the refusals
 alone, and loaded.
 
-One file per agent, YAML, kebab-case keys, owned by the operator and read by
+One file per agent, TOML, kebab-case keys, owned by the operator and read by
 admin at `validate` and `load` from the directory admin's own config names
 (`agent-config-directory`). **Nothing defaults.** An absent required field
 refuses the parse at any depth, because a default would be the program
@@ -26,36 +21,40 @@ are called out below where they occur.
 
 ## The surface
 
-```yaml
-session: s-karl-1
-spu-instruction:
-  decoder:
-    model-binding:
-      artifact: /opt/weaver/models/qwen2.5-0.5b-instruct-q6_k.gguf
-      devices: [0]
-    residual-readout-election: false
-    identity:
-      - role: system
-        content:
-          - type: text
-            text: |-
-              You are Karl, a small local agent running on this laptop.
-    tunable-values:
-      seed: 451234785645
-      context-capacity: 8192
-      max-tokens-per-turn: 1024
-tool-set: []
-permission-mode: ask
-gate-instruction:
-  access-rule:
-    allowed-uids: [1000]
-    allowed-gids: []
-    denied-uids: []
-trace-sink:
-  kind: file
-  path: /home/todd/.weaveragents/karl/trace.ndjson
-  create: true
+```toml
+session = "s-karl-1"
+tool-set = []
+permission-mode = "ask"
+
+[spu-instruction.decoder]
+residual-readout-election = false
+tunable-values = { seed = 451234785645, context-capacity = 8192, max-tokens-per-turn = 1024 }
+
+[spu-instruction.decoder.model-binding]
+artifact = "/opt/weaver/models/qwen2.5-0.5b-instruct-q6_k.gguf"
+devices = [0]
+
+[[spu-instruction.decoder.identity]]
+role = "system"
+
+[[spu-instruction.decoder.identity.content]]
+type = "text"
+text = "You are Karl, a small local agent running on this laptop."
+
+[gate-instruction.access-rule]
+allowed-uids = [1000]
+allowed-gids = []
+denied-uids = []
+
+[trace-sink]
+kind = "file"
+path = "/home/todd/.weaveragents/karl/trace.ndjson"
+create = true
 ```
+
+The top-level keys come first and each section follows as its own table: TOML reads a
+bare key after a table header as that table's, so a top-level key written below a
+table lands inside it and the parse refuses it there as unknown.
 
 **`session`** - the session's identifier, carried on every trace event the run
 emits.

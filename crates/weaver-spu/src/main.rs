@@ -155,8 +155,8 @@ fn judge_decode(
 /// hiding it, so changing one is this line and a recompile.
 ///
 /// This deployment freezes every one. A deployment iterating on an agent flips
-/// the parameters it is moving to `OperatorTunable` and sets them in
-/// `agent.yaml`, which is the loop the disposition mechanism exists for, and a
+/// the parameters it is moving to `OperatorTunable` and sets them in the
+/// agent's declaration, which is the loop the disposition mechanism exists for, and a
 /// production build freezes them back so no declaration can move them.
 const KNOBS: Knobs = Knobs {
     temperature: Disposition::Frozen(0.7),

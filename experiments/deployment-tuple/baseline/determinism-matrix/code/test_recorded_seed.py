@@ -62,6 +62,19 @@ def patched(fakes):
             setattr(base, k, v)
 SEED = 451234785645
 DECLARATION = "d" * 64
+
+
+def declaration(artifact, seed):
+    """A declaration in the TOML shape the agent reads, the seed in an inline
+    tunable-values table and the artifact on its own line."""
+    return ('session = "s-karl-1"\ntool-set = []\npermission-mode = "ask"\n\n'
+            "[spu-instruction.decoder]\nresidual-readout-election = false\n"
+            'identity = [{ role = "system", content = [{ type = "text", text = "You are Karl." }] }]\n'
+            f"tunable-values = {{ seed = {seed}, context-capacity = 16384, max-tokens-per-turn = 1024 }}\n\n"
+            "[spu-instruction.decoder.model-binding]\n"
+            f"artifact = {json.dumps(artifact)}  # the model\ndevices = [0]\n")
+
+
 LOOP = "1" * 64
 CARD = [{"ordinal": 0, "name": "card", "pci_bus_id": "0000:01:00.0"}]
 
@@ -230,11 +243,14 @@ def test_the_declarations_seed_is_read_on_every_path():
     # The default path read no seed, so a record under a wrong one passed.
     # Perturbation: session_seed answering None without a schedule, and the
     # wrong-seed session reads REPRODUCED.
-    text = "decoder:\n  tunable-values:\n    seed: 451234785645\n    context-capacity: 16384\n"
+    text = ("[spu-instruction.decoder.tunable-values]\n"
+            "seed = 451234785645\ncontext-capacity = 16384\n")
     assert dm.standing_seed(text) == SEED
     assert dm.session_seed(None, SEED, 3, 5) == SEED
     assert dm.session_seed([11, 12, 13], SEED, 1, 0) == 11
-    for bad in ("tunable-values:\n", text + "    seed: 7\n", "    seed: abc\n"):
+    for bad in ("[spu-instruction.decoder.tunable-values]\n", text + "seed = 7\n",
+                "[spu-instruction.decoder.tunable-values]\nseed = abc\n",
+                "seed = 451234785645\n"):
         try:
             dm.standing_seed(bad)
         except ValueError:
@@ -300,8 +316,10 @@ def test_the_weights_are_the_artifacts_bytes():
         assert base.is_reading(reading)
         missing = base.weights(path + ".gone")(CFG)
         assert not base.is_reading(missing)
-    assert dm.artifact_of("model-binding:\n  artifact: /opt/m.gguf\n  devices: [0]\n") == "/opt/m.gguf"
-    for bad in ("devices: [0]\n", "artifact: /a\nartifact: /b\n"):
+    binding = "[spu-instruction.decoder.model-binding]\n"
+    assert dm.artifact_of(binding + 'artifact = "/opt/m.gguf"\ndevices = [0]\n') == "/opt/m.gguf"
+    for bad in (binding + "devices = [0]\n", binding + 'artifact = "/a"\nartifact = "/b"\n',
+                'artifact = "/opt/m.gguf"\n'):
         try:
             dm.artifact_of(bad)
         except ValueError:
@@ -354,9 +372,9 @@ def run_main(agent, device=None, hours="0.00003", extra=(), prepare=None, inspec
         model = os.path.join(tmp, "model.gguf")
         with open(model, "wb") as fh:
             fh.write(b"weights")
-        decl = os.path.join(tmp, "karl.yaml")
+        decl = os.path.join(tmp, "karl.toml")
         with open(decl, "w") as fh:
-            fh.write(f"model-binding:\n  artifact: {model}\ntunable-values:\n  seed: {SEED}\n")
+            fh.write(declaration(model, SEED))
         digest = hashlib.sha256(open(decl, "rb").read()).hexdigest()
         if agent.served == (DECLARATION, DECLARATION):
             agent.served = (digest, digest)
@@ -408,9 +426,9 @@ def cells_main(tmp, change=None, declared=None, prepare=None, fakes=None, outdir
     None where it wrote none. `fakes` replaces more of confirm_cells and
     `dm_fakes` of the matrix."""
     import io
-    decl = os.path.join(tmp, "karl.yaml")
+    decl = os.path.join(tmp, "karl.toml")
     with open(decl, "w") as fh:
-        fh.write(declared if declared is not None else f"artifact: {MODEL}\nseed: {SEED}\n")
+        fh.write(declared if declared is not None else f'[spu-instruction.decoder.model-binding]\nartifact = "{MODEL}"\n[spu-instruction.decoder.tunable-values]\nseed = {SEED}\n')
     cfg = dict(CFG, declaration=decl, cells=[{"name": "q8", "precision": "q8", "artifact": MODEL}])
     for k, v in (change or {}).items():
         if v is None:

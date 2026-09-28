@@ -7,7 +7,7 @@ written against it under the gates of Working Process section 6.
 **Document ID:** `weaver-analysis-Spec`
 **Parent:** `weaver-analysis-PRD`
 **Editorial:** Per the Working Rules.
-**Landing PR:** #668
+**Landing PR:** #731
 
 ---
 
@@ -373,17 +373,19 @@ so the diagnostic run is correct to the run and never to the analyst's memory. E
 derived member names its source: the source session from the envelope, the artifact from
 `model.measurement`'s `model`, the seated identity prefix from the turnless
 `message.system` events at the run's opening in landing order with each payload carried
-verbatim, which since the ruling of 2026-09-04 is the seed the derived declaration
-carries while the preloaded store answers the replayed run's `identity` ask, the two
-agreeing by construction because both are the same record's events, the seed from
-`model.request`'s `sampling.seed`, the per-turn ceiling from that request's
-`stop.max_tokens`, and the context capacity from `model.output`'s `capacity`. **A member
-the record spells two ways refuses the derivation naming the member**, disagreement
-being a question for the operator and never a pick, and **a derived member the record
-does not carry refuses the same way** rather than defaulting: completeness is
-claim-relative here exactly as it is at input identity, and the claim is the whole
-declaration. The rule reaches the derived members alone - the fixed and analyst-supplied
-members below come from no record and refuse on no absence.
+value for value, every string and number as the record spelled it and only the
+punctuation respelled for the declaration's TOML, per `weaver-types-Spec` section 2,
+which since the ruling of 2026-09-04 is the seed the derived declaration carries while
+the preloaded store answers the replayed run's `identity` ask, the two agreeing by
+construction because both are the same record's events, the seed from `model.request`'s
+`sampling.seed`, the per-turn ceiling from that request's `stop.max_tokens`, and the
+context capacity from `model.output`'s `capacity`. **A member the record spells two ways
+refuses the derivation naming the member**, disagreement being a question for the
+operator and never a pick, and **a derived member the record does not carry refuses the
+same way** rather than defaulting: completeness is claim-relative here exactly as it is
+at input identity, and the claim is the whole declaration. The rule reaches the derived
+members alone - the fixed and analyst-supplied members below come from no record and
+refuse on no absence.
 
 ```graph
 node: analysis-declaration-derives-from-the-record
