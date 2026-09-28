@@ -7,7 +7,7 @@ agent. Code is written against it under the gates of Working Process section 6.
 **Document ID:** `weaver-admin-Spec`
 **Parent:** `weaver-admin-PRD`
 **Editorial:** Per the Working Rules.
-**Landing PR:** #677
+**Landing PR:** #731
 
 ---
 
@@ -894,14 +894,16 @@ designed behaviour unless the two are made to agree.
 the inventory refuses a declaration whose `allowed-uids` name a uid outside
 the agent's group, before any unit starts.
 
-**It refuses as `BoundaryUnverified` and not as `ConfigInvalid`.** The
-declaration is well formed and the fault is the box's: the operator wrote a
-uid that ought to reach the socket and the provisioning has not put it in the
-agent's group. `ConfigInvalid` names the YAML, and a deployer reading it that
-way deletes the uid - which makes validate pass and breaks the connector for
-good, the credential check then denying it at `accept` with nothing saying
-why. This is the same fault an unprovisioned home or sink is, and it answers
-as they do, naming the group on the way out.
+**It refuses as `BoundaryUnverified` and not as `ConfigInvalid`.** The declaration is
+well formed and the fault is the box's: the operator wrote a uid that ought to reach the
+socket and the provisioning has not put it in the agent's group. `ConfigInvalid` names
+the declaration's TOML, the format `weaver-types-Spec` section 2 elects, and a deployer
+reading it that way deletes the uid - which makes validate pass and breaks the connector
+for good, the credential check then denying it at `accept` with nothing saying why. This
+is the same fault an unprovisioned home or sink is, and it answers as they do, naming
+the group on the way out. The declarations and the parse follow the TOML election in the
+later items of issue #730, after the current baseline closes, so at this commit
+`ConfigInvalid` still reports a YAML parse.
 
 **A user without its group is named too.** `Group={identity}` is a hard
 start-time requirement, so a box that provisioned the agent user and not its
@@ -1173,8 +1175,8 @@ box where the namespace cannot be entered prints a skip naming why and has no wa
 **The territory is the member's own room and a load closes it rather than
 opening it.** It is one subdirectory of the operator-side directory the sink
 already stands in, made if absent and repaired if present, `0700` and owned by
-the member's account. **The repair is unconditional and that is the half issue
-#545 found second**: the preparation ran on every load and rewrote the room to
+the member's account. **The repair is unconditional and that is the half
+issue #545 found second**: the preparation ran on every load and rewrote the room to
 this crate's uid, the parent's group, and `0750`, so a member-owned room did not
 survive one load and the ownership could not be held by provisioning alone. The
 agent's uid is walled out twice over and neither wall rests on the other, the
