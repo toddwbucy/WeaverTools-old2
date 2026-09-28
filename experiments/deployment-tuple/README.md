@@ -131,7 +131,7 @@ probe-set envelope, the arm having run on one stimulus. Marker: shown, olympus
 | kernel stack | first claim shown | `kernel-stack/` | none yet |
 | batch composition | declared | `batch/` | none yet, a build |
 | sampler and seed | shown | `seed/` | none yet, the olympus run predates this tree |
-| none, the instrument | held on olympus and thinkpad | `baseline/` | `determinism-matrix/` |
+| none, the instrument | held on olympus and thinkpad | `baseline/` | `determinism-matrix/`, results in [`results/2026-09-28-blackwell/`](baseline/determinism-matrix/results/2026-09-28-blackwell/README.md) |
 
 A probe joins this table when its directory lands with its Spec, and a marker moves
 when a result lands in that probe's `results/`. The runs cited above that predate
