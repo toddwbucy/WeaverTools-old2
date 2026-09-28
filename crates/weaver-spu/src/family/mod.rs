@@ -386,10 +386,12 @@ pub trait Family {
     /// The capabilities admission judges against.
     ///
     /// **A module serving several architecture keys answers for the key it is
-    /// named after, not for the artifact in hand.** [`qwen2`] serves five keys,
+    /// named after, not for the artifact in hand.** [`qwen2`] serves seven keys,
     /// so `Qwen2::declaration()` is qwen2's row whichever of them was admitted.
-    /// Read a per-artifact fact through [`lookup`] against the header's family
-    /// instead, which is what the decode path does.
+    /// A per-artifact fact is read from the entry admission resolved instead: by
+    /// [`lookup`] against the architecture the header declares, or by [`select`]
+    /// against the artifact's chat template where that architecture is contested,
+    /// and that entry is retained for the session.
     fn declaration(&self) -> &'static Declaration;
 }
 
