@@ -297,10 +297,15 @@ def record_session(cfg, session, declaration_sha=None):
     the pass on 26b93db): a raise in the verification or in formatting its
     record, a wall time that is not a number for one, is the session's
     `error: <type>: <message>` fault on the record as far as it got, and the
-    run goes on to its next session and its summary."""
+    run goes on to its next session and its summary. An interrupt there is
+    the session's `interrupted`, on which the loop stops (#716, the pass on
+    9402e08)."""
     rec = new_record(session)
     try:
         return run_session(cfg, session, declaration_sha, rec)
+    except KeyboardInterrupt:
+        rec["verdict"] = base.INTERRUPTED
+        return rec
     except Exception as exc:  # the session's fault, never the run's end
         rec["verdict"] = f"error: {type(exc).__name__}: {exc}"
         return rec
@@ -555,20 +560,42 @@ def main():
                 break
             started = time.time()
             rec = record_session(cfg, session, standing_sha)
-            rec["seconds"] = round(time.time() - started, 1)
-            # Every load of a run is its own invocation.
-            results.append(base.hold_invocations(rec, invocations))
-            ent = ""
-            for t in rec["turns"]:
-                if t.get("is_probe") and t.get("entropy"):
-                    ent = f" H_mean={t['entropy']['mean']}"
-            seed_note = f" seed={session['declared_seed']}" if schedule is not None else ""
-            log(f"{session['name']}: {rec['verdict']} ({rec['seconds']}s){ent}{seed_note}")
-            with open(os.path.join(args.outdir, "matrix.jsonl"), "a") as fh:
-                fh.write(json.dumps(rec) + "\n")
+            # An interrupt after the session's record exists makes it the
+            # session cut short, recorded as such (#716, the pass on
+            # 9402e08).
+            try:
+                rec["seconds"] = round(time.time() - started, 1)
+                # Every load of a run is its own invocation.
+                base.hold_invocations(rec, invocations)
+                ent = ""
+                for t in rec["turns"]:
+                    if t.get("is_probe") and t.get("entropy"):
+                        ent = f" H_mean={t['entropy']['mean']}"
+                seed_note = f" seed={session['declared_seed']}" if schedule is not None else ""
+                log(f"{session['name']}: {rec['verdict']} ({rec['seconds']}s){ent}{seed_note}")
+            except KeyboardInterrupt:
+                rec["verdict"] = base.INTERRUPTED
+            # **The record joins the results only with its line in
+            # `matrix.jsonl`**, so the summary counts the sessions the record
+            # holds. The write is guarded: an interrupt in it makes the
+            # session `interrupted` and the line is written again whole, and
+            # a write that never lands is a closing step the result rests on.
+            path = os.path.join(args.outdir, "matrix.jsonl")
+            offset = os.path.getsize(path) if os.path.exists(path) else 0
+
+            def append():
+                if interrupted:
+                    rec["verdict"] = base.INTERRUPTED
+                with open(path, "a") as fh:
+                    fh.truncate(offset)
+                    fh.write(json.dumps(rec) + "\n")
+            if closing(f"{session['name']}'s record", append)[0]:
+                results.append(rec)
+            else:
+                unclosed.append(f"{session['name']}'s record")
             # The session an interrupt cut short is recorded, and the run
             # stops on it (#716 round ten).
-            if rec["verdict"] == base.INTERRUPTED:
+            if interrupted or rec["verdict"] == base.INTERRUPTED:
                 raise KeyboardInterrupt
     except KeyboardInterrupt:
         interrupted = True

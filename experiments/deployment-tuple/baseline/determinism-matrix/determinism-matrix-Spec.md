@@ -301,18 +301,21 @@ Blackwell probe's, in `blackwell-probe-Spec` section 5, and this section leaves 
 unchanged.
 
 **A run killed outright writes no summary.** An interrupt ends the run cleanly and still
-writes it, in either mode: the session it cut short is recorded as `interrupted`, the
-window is read at the close, and the run exits 1, since a session it began did not
-complete. Every step between the session loop and the summary, the declaration's
-restore, the run's last unload, the closing readings of the stack and the weights, the
-SPU's closing resolution, the journal's device read and the summary's write, is guarded:
-an interrupt there marks the run interrupted and the step is tried once more, and any
-other failure is logged, a restore that failed leaving the backup standing. A summary
-that could not be written, or a restore that did not land, fails the exit, since the
-run's result rests on both. The run's last unload and the journal's device read are
-notes and do not, no session resting on either. A hangup, which is what closing the
-operator's terminal sends, ends the process before it does, and the per-session record
-written as each session closes is then the whole of what the run left.
+writes it, in either mode: the session it cut short is recorded as `interrupted`,
+wherever in the session the interrupt lands, the window is read at the close, and the
+run exits 1, since a session it began did not complete. Every step between the session
+loop and the summary, the declaration's restore, the run's last unload, the closing
+readings of the stack and the weights, the SPU's closing resolution, the journal's
+device read and the summary's write, is guarded: an interrupt there marks the run
+interrupted and the step is tried once more, and any other failure is logged, a restore
+that failed leaving the backup standing. A summary that could not be written, or a
+restore that did not land, fails the exit, since the run's result rests on both. A
+session's record joins the summary's counts only with its line in `matrix.jsonl`, so the
+two agree, and a line that could not be written fails the exit too. The run's last
+unload and the journal's device read are notes and do not, no session resting on either.
+A hangup, which is what closing the operator's terminal sends, ends the process before
+it does, and the per-session record written as each session closes is then the whole of
+what the run left.
 
 ## 6. The shared declarations
 
