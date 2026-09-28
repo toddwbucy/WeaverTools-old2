@@ -127,20 +127,20 @@ class Agent:
         events = list(self.runs.get(run, []))
         return base.cut_turns(events), events
 
-    def newest_load(self, trace, keep=2):
-        """The load event each half's load writes: the declaration's digest
-        and the loop that composed it."""
-        if self.run is None:
-            return None, None
-        half = self.loads - 1
-        return self.run, {"kind": "load", "payload": {
+    def run_load(self, trace, run, keep=4):
+        """The load event each half's load writes in its run: the
+        declaration's digest and the loop that composed it."""
+        if run not in self.runs:
+            return None
+        half = int(run.rsplit("-", 1)[1]) - 1
+        return {"kind": "load", "payload": {
             "declaration": self.served[half],
             "composer": {"binary": "pyworker", "sha256": self.loops[half]}}}
 
 
 def session(agent, depth=2, declared_seed=None, declaration_sha=None, cfg=CFG):
     saved = {k: getattr(base, k)
-             for k in ("admin", "wait_socket", "gate_turn", "await_turns", "newest_load",
+             for k in ("admin", "wait_socket", "gate_turn", "await_turns", "run_load",
                        "serving_device", "unit_invocation")}
     try:
         for k in saved:
@@ -366,7 +366,7 @@ def run_main(agent, device=None, hours="0.00003", extra=(), prepare=None, inspec
         if prepare:
             prepare(tmp, decl)
         fakes = dict(stack_fakes(device), **(stack or {}))
-        for k in ("admin", "wait_socket", "gate_turn", "await_turns", "newest_load",
+        for k in ("admin", "wait_socket", "gate_turn", "await_turns", "run_load",
                   "serving_device", "unit_invocation"):
             fakes[k] = getattr(agent, k)
         saved = {k: getattr(base, k) for k in fakes}

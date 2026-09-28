@@ -1106,25 +1106,24 @@ def _tail_lines(trace_path, keep, chunk=1 << 20):
     return [raw.decode("utf-8", "replace") for raw in reversed(out)]
 
 
-def newest_load(trace_path, keep=2):
-    """The newest run carrying a `load` event, and that event.
+def run_load(trace_path, run, keep=4):
+    """The `load` event of `run`, or None where the trace does not hold one,
+    or does not exist.
 
-    Answers `(None, None)` where the trace does not exist or holds no load in
-    its tail, so a caller on a fresh box reads an absence rather than
-    catching one.
+    **A load is read by its run, never as the newest** (#716, the pass on
+    26b93db). The newest load event after a snapshot is whichever the sink
+    wrote next, and a sink trailing its writer can hand back the previous
+    load's. The run is the identity: the gate's closes name the run a half's
+    turns were served in, and its load event is that load's.
     """
     try:
-        order, runs = read_runs(trace_path, keep=keep)
+        _, runs = read_runs(trace_path, keep=keep)
     except OSError:
-        return None, None
-    for run in reversed(order):
-        for e in runs[run]:
-            if e.get("kind") == "load":
-                return run, e
-    return None, None
+        return None
+    return next((e for e in runs.get(run, []) if e.get("kind") == "load"), None)
 
 
-def assert_loop(cfg, trace_path, before=None, timeout=15.0):
+def assert_loop(cfg, event, run):
     """Refuse a load composed by a loop other than the one the config declares.
 
     **The digest is the identity and the name is not**, per issue #426. Every
@@ -1147,28 +1146,17 @@ def assert_loop(cfg, trace_path, before=None, timeout=15.0):
     was declared and what was found. A composer with no digest - a compiled
     loop, or a build from before #419 that recorded no composer - is refused
     where a digest is declared, because it cannot be shown to be the one
-    declared. The newest load is awaited rather than read once: the harness
-    writes the trace behind the close, and `before` names the newest run
-    that stood ahead of this load so the previous cell's load cannot answer
-    for it.
+    declared. `event` is the load event of `run`, the run the half's turns
+    were served in, read by `load_held`, and None where none reached the
+    trace, which cannot be shown to be the declared loop either.
     """
     declared = cfg.get("loop_sha256")
     if declared is None:
         return None
-    end = time.time() + timeout
-    delay = 0.02
-    while True:
-        run, event = newest_load(trace_path)
-        if run is not None and run != before:
-            break
-        if time.time() >= end:
-            return {"declared": declared, "recorded": None, "run": None,
-                    "composer": None,
-                    "note": "no load event for a new run reached the trace "
-                            f"within {timeout:g}s, so the loop cannot be shown "
-                            "to be the declared one"}
-        time.sleep(delay)
-        delay = min(delay * 1.5, 1.0)
+    if event is None:
+        return {"declared": declared, "recorded": None, "run": run, "composer": None,
+                "note": f"no load event for run {run} reached the trace, so the loop"
+                        " cannot be shown to be the declared one"}
     composer = (event.get("payload") or {}).get("composer")
     recorded = composer.get("sha256") if isinstance(composer, dict) else None
     if recorded == declared:
@@ -1192,31 +1180,35 @@ def loop_refusal(report, refused, half, log):
     return report
 
 
-def load_held(cfg, before, declaration_sha, half, rec, log=None, timeout=15.0):
-    """After a load stands, the loop that composed it and the declaration it
-    served are the session's. The loop is checked by `assert_loop` against the
-    config's `loop_sha256`. The declaration is checked
-    by the digest the load event records, which is the declaration file's
-    sha256, so the artifact path, the seed, the sampling knobs and every other
-    declared field are held per load. Answers True where both hold, and
-    otherwise sets the verdict and answers False. Every load a session
-    makes is held here, one way (#716 rounds two and six)."""
-    refused = assert_loop(cfg, cfg["trace"], before)
+def load_held(cfg, run, declaration_sha, half, rec, log=None, timeout=15.0):
+    """The loop that composed a half's load and the declaration it served
+    are the session's, read from the load event of `run`, the run the half's
+    gate closes named (#716, the pass on 26b93db). The loop is checked by
+    `assert_loop` against the config's `loop_sha256`. The declaration is
+    checked by the digest the load event records, which is the declaration
+    file's sha256, so the artifact path, the seed, the sampling knobs and
+    every other declared field are held per load. The event is awaited,
+    since the sink writes behind the close, and its absence is a fault.
+    Answers True where both hold, and otherwise sets the verdict and answers
+    False. Every load a session makes is held here, one way (#716 rounds two
+    and six)."""
+    if cfg.get("loop_sha256") is None and declaration_sha is None:
+        return True
+    end, delay = time.time() + timeout, 0.02
+    event = run_load(cfg["trace"], run)
+    while event is None and time.time() < end:
+        time.sleep(delay)
+        delay = min(delay * 1.5, 1.0)
+        event = run_load(cfg["trace"], run)
+    refused = assert_loop(cfg, event, run)
     if refused:
         loop_refusal(rec, refused, half, log or (lambda m: None))
         return False
     if declaration_sha is None:
         return True
-    end, delay = time.time() + timeout, 0.02
-    while True:
-        run, event = newest_load(cfg["trace"])
-        if run is not None and run != before:
-            break
-        if time.time() >= end:
-            rec["verdict"] = f"no load event reached the trace for the {half} load"
-            return False
-        time.sleep(delay)
-        delay = min(delay * 1.5, 1.0)
+    if event is None:
+        rec["verdict"] = f"no load event reached the trace for the {half} run {run}"
+        return False
     served = (event.get("payload") or {}).get("declaration")
     if served != declaration_sha:
         rec["verdict"] = (f"the {half} load served another declaration:"
@@ -1265,16 +1257,14 @@ def verify_session(cfg, texts, rec, declared_seed, declaration_sha,
         return pairs, evidence
 
     def hold_load(half):
-        """One half's load: the load itself, its socket, its declaration and
-        loop, and its device read by its own unit invocation."""
-        before = newest_load(cfg["trace"])[0]
+        """One half's load: the load itself, its socket, and its device read
+        by its own unit invocation. Its declaration and loop are held once
+        the half's closes name its run."""
         loaded = step("load")
         if not admin_answered(loaded, states=("idle",)):
             return f"{'load' if half == 'source' else 'reload'} refused: {canonical(loaded)}"
         if not wait_socket(cfg):
             return "gate socket never stood" if half == "source" else "gate socket never stood after reload"
-        if not load_held(cfg, before, declaration_sha, half, rec, log):
-            return rec["verdict"]
         seen, invocation = load_devices(cfg)
         evidence[f"{half}_read"] = seen
         log(f"{half} devices: {json.dumps(seen)}")
@@ -1338,6 +1328,10 @@ def verify_session(cfg, texts, rec, declared_seed, declaration_sha,
             return fault("the source turns did not share one run")
         source_run = source_runs[0]
         rec["source_run"] = source_run
+        # The load held by its run, the one the closes name, never by
+        # whichever load event the sink wrote next.
+        if not load_held(cfg, source_run, declaration_sha, "source", rec, log):
+            return fault(rec["verdict"])
         source_turns, evidence["source_events"] = await_turns(cfg["trace"], len(texts), source_run)
         if len(source_turns) != len(texts):
             return fault(f"expected {len(texts)} source turns, found {len(source_turns)}")
@@ -1395,6 +1389,8 @@ def verify_session(cfg, texts, rec, declared_seed, declaration_sha,
             return fault("reissues did not land in one fresh run")
         replay_run = runs_seen[0]
         rec["replay_run"] = replay_run
+        if not load_held(cfg, replay_run, declaration_sha, "replay", rec, log):
+            return fault(rec["verdict"])
         replay_all, evidence["replay_events"] = await_turns(cfg["trace"], len(source_turns), replay_run)
         if not replay_all:
             return fault(f"the closes named run {replay_run}, absent from the trace")

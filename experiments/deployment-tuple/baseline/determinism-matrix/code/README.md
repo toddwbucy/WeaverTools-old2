@@ -15,9 +15,9 @@ seed and the device each load logged. The `test_*.py` files are the tests of the
 three from that tree and `test_recorded_seed.py`, `test_absence_and_evidence.py`,
 `test_round_five.py`, `test_round_seven.py`, `test_round_eight.py`,
 `test_round_nine.py`, `test_round_ten.py`, `test_round_eleven.py`,
-`test_round_twelve.py`, `test_round_thirteen.py`, `test_round_fourteen.py` and
-`test_one_entry_point.py` from #716. Each is a plain script and exits non-zero on the
-first failure:
+`test_round_twelve.py`, `test_round_thirteen.py`, `test_round_fourteen.py`,
+`test_round_fifteen.py` and `test_one_entry_point.py` from #716. Each is a plain script
+and exits non-zero on the first failure:
 
 ```
 python3 test_seed_schedule.py
@@ -34,6 +34,7 @@ python3 test_round_eleven.py
 python3 test_round_twelve.py
 python3 test_round_thirteen.py
 python3 test_round_fourteen.py
+python3 test_round_fifteen.py
 python3 test_one_entry_point.py
 ```
 

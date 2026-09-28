@@ -63,7 +63,7 @@ def test_the_session_function_verifies_nothing_outside_it():
     # this names it.
     assert not hasattr(base, "run_cell") and not hasattr(base, "main")
     primitives = ("load_held", "load_devices", "compare_turn", "unobserved", "await_turns",
-                  "gate_turn", "wait_socket", "newest_load", "sampling/seed", "assert_loop")
+                  "gate_turn", "wait_socket", "run_load", "sampling/seed", "assert_loop")
     for fn in (dm.run_session,):
         source = inspect.getsource(fn)
         found = [p for p in primitives if p in source]

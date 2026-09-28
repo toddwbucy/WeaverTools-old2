@@ -31,9 +31,9 @@ def test_the_harness_has_no_entry_point_of_its_own():
 
 def test_the_matrix_has_one_session_loop():
     # Both schedules yield sessions of one shape into one loop, which calls
-    # run_session once. Perturbation: give the cells a loop of their own in
-    # main, and the count or the shapes differ.
-    assert inspect.getsource(dm.main).count("run_session(") == 1
+    # record_session once. Perturbation: give the cells a loop of their own
+    # in main, and the count or the shapes differ.
+    assert inspect.getsource(dm.main).count("record_session(") == 1
     cell = next(dm.cell_sessions(f"artifact: {MODEL}\nseed: {SEED}\n", TWO_CELLS))
     matrix = next(dm.matrix_sessions(f"artifact: {MODEL}\nseed: {SEED}\n", SEED, None))
     assert set(cell) == set(matrix), (set(cell), set(matrix))

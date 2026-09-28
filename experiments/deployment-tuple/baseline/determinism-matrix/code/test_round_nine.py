@@ -46,7 +46,7 @@ def agent_fakes(agent):
     """The agent's own stand-ins for the admin, the gate and the trace, and
     a trace read that finds no whole run to deposit."""
     fakes = {k: getattr(agent, k) for k in ("admin", "wait_socket", "gate_turn", "await_turns",
-                                            "newest_load", "serving_device", "unit_invocation")}
+                                            "run_load", "serving_device", "unit_invocation")}
     fakes["read_runs"] = lambda path, keep=None: ([], {})
     return fakes
 

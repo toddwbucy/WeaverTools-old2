@@ -78,7 +78,7 @@ def _drive_main(die_second_cell=False, swap_libs=False):
     TOOLS = {"rustc": "rustc stub", "active_toolchain": "nightly-stub"}
     calls = {"n": 0}
 
-    def fake_run_session(cfg, session, declaration_sha=None):
+    def fake_run_session(cfg, session, declaration_sha=None, rec=None):
         calls["n"] += 1
         if calls["n"] == 2 and die_second_cell:
             raise RuntimeError("cell two died")
@@ -136,10 +136,12 @@ def test_clean_run_exits_zero_window_quiet():
 
 
 def test_midrun_raise_keeps_partial_deposit():
-    """Defect 2: the deposit survives a raise past the first cell."""
-    code, records, _ = _drive_main(die_second_cell=True)
-    assert str(code).startswith("raised"), code
-    assert records is not None and len(records) == 1
+    """Defect 2: the deposit survives a raise past the first cell. Since the
+    fault boundary around each session (#716, the pass on 26b93db) the raise
+    is that cell's fault, and the run goes on to its summary."""
+    code, records, summary = _drive_main(die_second_cell=True)
+    assert code == 1 and summary is not None, code
+    assert [r["verdict"] for r in records] == ["REPRODUCED", "error: RuntimeError: cell two died"], records
 
 
 def test_midrun_swap_exits_one_over_green_cells():

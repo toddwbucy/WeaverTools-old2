@@ -262,7 +262,7 @@ def drive_cell(agent, tmp, artifact="/m.gguf"):
     with open(decl, "w") as fh:
         fh.write(standing)
     cfg = dict(CFG, declaration=decl, trace=os.path.join(tmp, "trace"))
-    names = ("admin", "wait_socket", "gate_turn", "await_turns", "newest_load", "serving_device",
+    names = ("admin", "wait_socket", "gate_turn", "await_turns", "run_load", "serving_device",
              "unit_invocation")
     saved = {n: getattr(base, n) for n in names}
     try:

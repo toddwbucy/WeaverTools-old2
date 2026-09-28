@@ -285,7 +285,28 @@ def entropies_of(turn):
     return summary
 
 
-def run_session(cfg, session, declaration_sha=None):
+def new_record(session):
+    """A session's record before it runs: its labels, and every field the
+    verification fills, empty."""
+    return dict(session["label"], verdict=None, turns=[], declared_seed=session["declared_seed"],
+                recorded_seed=None, replay_recorded_seed=None, source_run=None, replay_run=None)
+
+
+def record_session(cfg, session, declaration_sha=None):
+    """`run_session` with **the fault boundary around the whole of it** (#716,
+    the pass on 26b93db): a raise in the verification or in formatting its
+    record, a wall time that is not a number for one, is the session's
+    `error: <type>: <message>` fault on the record as far as it got, and the
+    run goes on to its next session and its summary."""
+    rec = new_record(session)
+    try:
+        return run_session(cfg, session, declaration_sha, rec)
+    except Exception as exc:  # the session's fault, never the run's end
+        rec["verdict"] = f"error: {type(exc).__name__}: {exc}"
+        return rec
+
+
+def run_session(cfg, session, declaration_sha=None, rec=None):
     """One session, a matrix cell or a cell of the cross-precision protocol:
     serve, unload, reload, reissue, compare, by `confirm_cells.
     verify_session`, the one session verification (#716 round eight). This
@@ -295,9 +316,7 @@ def run_session(cfg, session, declaration_sha=None):
     own. The agent is left unloaded whichever path this takes, and a raise
     is the session's verdict, recorded by the shared path (#716 round ten).
     """
-    rec = dict(session["label"], verdict=None, turns=[],
-               declared_seed=session["declared_seed"], recorded_seed=None,
-               replay_recorded_seed=None, source_run=None, replay_run=None)
+    rec = new_record(session) if rec is None else rec
     pairs, _ = base.verify_session(cfg, session["texts"], rec, session["declared_seed"],
                                    declaration_sha, declaration=session["declaration"])
     for st, rt, checks in pairs:
@@ -531,7 +550,7 @@ def main():
             if time.time() >= deadline:
                 break
             started = time.time()
-            rec = run_session(cfg, session, standing_sha)
+            rec = record_session(cfg, session, standing_sha)
             rec["seconds"] = round(time.time() - started, 1)
             # Every load of a run is its own invocation.
             results.append(base.hold_invocations(rec, invocations))

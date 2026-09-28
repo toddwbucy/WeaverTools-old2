@@ -117,8 +117,9 @@ labelled by its name, precision and artifact, and the summary counts cells as `b
 
 **One session is serve, unload, reload, reissue, compare.** In order:
 
-1. Unload the agent, load it, wait for the gate socket to stand, and hold the load to
-   the session's declaration and loop, per section 5.
+1. Unload the agent, load it, and wait for the gate socket to stand. Once the half's
+   closes name its run, hold that run's load event to the session's declaration and
+   loop, per section 5.
 2. Serve the session's texts, depth minus one filler turns and then the probe, and
    read the served turns back from the trace. They must all belong to one run and
    number exactly the depth.
@@ -164,10 +165,12 @@ check a record carries no value for, source or replay turns split across runs, u
 run the gate names by anything but a string, or short of the depth, a replay read short,
 a seed mismatch under section 4, an exception, recorded as `error: <type>: <message>`,
 or an interrupt, recorded as `interrupted`. The one session path records each of these,
-so no session is lost to a raise. A replay read short is the sink one turn behind and is
-kept apart from DIVERGED, which is the strongest negative the harness emits. Faults are
-counted apart from both verdicts, as the summary's `errors`, so a run's divergence count
-is never inflated by sessions that were not compared.
+and the loop's boundary around each session makes a raise in formatting its record that
+session's `error:` fault too, so no session and no summary is lost to a raise. A replay
+read short is the sink one turn behind and is kept apart from DIVERGED, which is the
+strongest negative the harness emits. Faults are counted apart from both verdicts, as
+the summary's `errors`, so a run's divergence count is never inflated by sessions that
+were not compared.
 
 **Each session's record** carries the prompt, its character, the depth, the sweep,
 both run identities, the declared and recorded seeds, the verdict and the wall time,
@@ -229,20 +232,21 @@ deposits' summaries carry, `by_cell` aside, which the fold added.
 
 **Every load is held to the session's declaration and loop.** Each load event records
 the digest of the declaration it served, the sha256 of the declaration file, and the
-loop that composed it. After each half's load stands the harness holds the first to the
-declaration the session wrote, which holds the artifact path, the seed, the sampling
-knobs and every other declared field per load, and where the config names `loop_sha256`
-it holds the second to that digest. The declaration the loads are held to is the bytes
-the run read at preflight, or the bytes it wrote for the session, by the digest of those
-bytes and never by a read of the file back, and the disk is held to them before the run
-starts. **Every check a session makes is one function**, `verify_session` in
-`confirm_cells.py`: the load, declaration, loop and device holds, the recorded seed,
-absence, the comparison and the surplus. The one session function, the matrix's
-`run_session`, calls it for every session in either mode and verifies nothing outside
-it, so no check can hold for one kind of session and be missing from another.
-It records a raise from its closing unload as it records any other, an interrupt there
-as `interrupted` and anything else as a fault. A config naming no loop leaves the loop
-unchecked.
+loop that composed it. Once a half's gate closes name the run its turns were served in,
+the harness reads that run's load event, never the newest one a trailing sink wrote, and
+holds the first to the declaration the session wrote, which holds the artifact path, the
+seed, the sampling knobs and every other declared field per load, and where the config
+names `loop_sha256` it holds the second to that digest. The declaration the loads are
+held to is the bytes the run read at preflight, or the bytes it wrote for the session,
+by the digest of those bytes and never by a read of the file back, and the disk is held
+to them before the run starts. **Every check a session makes is one function**,
+`verify_session` in `confirm_cells.py`: the load, declaration, loop and device holds,
+the recorded seed, absence, the comparison and the surplus. The one session function,
+the matrix's `run_session`, calls it for every session in either mode and verifies
+nothing outside it, so no check can hold for one kind of session and be missing from
+another. It records a raise from its closing unload as it records any other, an
+interrupt there as `interrupted` and anything else as a fault. A config naming no loop
+leaves the loop unchecked.
 
 **The run-wide verdict is one function too**, `run_verdict` in `confirm_cells.py`: at
 least one session ran and every session reproduced, every window field reads

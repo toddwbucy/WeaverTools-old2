@@ -49,16 +49,22 @@ def _file(name, digest):
             "sha256": digest}
 
 
+def check(cfg, trace):
+    """The loop check on the trace's one run, read by that run."""
+    run = g.read_runs(trace)[0][-1]
+    return g.assert_loop(cfg, g.run_load(trace, run), run)
+
+
 def test_matching_digest_passes():
     td = tempfile.mkdtemp()
     t = _trace(td, [_load("r1", _file("alpha_loop.py", DECLARED))])
-    assert g.assert_loop({"loop_sha256": DECLARED}, t) is None
+    assert check({"loop_sha256": DECLARED}, t) is None
 
 
 def test_other_digest_refuses_with_both_digests():
     td = tempfile.mkdtemp()
     t = _trace(td, [_load("r1", _file("alpha_loop.py", OTHER))])
-    r = g.assert_loop({"loop_sha256": DECLARED}, t)
+    r = check({"loop_sha256": DECLARED}, t)
     assert r is not None
     assert r["declared"] == DECLARED and r["recorded"] == OTHER, r
     assert r["run"] == "r1" and r["composer"]["file"].endswith("alpha_loop.py")
@@ -69,15 +75,15 @@ def test_the_name_is_not_the_identity():
     bytes passes - the finding #426 was opened on."""
     td = tempfile.mkdtemp()
     t = _trace(td, [_load("r1", _file("alpha_loop.py", OTHER))])
-    assert g.assert_loop({"loop_sha256": DECLARED}, t) is not None
+    assert check({"loop_sha256": DECLARED}, t) is not None
     t = _trace(td, [_load("r2", _file("bravo_loop.py", DECLARED))])
-    assert g.assert_loop({"loop_sha256": DECLARED}, t) is None
+    assert check({"loop_sha256": DECLARED}, t) is None
 
 
 def test_compiled_loop_refuses_where_a_digest_is_declared():
     td = tempfile.mkdtemp()
     t = _trace(td, [_load("r1", {"binary": "worker"})])
-    r = g.assert_loop({"loop_sha256": DECLARED}, t)
+    r = check({"loop_sha256": DECLARED}, t)
     assert r is not None and r["recorded"] is None, r
     assert r["composer"] == {"binary": "worker"}
 
@@ -87,7 +93,7 @@ def test_no_composer_at_all_refuses_where_a_digest_is_declared():
     be the declared loop, so it is refused rather than passed on absence."""
     td = tempfile.mkdtemp()
     t = _trace(td, [_load("r1", None)])
-    r = g.assert_loop({"loop_sha256": DECLARED}, t)
+    r = check({"loop_sha256": DECLARED}, t)
     assert r is not None and r["recorded"] is None and r["composer"] is None, r
 
 
@@ -96,33 +102,34 @@ def test_absent_key_is_unchecked():
     record says, so the configs that predate the key still run."""
     td = tempfile.mkdtemp()
     t = _trace(td, [_load("r1", _file("alpha_loop.py", OTHER))])
-    assert g.assert_loop({}, t) is None
-    assert g.assert_loop({"box": "x"}, t) is None
+    assert check({}, t) is None
+    assert check({"box": "x"}, t) is None
 
 
-def test_the_previous_load_does_not_answer_for_this_one():
-    """With `before` naming the newest run that stood ahead of the load, a
-    trace the sink has not yet appended to cannot pass on the old run."""
+def test_a_run_with_no_load_event_refuses_where_a_digest_is_declared():
+    """A run whose load event has not reached the trace cannot pass on
+    another run's."""
     td = tempfile.mkdtemp()
     t = _trace(td, [_load("r1", _file("alpha_loop.py", DECLARED))])
-    r = g.assert_loop({"loop_sha256": DECLARED}, t, before="r1", timeout=0.1)
-    assert r is not None and r["recorded"] is None and r["run"] is None, r
-    assert "no load event" in r["note"]
+    r = g.assert_loop({"loop_sha256": DECLARED}, g.run_load(t, "r2"), "r2")
+    assert r is not None and r["recorded"] is None and r["run"] == "r2", r
+    assert "no load event for run r2" in r["note"]
 
 
-def test_the_newest_load_is_the_one_compared():
+def test_the_named_run_is_the_one_compared():
+    """The load read by its run, never as the newest (#716, the pass on
+    26b93db): a newer load of another run does not answer for this one, and
+    an older one does not either."""
     td = tempfile.mkdtemp()
     t = _trace(td, [_load("r1", _file("alpha_loop.py", OTHER)),
                     _load("r2", _file("alpha_loop.py", DECLARED))])
-    assert g.assert_loop({"loop_sha256": DECLARED}, t, before="r1") is None
-    t = _trace(td, [_load("r1", _file("alpha_loop.py", DECLARED)),
-                    _load("r2", _file("alpha_loop.py", OTHER))])
-    r = g.assert_loop({"loop_sha256": DECLARED}, t, before="r1")
-    assert r is not None and r["run"] == "r2", r
+    assert g.assert_loop({"loop_sha256": DECLARED}, g.run_load(t, "r2"), "r2") is None
+    r = g.assert_loop({"loop_sha256": DECLARED}, g.run_load(t, "r1"), "r1")
+    assert r is not None and r["run"] == "r1", r
 
 
 def test_missing_trace_is_an_absence_not_a_raise():
-    assert g.newest_load("/nonexistent/trace.ndjson") == (None, None)
+    assert g.run_load("/nonexistent/trace.ndjson", "r1") is None
 
 
 class _Served(BaseException):
@@ -133,11 +140,11 @@ class _Served(BaseException):
 
 def _drive_cell(composer_digest, served=None):
     """One cell of the matrix's cells mode, by `run_session`, with the box
-    stubbed, up to the first turn. The load event records the declaration
+    stubbed, up to the read of its source turns, after the load's hold. The load event records the declaration
     file's digest as it stands at the load, as the admin does, or `served`
     where a test gives one."""
     saved = {n: getattr(g, n) for n in
-             ("admin", "wait_socket", "gate_turn", "serving_device", "unit_invocation")}
+             ("admin", "wait_socket", "gate_turn", "serving_device", "unit_invocation", "await_turns")}
     td = tempfile.mkdtemp()
     # An older run at the declared digest already stands in the trace, so a
     # check that read the wrong load would pass on it. The fake load below
@@ -164,12 +171,17 @@ def _drive_cell(composer_digest, served=None):
         return {"kind": "no_residency", "exit": 1}
 
     def fake_gate(cfg, text, timeout=600):
-        raise _Served(text)
+        return {"kind": "answered", "run": "r-cell"}
+
+    def fake_await(*a, **k):
+        # Past the load's hold, the turns are read: the drive stops here.
+        raise _Served("turns read")
 
     try:
         g.admin = fake_admin
         g.wait_socket = lambda cfg, timeout=120: True
         g.gate_turn = fake_gate
+        g.await_turns = fake_await
         g.serving_device = lambda cfg, since, invocation=None: {"devices": [{"ordinal": 0}], "complete": True}
         # Each load its own unit invocation, as systemd starts each.
         invocations = iter(f"{i:032x}" for i in range(1, 1000))
@@ -186,14 +198,14 @@ def _drive_cell(composer_digest, served=None):
             setattr(g, n, fn)
 
 
-def test_a_cell_refuses_before_a_turn_is_served():
+def test_a_cell_refuses_before_its_turns_are_read():
     outcome, report, steps = _drive_cell(OTHER)
     assert outcome == "returned", outcome
     assert report["verdict"].startswith("loop refused at the source load"), report
     refused = report["loop_refused"]
     assert refused["declared"] == DECLARED and refused["recorded"] == OTHER
     assert refused["half"] == "source" and refused["run"] == "r-cell"
-    assert report["turns"] == [] and report["source_run"] is None
+    assert report["turns"] == [] and report["source_run"] == "r-cell" and report["replay_run"] is None
     # the finally still released the device
     assert steps[-1] == "unload", steps
 
