@@ -137,5 +137,5 @@ its box facts cite, and `JOURNAL-NOT-CAPTURED.txt`, which says why the window's 
 records are absent. karl's trace is its sink file whole. fred's sink file also carried
 the Ada cell, which appended to it, and after that run ended the file was split by run
 id between the two deposits, each smoke's records beside its smoke under
-`evidence/smokes/`. fred-a6000 keeps the snapshot it held before the split until the
-split is reviewed.
+`evidence/smokes/`. The snapshot fred-a6000 held before the split was removed once the
+split was reviewed.
