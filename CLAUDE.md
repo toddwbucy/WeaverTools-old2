@@ -392,7 +392,10 @@ with its disposition, and only then takes the next pass.
 **More than four review rounds means the diff is not the problem.** The pull request
 returns to authoring, which is the rule that stopped #683 at twenty-eight passes: the
 findings were valid to the last pass, each the next site of a few classes, and the
-series stopped because a review that long is authoring by another name.
+series stopped because a review that long is authoring by another name. Working
+Process section 6 owns the rule, with the two that come before it on the ruling of
+2026-09-27: a verdict's pass is stated in its Spec before it is hardened, and a carry is
+not a hardening.
 
 **Gates before review**: a reviewer's attention on what a command can check is attention
 not on "does this fix hold". The order, then, is this. The gates come first - `lock.sh`,

@@ -1,6 +1,6 @@
 # WeaverTools Working Process
 
-**Version:** v0.34, 2026-09-27. Companion to the Working Rules, the Document
+**Version:** v0.35, 2026-09-27. Companion to the Working Rules, the Document
 Format, and the Handoff Format. The apex says what we are building. The Working
 Rules say how we write. The Document Format says what shape a document takes. The
 Handoff Format says what shape a batch takes when it moves between seats. This says
@@ -591,6 +591,33 @@ one that found the originals. A second pass is not optional where the first
 produced substantive work. **Passing means no finding that changes behaviour or
 corrects a claim is unanswered**, a declined finding being answered with its reason
 on the pull request.
+
+**A pass is stated before it is hardened**, on the operator's ruling of 2026-09-27,
+after #716 took fifteen Codex passes and every finding of every pass was valid. Code
+whose exit is a verdict - a pass, a reproduction, an approval - has its Spec state,
+before the hardening begins, what a pass certifies, on what evidence the code reads
+itself, and what the pass guards against and what it does not. The Planner's grade
+before undraft checks that the statement is there. Without it a review has no ground on
+which to decline a finding, and each finding is the next site of a claim nobody bounded.
+#716's statement arrived at its twelfth pass, and from then on a finding that needed a
+party racing the run could be declined by citing it.
+
+**A carry is not a hardening**, on the same ruling. Code brought into the tree from
+elsewhere lands first as it is, its Spec marking it a lab instrument and naming its
+known limits. The act that makes it an instrument whose verdict the program relies on is
+a second act, with the statement of its pass written first. An act that does both widens
+the surface each rework puts in front of the next pass, which is how #716's carry became
+its hardening one finding at a time.
+
+**More than four review rounds returns the pull request to design**, on the same ruling,
+and this section owns the rule that `CLAUDE.md`'s pull request path carries. The fifth
+round does not answer the next finding. It asks what design question the findings share,
+and the answer is an act of its own or a ruling. #683 stopped at twenty-eight passes
+under this rule. #716 met the bound at its fourth pass and went on under the operator's
+word that its bugs be fixed rather than deferred, and the fold of its two entry points
+and the statement of its pass, taken at the twelfth, were that return to design arriving
+eight rounds late. The operator can still hold a pull request past the bound, and the
+ruling is recorded on the pull request with the design question it answers.
 
 **A pull request names what it answers, and a merge is not done until the ledger
 is**, on the operator's ruling of 2026-09-26. The body carries every issue the act
