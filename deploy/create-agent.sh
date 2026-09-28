@@ -79,6 +79,18 @@ done
 [[ "$NAME" =~ ^[a-z][a-z0-9]{1,15}$ ]] || die "the name is lowercase letters and digits, 2 to 16 characters: '$NAME'"
 [ -n "$ARTIFACT" ] || die "name the artifact the decoder binds: --artifact <path>"
 SESSION=${SESSION:-$NAME-001}
+# **The session and the artifact are written into TOML strings, so a value a
+# basic string cannot carry as it stands is refused here**, before any
+# account, database or file is made. A double quote ends the string early, a
+# backslash begins an escape that changes the value, and a control character
+# is either refused by TOML or ends the line, so `--session 'trial"2'` would
+# write `session = "trial"2"`. Neither value needs any of the three.
+for pair in "session:$SESSION" "artifact:$ARTIFACT"; do
+  field=${pair%%:*} value=${pair#*:}
+  if [[ "$value" == *[\"\\]* || "$value" =~ [[:cntrl:]] ]]; then
+    die "the $field '$value' carries a double quote, a backslash or a control character, which the declaration's TOML string cannot hold as written"
+  fi
+done
 
 
 # **An engine this script cannot provision is refused here rather than written
@@ -102,6 +114,77 @@ DATABASE="weaver_$NAME"
 HOME_DIR="/home/$OPERATOR/.weaveragents/$AGENT_USER"
 STATE_DIR="$HOME_DIR/state"
 ADMIN_CONFIG=${WEAVER_ADMIN_CONFIG:-/etc/weaver/admin}
+
+# **The declaration is rendered once, here, and parse-checked before anything
+# is provisioned**, so a value that breaks it refuses before an account or a
+# database exists rather than after. The check is TOML syntax through
+# python3's tomllib: the schema is admin's to judge, and its validate also
+# judges the boundary this script provisions, so it can only pass once the
+# script has run, which is why the closing step asks for it.
+# The format is TOML, per weaver-types-Spec section 2: the top-level keys come
+# first and each section is its own table after them, since TOML reads a bare
+# key after a table header as that table's.
+render_declaration() {
+cat <<TOML
+session = "$SESSION"
+tool-set = []
+permission-mode = "deny"
+# **A serving binding carries a gate instruction and the inventory refuses it
+# absent.** An unstated binding-kind resolves to serving, so both are written
+# rather than left to a default a reader cannot see.
+binding-kind = "serving"
+
+[spu-instruction.decoder]
+residual-readout-election = false
+surprisal-election = true
+tunable-values = { context-capacity = 32768, max-tokens-per-turn = 4096, seed = 451234785645 }
+
+[spu-instruction.decoder.model-binding]
+artifact = "$ARTIFACT"
+devices = [0]
+
+[[spu-instruction.decoder.identity]]
+role = "system"
+
+[[spu-instruction.decoder.identity.content]]
+type = "text"
+text = """
+You are a careful assistant. Answer from what you know, say
+plainly when you do not know, and keep answers as short as the
+question allows.
+"""
+
+[gate-instruction.access-rule]
+allowed-uids = [$(id -u "$OPERATOR")]
+allowed-gids = []
+denied-uids = []
+
+[trace-sink]
+kind = "file"
+path = "$HOME_DIR/trace.ndjson"
+create = true
+
+[state-election]
+all-kinds = true
+keys = [
+  { kind = "message.user", paths = ["content"] },
+  { kind = "message.assistant", paths = ["content"] },
+]
+
+# **The engine, the database and the role are members of the binding**, per
+# weaver-state-PRD section 4: declared here, changing only across the load
+# boundary, and named on the load event like every fact that decides a
+# record.
+[state-store]
+engine = "$ENGINE"
+database = "$DATABASE"
+role = "$ROLE"
+TOML
+}
+DECLARATION_TEXT=$(render_declaration)
+command -v python3 >/dev/null || die "python3 is not on PATH, and the declaration is parse-checked with its tomllib before anything is made"
+printf '%s\n' "$DECLARATION_TEXT" | python3 -c 'import sys, tomllib; tomllib.loads(sys.stdin.read())' 2>/dev/null \
+  || die "the rendered declaration does not parse as TOML, so nothing was made. Check --session and --artifact"
 # Plan and apply interpret the same configuration. Only the read identity
 # differs. Validate all arguments above before asking for a sudo credential.
 if [ "$APPLY" -eq 1 ]; then
@@ -327,64 +410,7 @@ say "declaration"
 # sink at another's directory, so two agents were configured to write one
 # record, and it survived three weeks because nothing checked. The path is
 # derived here rather than accepted.
-# The format is TOML, per weaver-types-Spec section 2: the top-level keys come
-# first and each section is its own table after them, since TOML reads a bare
-# key after a table header as that table's.
-sudo tee "$DECLARATION" >/dev/null <<TOML
-session = "$SESSION"
-tool-set = []
-permission-mode = "deny"
-# **A serving binding carries a gate instruction and the inventory refuses it
-# absent.** An unstated binding-kind resolves to serving, so both are written
-# rather than left to a default a reader cannot see.
-binding-kind = "serving"
-
-[spu-instruction.decoder]
-residual-readout-election = false
-surprisal-election = true
-tunable-values = { context-capacity = 32768, max-tokens-per-turn = 4096, seed = 451234785645 }
-
-[spu-instruction.decoder.model-binding]
-artifact = "$ARTIFACT"
-devices = [0]
-
-[[spu-instruction.decoder.identity]]
-role = "system"
-
-[[spu-instruction.decoder.identity.content]]
-type = "text"
-text = """
-You are a careful assistant. Answer from what you know, say
-plainly when you do not know, and keep answers as short as the
-question allows.
-"""
-
-[gate-instruction.access-rule]
-allowed-uids = [$(id -u "$OPERATOR")]
-allowed-gids = []
-denied-uids = []
-
-[trace-sink]
-kind = "file"
-path = "$HOME_DIR/trace.ndjson"
-create = true
-
-[state-election]
-all-kinds = true
-keys = [
-  { kind = "message.user", paths = ["content"] },
-  { kind = "message.assistant", paths = ["content"] },
-]
-
-# **The engine, the database and the role are members of the binding**, per
-# weaver-state-PRD section 4: declared here, changing only across the load
-# boundary, and named on the load event like every fact that decides a
-# record.
-[state-store]
-engine = "$ENGINE"
-database = "$DATABASE"
-role = "$ROLE"
-TOML
+printf '%s\n' "$DECLARATION_TEXT" | sudo tee "$DECLARATION" >/dev/null
 
 say "allow-list"
 # Without this every admin verb answers NoSuchAgent for the agent just made,

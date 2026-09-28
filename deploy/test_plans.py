@@ -299,6 +299,29 @@ test() { fixture_args "$@"; builtin test "${fixture_mapped[@]}"; }
                 self.assertIn("declaration directory", result.stderr)
                 self.assert_no_provisioning()
 
+    def test_a_value_the_toml_string_cannot_carry_refuses_before_anything(self):
+        # `--session 'trial"2'` would write `session = "trial"2"`. Each value
+        # refuses at argument parsing, in both modes, before any command.
+        # Perturbation: drop the character check and the plan runs.
+        for flag, value in (("--session", 'trial"2'), ("--session", "a\\b"),
+                            ("--session", "two\nlines"), ("--artifact", '/m/x"y.gguf'),
+                            ("--artifact", "/m/x\\y.gguf"), ("--artifact", "/m/x\ty.gguf")):
+            for mode in ((), ("--apply",)):
+                with self.subTest(flag=flag, value=value, mode=mode):
+                    self.log.unlink(missing_ok=True)
+                    args = ["m1", "--artifact", str(self.artifact)] if flag == "--session" else ["m1"]
+                    result = self.run_script("create-agent.sh", *args, flag, value, *mode)
+                    self.assertEqual(result.returncode, 1, result.stderr)
+                    self.assertIn("cannot hold as written", result.stderr)
+                    self.assertEqual(self.calls(), [])
+
+    def test_the_rendered_declaration_is_toml_before_anything_is_made(self):
+        # The plan renders and parse-checks the declaration it would write.
+        # Perturbation: break the heredoc's quoting and the plan refuses here.
+        result = self.create("--session", "s-m1-1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("does not parse as TOML", result.stderr)
+
     def test_invalid_engine_does_not_prompt_for_sudo(self):
         result = self.create("--apply", "--engine", "invalid")
         self.assertNotEqual(result.returncode, 0)
@@ -389,6 +412,23 @@ test() { fixture_args "$@"; builtin test "${fixture_mapped[@]}"; }
         self.assert_unprivileged()
         cargo_actions = [c[1] for c in self.calls() if c[0] == "cargo"]
         self.assertEqual(cargo_actions, ["metadata", "test", "build"])
+
+    def test_stack_refuses_an_agent_whose_declaration_is_still_yaml(self):
+        # The admin this installs reads `<agent>.toml`, so an agent with only
+        # `<agent>.yaml` refuses by name before cargo runs. Perturbation:
+        # remove the check and the run plans, reaching the build.
+        (self.agents / "existing.toml").unlink(missing_ok=True)
+        (self.agents / "existing.yaml").write_text("state-store:\n  engine: none\n")
+        result = self.run_script("update-stack.sh")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("only a YAML declaration stands", result.stderr)
+        self.assertIn("existing", result.stderr)
+        self.assertIn("Install each agent's TOML declaration", result.stderr)
+        self.assertFalse(any(c[0] == "cargo" for c in self.calls()))
+        # Beside its TOML, the YAML is inert and the run plans.
+        (self.agents / "existing.toml").write_text("[state-store]\nengine = \"none\"\n")
+        result = self.run_script("update-stack.sh")
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_stack_build_failure_cannot_claim_a_plan(self):
         self.env["BUILD_FAIL"] = "1"

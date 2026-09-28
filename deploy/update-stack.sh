@@ -60,6 +60,25 @@ ALLOW_LIST=$(read_key allow-list)
 [ -n "$ALLOW_LIST" ]    || die "no allow-list in $ADMIN_CONFIG"
 BIN_DIR=$(dirname "$WORKER_BINARY")
 
+# **A box whose declarations are still YAML refuses before anything is
+# built.** The admin this script installs reads `<agent>.toml`, per
+# weaver-types-Spec section 2, so an allow-listed agent whose directory holds
+# only `<agent>.yaml` would read as having no declaration at all: skipped at
+# the engine check, skipped at reconciliation, and the run rolled back at
+# verification with nothing saying why. It is refused by name here instead,
+# while the installed stack still stands and still reads the YAML, and the
+# answer is to install the TOML declaration beside it first. An agent with
+# neither file is left to the steps below, which already name that case.
+UNMIGRATED=""
+for agent in $ALLOW_LIST; do
+  if [ ! -f "$AGENT_DIR/$agent.toml" ] && [ -f "$AGENT_DIR/$agent.yaml" ]; then
+    UNMIGRATED="$UNMIGRATED $agent"
+  fi
+done
+[ -z "$UNMIGRATED" ] || die "only a YAML declaration stands in $AGENT_DIR for:$UNMIGRATED. \
+The stack this installs reads <agent>.toml. Install each agent's TOML declaration \
+beside its YAML first, then rerun."
+
 # **Where cargo builds is asked rather than assumed.** This box sets
 # `CARGO_TARGET_DIR`, so `target/release` does not exist here, and every
 # comparison against it silently found no file, skipped every binary, and
