@@ -55,15 +55,34 @@ linked and not counted as external.
 | `weaver-analysis` | `serde` (derive), `serde_json` (raw_value), `safetensors`, `sha2` | the record reader, the residual columns, the capture digests | **[7]** `safetensors` |
 | `weaver-internal` | none | the pure member, by its own manifest instrument | none |
 
-**What `nix` is used for, read from the source rather than the feature list.** Every
-crate that takes it reaches `socket`, `fcntl`, `unistd` and `errno`. The harness and the
-gate reach `poll`, `signal` and `stat` as well, admin reaches `fs`, and state reaches
-`poll`, `fs` and `stat`. Each feature named in a manifest is code compiled, and the sets
-differ crate by crate, so **[3]** asks whether each named feature is one its crate
-calls: `uio` is named by the harness, admin and state and on this reading reached
-through `socket`'s message calls, and `process` is named by the harness, gate and admin
-for the fork and the peer credentials, so on this reading no named feature is unused,
-and the call is whether that reading is checked by an instrument or stays a reading.
+**What `nix` is used for, read from the source against what each feature gates.** A
+feature named in a manifest is code compiled whether or not the crate calls it, so the
+reading below is per crate and per feature: the calls the crate makes that the feature
+gates in `nix` 0.31.3, or **not reached** where the feature is named and no call the
+crate makes needs it, or a dash where the crate does not name it. It was checked by the
+grep and then by the compiler, in a throwaway checkout: with each not-reached feature
+dropped from its manifest the crate still builds, and with a reached one dropped, `fs`
+from state and `uio` from admin as the controls, it does not. The reading counts only
+what the features gate, so `errno`, the `Signal` and `OFlag` types, and the raw `libc`
+calls the harness and admin make through the re-export, which no feature gates, are not
+in it. Note that `sendmsg`, `recvmsg` and the control-message types sit in the socket
+module but behind `uio`, which is why two crates reach `uio` through the socket and one
+does not.
+
+| Crate | `socket` | `fs` | `uio` | `user` | `poll` | `process` | `signal` |
+|---|---|---|---|---|---|---|---|
+| `weaver-harness` | `socket`, `socketpair`, `bind`, `listen`, `accept4`, `send`, `recv`, `getsockopt` | `fcntl`, `umask`, `pipe2` | `sendmsg`, `recvmsg`, `ControlMessage` | **not reached** | `poll` | `fork`, `Pid`, `waitpid` | `kill` |
+| `weaver-gate` | `socketpair`, `send`, `recv`, `getsockopt` | `fcntl`, `umask` | - | `getuid`, `User` | `poll` | `set_dumpable`, `set_pdeathsig`, `waitid`, `Pid` | `kill`, `killpg` |
+| `weaver-admin` | `socket`, `socketpair`, `bind`, `listen`, `connect`, `accept4` | `fcntl` | `sendmsg`, `recvmsg`, `ControlMessage`, `cmsg_space` | `getuid`, `geteuid`, `getgid`, `Uid`, `User`, `Group`, `getgrouplist` | - | **not reached** | - |
+| `weaver-state` | `getsockopt` | `fcntl`, `umask` | **not reached** | `getuid` | `poll` | - | - |
+
+Three of the twenty-three named features are not reached. The harness names `user` and
+reads its peer's credentials through `getsockopt`, which `socket` gates, and never asks
+for a uid or a user by name. Admin names `process` and launches nothing through `nix`,
+its agents starting under `std::process::Command` and `systemd-run`, so no fork, wait or
+prctl call needs it. State names `uio` and moves no descriptor over its socket, so none
+of the message calls that need it are made. Each is a feature the manifest names and no
+line of the crate needs, and each is **[3]**.
 
 ## The closure at default features, forty-one crates
 
@@ -136,10 +155,12 @@ in the same crate, carries none of it. Which of the two a box runs is its
    whether the deployed stack should carry the interpreter's binary at all
    where the entry names the Rust worker, and whether `pyworker` belongs in the
    default deploy or behind an election.
-3. **The `nix` feature sets.** On this reading every named feature is reached,
-   and the sets differ crate by crate for reasons the source shows. The call is
-   whether an instrument should hold each crate's set to its calls, so that a
-   feature added for one crate does not ride into another by copy.
+3. **The `nix` feature sets.** Three named features are not reached, per the table
+   above: `user` in the harness, `process` in admin and `uio` in state, each compiling
+   code its crate never calls, which is the rule's case at the feature grain. Their
+   removal is the operator's call, since each is a manifest change and this report
+   makes none. The further call is whether an instrument should hold each crate's set
+   to its calls, since nothing today refuses a feature no call needs.
 4. **`sha2` in `weaver-admin`**, for two functions: a file's digest in the
    inventory and a declaration's digest, both sha256 to hex. Two functions and
    a library, and the same library analysis takes for the capture digests. The
