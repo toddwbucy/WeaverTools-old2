@@ -457,11 +457,16 @@ def canonical(value):
 
 
 def declaration_document(declaration, what="declaration"):
-    """The declaration parsed as TOML, or the refusal naming why not."""
+    """The declaration parsed as TOML 1.0, or the refusal naming why not.
+    Declarations are written in the TOML 1.0 grammar, the subset every reader
+    in the suite shares, per weaver-types-Spec section 2, and tomllib reads
+    exactly that, so a file using TOML 1.1 syntax admin's parser also takes is
+    diagnosed here rather than refused without a reason."""
     try:
         return tomllib.loads(declaration)
     except tomllib.TOMLDecodeError as e:
-        raise ValueError(f"the {what} is not a TOML document: {e}") from None
+        raise ValueError(f"the {what} is not a TOML 1.0 document, the grammar every"
+                         f" reader in the suite shares (weaver-types-Spec section 2): {e}") from None
 
 
 def declared_value(document, path):
@@ -666,7 +671,9 @@ def run_files(cfg, rewrites):
     if not os.path.isdir(cfg["repo"]):
         raise ValueError(f"the config's repo {cfg['repo']} is not a directory")
     with open(decl, "rb") as f:
-        return f.read()
+        held = f.read()
+    declaration_document(held.decode("utf-8", "replace"), f"declaration {decl}")
+    return held
 
 
 def held_declaration(cfg, held):

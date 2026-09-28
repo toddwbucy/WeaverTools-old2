@@ -135,9 +135,15 @@ C library `libyaml` translated into Rust under `unsafe`, compiled into the binar
 runs as root for one purpose, parsing a declaration, and the shipped-dependency audit of
 pull request #725 measured it at six crates compiled for every binary that links this
 crate under the deploy's unified build. The `toml` crate, Cargo's own format, is safe
-Rust, and five crates compiled where the YAML parser was six. JSON stays rejected on the
-criterion's comments clause: it has none, and a trailing-comma error at three in the
-morning on a file that gates a load is a bad way to learn about JSON.
+Rust, and five crates compiled where the YAML parser was six. **Declarations are written
+in the TOML 1.0 grammar**, the subset every reader in the suite shares: admin's `toml`
+crate reads TOML 1.1, the deploy script and the experiment harness read with Python's
+`tomllib`, which reads 1.0, and a declaration only one of them can read is one the
+others refuse. Admin's parser is the authority on what a declaration says, and syntax
+only 1.1 has, a multiline inline table or a `\e` escape among it, is outside what the
+program guarantees. JSON stays rejected on the criterion's comments clause: it has none,
+and a trailing-comma error at three in the morning on a file that gates a load is a bad
+way to learn about JSON.
 
 ```graph
 node: types-config-format-toml

@@ -509,7 +509,7 @@ class DeclaredTests(unittest.TestCase):
         self.assertEqual(self.read('session = "s"\n', "state-store", "table")[0], 3)
         code, _, err = self.read('session = "s\n', "state-store", "table")
         self.assertEqual(code, 1)
-        self.assertIn("does not read as TOML", err)
+        self.assertIn("is not a TOML 1.0 document", err)
         code, _, err = self.read('[state-store]\nengine = 3\n', "state-store.engine", "string")
         self.assertEqual(code, 1)
         self.assertIn("is not a string", err)

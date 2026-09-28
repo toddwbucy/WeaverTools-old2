@@ -27,7 +27,8 @@ die() { printf '\nREFUSED: %s\n' "$*" >&2; exit 1; }
 read_key() { cat "$ADMIN_CONFIG/$1" 2>/dev/null || true; }
 
 # **One reader for every value this script takes from a declaration**, through
-# python3's tomllib, so the script decodes exactly what admin decodes: a
+# python3's tomllib, so the script decodes what admin decodes within the TOML
+# 1.0 grammar declarations are written in, per weaver-types-Spec section 2: a
 # literal string, an escape, a dotted key and an inline table each read as the
 # value they are, where a line-matching reader saw one spelling and missed or
 # mangled the rest. It prints the string at a dotted path, or checks that a
@@ -41,7 +42,7 @@ try:
     with open(path, "rb") as fh:
         value = tomllib.load(fh)
 except (OSError, tomllib.TOMLDecodeError) as e:
-    sys.exit(f"{path} does not read as TOML: {e}")
+    sys.exit(f"{path} is not a TOML 1.0 document, the grammar every reader in the suite shares (weaver-types-Spec section 2): {e}")
 for part in key.split("."):
     if not isinstance(value, dict) or part not in value:
         sys.exit(3)

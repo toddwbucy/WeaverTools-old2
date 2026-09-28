@@ -101,7 +101,7 @@ def test_a_seed_with_no_value_on_its_line_is_not_rewritten():
     try:
         with_declared_seed(text, 1)
     except ValueError as e:
-        assert "not a TOML document" in str(e), e
+        assert "not a TOML 1.0 document" in str(e), e
         return
     raise AssertionError("a seed line with no value was matched")
 

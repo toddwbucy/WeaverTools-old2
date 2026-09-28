@@ -118,7 +118,9 @@ ADMIN_CONFIG=${WEAVER_ADMIN_CONFIG:-/etc/weaver/admin}
 # **The declaration is rendered once, here, and parse-checked before anything
 # is provisioned**, so a value that breaks it refuses before an account or a
 # database exists rather than after. The check is TOML syntax through
-# python3's tomllib: the schema is admin's to judge, and its validate also
+# python3's tomllib, which reads the TOML 1.0 grammar declarations are
+# written in, per weaver-types-Spec section 2, so a declaration this script
+# writes is one every reader in the suite takes: the schema is admin's to judge, and its validate also
 # judges the boundary this script provisions, so it can only pass once the
 # script has run, which is why the closing step asks for it.
 # The format is TOML, per weaver-types-Spec section 2: the top-level keys come
