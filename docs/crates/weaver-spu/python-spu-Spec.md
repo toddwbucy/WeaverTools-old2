@@ -172,17 +172,30 @@ filters, then temperature, then llama.cpp's own draw from a seed folded to 32 bi
 later control version, `llama-cpp-python` against the Rust GGUF cells, uses llama.cpp's
 sampler natively and inherits that chain rather than reimplementing it.
 
-**The port is proven draw for draw on fixed logits.** The oracle gains an operation
-that runs candle's own `LogitsProcessor` over a supplied logits vector, knob set and
-seed, and the suite requires Python's draw to equal it over many vectors and seeds. The
-edges are named cases: near-ties, a temperature at zero and one just above it, a top-k
-of zero and one at or past the vocabulary, a top-p of one and one at or past the mass
-top-k kept. The sampler is a function of the logits alone once the knobs and the seed
-are fixed, so identical logits give identical draws, and the arithmetic is ported in
-candle's order and precision for that reason. **The order the filters leave the
-candidates in is part of the draw.** Candle keeps the top-k by `select_nth_unstable_by`,
-whose partition decides the order `WeightedIndex` walks, so the port reproduces that
-order and not only the set.
+**The sampler reads more than the logits, and the port is proven over whole
+generations.** Within one generation the native engine's draw at a position reads five
+things: that position's logits, the knobs, the derived seed the generation's sampler
+was built from, the state of `StdRng` after every draw before it in the generation,
+and the resident tail the penalty reads, which grows by each drawn token. The penalty
+visits each distinct token of the last `repetition_window` resident tokens once,
+dividing a non-negative logit by the penalty and multiplying a negative one, per
+candle's `apply_repeat_penalty`. A single draw over fixed logits tests none of the
+stream, so the oracle gains an operation over a whole generation: it takes the seed,
+the knobs, the resident tail at the generation's start and a sequence of logits
+vectors, one per position, and returns the sequence of draws candle's own
+`LogitsProcessor` and the engine's penalty produce, appending each draw to the tail
+before the next. The suite requires Python's sequence to equal it over many seeds,
+knob sets and sequences. The edges are named cases: near-ties, a temperature at zero
+and one just above it, a top-k of zero and one at or past the vocabulary, a top-p of
+one and one at or past the mass top-k kept, a tail holding repeated and unrepeated
+tokens, a token entering and leaving the window at its edge, a penalty of one and a
+window of zero, each of which skips the penalty, and sequences long enough that the
+generator's state carries across many draws. The arithmetic is ported in candle's
+order and precision, since identical inputs give identical draws only where the
+arithmetic is the same. **The order the filters leave the candidates in is part of the
+draw.** Candle keeps the top-k by `select_nth_unstable_by`, whose partition decides
+the order `WeightedIndex` walks, so the port reproduces that order and not only the
+set.
 
 **Where exact draws prove impossible, the comparison falls back to distributions and
 says so.** If a draw cannot be reproduced exactly, the suite records which operation
@@ -202,7 +215,8 @@ hardened, per Working Process section 6.
 **A pass certifies that `python-spu` answers every question the Rust code can answer
 without a model the way the Rust code answers it**, at the commit the oracle pins. Those
 questions are the wire, the framing, the rendering, the seed, the signal arithmetic, the
-refusals and faults, and the sampler's draw on fixed logits. It also certifies every
+refusals and faults, and the sampler's sequence of draws over a whole generation from
+its seed, knobs, resident tail and logits, per section 5. It also certifies every
 check that section 8 of `weaver-harness-spu-decode-contract` and section 8 of
 `weaver-harness-spu-classify-contract` list, and the ordering and failure cases of
 `weaver-harness-spu-contract` sections 3 and 5, run against `python-spu` itself.
@@ -236,22 +250,42 @@ threshold. The comparison holds the weights, the precision, the knobs, the decla
 and the prompts fixed, and serves them from each SPU in turn, so that a difference has
 one cause, the implementation.
 
-**At the distribution level**, both SPUs are driven along one token path, the partner's
-recorded path, with the re-feed drive of `weaver-spu-Spec` section 4.6, so each position
-is read against the same context. At every position the comparison reads each SPU's
-entropy, per section 6 of that Spec, and its probability field, per section 7.5, at one
-depth elected for the run. A position differs substantively when either of these holds:
+**At the distribution level**, both SPUs are driven along one token path, the
+partner's recorded path, with the re-feed drive of `weaver-spu-Spec` section 4.6, so
+each position is read against the same context. The run elects one probability-field
+depth for both, at least two and never below the effective top-k, which
+`weaver-spu-Spec` section 7.5 already refuses at admit. A position differs
+substantively when any of these holds:
 
 - The two fields name different top-1 tokens, and each SPU's own margin between its
   top-1 and top-2 log-probabilities exceeds 0.01 nats. A disagreement where either
   margin is smaller is a near-tie and is numerical.
-- The Kullback-Leibler divergence of the partner's field from `python-spu`'s exceeds
-  0.001 nats, taken over the union of the two top-k sets with the remaining mass of each
-  held as one outcome.
+- The two fields' top sets share no token.
+- The divergence over their shared tokens exceeds 0.001 nats. Each field carries only
+  its own top candidates, so the divergence is taken over the tokens both fields hold,
+  each at its own probability, with each SPU's remaining mass held as one further
+  outcome. That is a coarsening of the full distributions, so the figure is a lower
+  bound on the full Kullback-Leibler divergence of the partner's distribution from
+  `python-spu`'s, and a position under the line may still differ beyond it where the
+  mass lies outside the shared set. The report carries the shared set's size beside
+  the figure for that reason.
+
+Each measure is read from a member the record already carries, so the comparison adds
+nothing to either SPU's record but the elected depth:
+
+| Measure | Read from | `weaver-spu-Spec` |
+| --- | --- | --- |
+| Entropy per position, over the whole vocabulary | the signal vector each generation carries | 6 |
+| Top-1 token, and the margin to top-2 in log-probability | the probability field's first two ranks, as probabilities | 7.5 |
+| The shared set, its size, and the divergence over it | both fields at the position, to the elected depth | 7.5 |
+| The first departing position under the shared sampler | the token identifiers out of each generation | 6 |
+| Whether the departure is substantive | both fields at that position, by the three tests above | 7.5 |
 
 **At the token level**, both SPUs sample with the shared sampler of section 5 from the
-same derived seeds, so their streams agree until a draw departs. The first departing
-position is recorded with both fields at it, and the departure is substantive exactly
+same derived seeds, so their streams agree until a draw departs. Both runs elect the
+same field depth, and up to the first departure their contexts are one context, so the
+first departing position is recorded with both fields at it, read against the same
+context, and the departure is substantive exactly
 when that position differs substantively by the distribution level. A departure at a
 position that does not is a draw falling between two fields that agree within the
 numbers above, and it is numerical.
