@@ -580,14 +580,18 @@ def main():
             # holds. The write is guarded: an interrupt in it makes the
             # session `interrupted` and the line is written again whole, and
             # a write that never lands is a closing step the result rests on.
+            # The offset the line starts at is read inside the guarded step,
+            # once, so an interrupt at that read is the session's too (#698).
             path = os.path.join(args.outdir, "matrix.jsonl")
-            offset = os.path.getsize(path) if os.path.exists(path) else 0
+            where = {}
 
             def append():
                 if interrupted:
                     rec["verdict"] = base.INTERRUPTED
+                if "offset" not in where:
+                    where["offset"] = os.path.getsize(path) if os.path.exists(path) else 0
                 with open(path, "a") as fh:
-                    fh.truncate(offset)
+                    fh.truncate(where["offset"])
                     fh.write(json.dumps(rec) + "\n")
             if closing(f"{session['name']}'s record", append)[0]:
                 results.append(rec)

@@ -17,8 +17,9 @@ three from that tree and `test_recorded_seed.py`, `test_absence_and_evidence.py`
 `test_round_nine.py`, `test_round_ten.py`, `test_round_eleven.py`,
 `test_round_twelve.py`, `test_round_thirteen.py`, `test_round_fourteen.py`,
 `test_round_fifteen.py`, `test_round_sixteen.py`, `test_round_seventeen.py`,
-`test_round_eighteen.py` and `test_one_entry_point.py` from #716. Each is a plain script
-and exits non-zero on the first failure:
+`test_round_eighteen.py` and `test_one_entry_point.py` from #716, and
+`test_record_offset.py` from #698. Each is a plain script and exits non-zero on the
+first failure:
 
 ```
 python3 test_seed_schedule.py
@@ -39,6 +40,7 @@ python3 test_round_fifteen.py
 python3 test_round_sixteen.py
 python3 test_round_seventeen.py
 python3 test_round_eighteen.py
+python3 test_record_offset.py
 python3 test_one_entry_point.py
 ```
 
