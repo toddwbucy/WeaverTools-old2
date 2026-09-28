@@ -1429,7 +1429,7 @@ architecture entry of the lineage with its orchestration, and the registry in
 `family/mod.rs` is where those entries are declared. Where one architecture string
 carries two formats, the module holds both entries and the artifact's own template
 selects between them, which is the contested-architecture mechanism below: phi holds two
-`phi3` entries with disjoint templates and renderers. `qwen2::renderer` serves eight
+`phi3` entries with disjoint templates and renderers. `qwen2::renderer` serves seven
 entries across vendors, SmolLM2's `llama` and NVIDIA's `nemotron_h_moe` among them.
 **The code keeps the older name for the key:** `Declaration::family`, the header's
 `FamilyName` and the `UnknownFamily` refusal name the architecture string, not the
