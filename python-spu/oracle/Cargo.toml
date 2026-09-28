@@ -13,5 +13,11 @@ edition = "2024"
 weaver-spu = { git = "https://github.com/toddwbucy/WeaverTools", rev = "f22bf08f1cc3545c561dc4471215aa322c751128", default-features = false }
 weaver-types = { git = "https://github.com/toddwbucy/WeaverTools", rev = "f22bf08f1cc3545c561dc4471215aa322c751128" }
 weaver-traits = { git = "https://github.com/toddwbucy/WeaverTools", rev = "f22bf08f1cc3545c561dc4471215aa322c751128" }
+# The sampler's mirrors, per python-spu-Spec section 5: candle at the revision
+# weaver-spu pins, CPU only, and the rand its LogitsProcessor draws from.
+candle = { package = "candle-core", git = "https://github.com/toddwbucy/candle", rev = "aee9af9c3e0b23ab9188a492d0b3ebdb5f3a3f4b", default-features = false }
+candle-nn = { git = "https://github.com/toddwbucy/candle", rev = "aee9af9c3e0b23ab9188a492d0b3ebdb5f3a3f4b", default-features = false }
+candle-transformers = { git = "https://github.com/toddwbucy/candle", rev = "aee9af9c3e0b23ab9188a492d0b3ebdb5f3a3f4b", default-features = false }
+rand = "=0.9.5"
 serde = "1"
 serde_json = { version = "1", features = ["raw_value"] }

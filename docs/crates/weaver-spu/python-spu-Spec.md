@@ -142,9 +142,10 @@ short of:
   `render` and `round`, and a transport test over the oracle's descriptor. Every other
   operation the walk names is unbuilt.
 - Section 4: the engine loads at FP32, not BF16.
-- Section 5: temperature applies first, as candle's chain does, but the draw comes from
-  Python's `random.Random` seeded with the whole 64-bit value over a list, not from
-  `StdRng` and `WeightedIndex`, and it is not proven against the oracle.
+- Section 5: the sampler is the native engine's, ported and proven as section 5 says,
+  and it samples in pure Python at about 120 ms a token over a Qwen2.5 vocabulary on
+  thinkpad, the softmax's glibc `expf` over every logit and the partition over every
+  index being most of it.
 - Section 8: its manifest carries version ranges and no hashes, the interpreter is a
   floor rather than a pin, `pydantic` is in the core, the Python `tokenizers` it has run
   under is 0.23.2 rather than the release built on the 0.21.4 crate, nothing digests the
@@ -231,7 +232,7 @@ joins the walk in the act that moves the pin to it.
 | `residency`: `Resident::tokenize`, `Resident::detokenize` | `tokenize`, a mirror. Both reach the native engine's `tokenize` and `detokenize`, which are `pub(crate)` and need a loaded model, so the operation calls `tokenizers` 0.21.4, the version `weaver-spu` links, with the two calls `native.rs` makes, `encode(text, false)` and `decode(ids, false)`, against the artifact's `tokenizer.json`. This implementation pins the Python `tokenizers` release built on the 0.21.4 crate, so both sides run one tokenizer, and the operation compares both directions on the rendered prefix and every delta |
 | `sampling`: `Disposition`, `is_frozen`, `Knobs`, `EffectiveKnobs`, `SessionParameters`, `EffectiveSessionParameters`, `tunable_names`, `resolve`, `KnobRefusal` | `knobs`: resolution against supplied tunable values, and each refusal |
 | `sampling`: `derived_seed` | `seed`, and section 8.5's test vectors |
-| the native engine's `sample` | `generation`, a mirror, per section 5: it needs a loaded model, so the operation runs candle's `LogitsProcessor` at the pinned revision with the engine's penalty over a whole generation |
+| the native engine's `sample` | `generation`, `probs`, `select`, `weighted` and `rng`, mirrors, per section 5: it needs a loaded model, so the operations run the code it runs at the pinned revisions. `generation` is candle's `LogitsProcessor` with the engine's penalty over a whole generation, `probs` the probability vector's bits, `select` the whole index order `select_nth_unstable_by` leaves, `weighted` rand's `WeightedIndex` over scripted words, and `rng` the generator's words |
 | `decoder::native`, `native_pair`, `gguf`, `gguf_tap`, `gpu` | excluded as a whole: the engines, their taps and the device judgment, which section 4 makes this implementation's own, the native sampler excepted per the row above |
 
 ## 4. What is its own
@@ -316,6 +317,33 @@ arithmetic is the same. **The order the filters leave the candidates in is part 
 draw.** Candle keeps the top-k by `select_nth_unstable_by`, whose partition decides
 the order `WeightedIndex` walks, so the port reproduces that order and not only the
 set.
+
+**The arithmetic is candle's CPU path on the partner's host, so bit for bit holds on one
+box.** The native engine builds the sampler's input as a host tensor (`native.rs`,
+`Tensor::new(logits, &Device::Cpu)` in `sample`), so the softmax runs candle's CPU f32
+code and never a device kernel. Three facts of that code bind the port. The softmax's
+sum is `cpu::vec_sum`, which takes an AVX2 order of four accumulators of eight lanes
+where `std::is_x86_feature_detected!("avx2")` holds and a sequential order where it does
+not, so the port detects AVX2 the same way and reproduces whichever order the host
+takes. The exponential is Rust's `f32::exp`, which on Linux is glibc's `expf`, so the
+port calls that `expf` through `ctypes`, keeping the core in the standard library, where
+a vectorised `exp` would differ in the last bit. And `&logits / temperature` is candle's
+`affine(1 / temperature, 0)`, the reciprocal taken in f64 and cast to f32, then a
+multiply, so the port never divides. The two SPUs therefore agree draw for draw where
+they share one glibc and one CPU feature set, which the comparison's cells already
+assume, and the box facts record the host's `avx2` flag and its glibc version for both.
+
+**The proof reads the bits, not only the draws.** A one-ulp slip in a probability moves
+a draw only when the uniform lands on the boundary it moved, which a run of draws rarely
+shows. So beside `generation`, the oracle's `probs` returns the probability vector's
+bits for a supplied penalty, temperature and logits, `select` returns the whole index
+order the partition leaves, including inputs an adversary built to drive it into
+`median_of_medians`, `weighted` samples `WeightedIndex` from scripted words so a choice
+can land on a cumulative weight on purpose, and `rng` returns the generator's words.
+Core's partition is read at the rustc commit `rust-toolchain.toml` pins,
+47611e16044c68ef27bac31c35fda2ba1dc20b73: `library/core/src/slice/sort/select.rs`,
+`shared/pivot.rs`, `shared/smallsort.rs` and `unstable/quicksort.rs`, whose
+`partition_lomuto_branchless_cyclic` a `usize` slice takes.
 
 **Where exact draws prove impossible, the comparison falls back to distributions and
 says so.** If a draw cannot be reproduced exactly, the suite records which operation
