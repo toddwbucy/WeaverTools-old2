@@ -424,6 +424,17 @@ only whole, and an epic is the one thing a pull request never closes whole, so
 the join is made by hand in the body and kept true at the merge, and the register
 of 2026-09-26 is what its absence cost.
 
+## Experiment evidence lives on the share
+
+**A run's evidence lives in its deposit on the shared bulk store, and the repository
+carries only the result note**, on the operator's word of 2026-09-28. Deposits sit under
+`weaver-testing/` on the bulk store, which olympus exports over NFS to the LAN and the
+thinkpad mounts, so each seat reads the other's runs where they were written. The
+record, the log, the summary, the box facts, the raw trace and the captured journal
+evidence all stay there, in the deposit and its `evidence/` directory. A trace runs to
+hundreds of megabytes, and committing one would make every clone carry it. A result
+note in `experiments/` names its deposits and never copies their contents.
+
 ## Police call
 
 **An act picks up the litter it walks past.** A count gone stale, a doc comment
