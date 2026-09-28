@@ -63,9 +63,17 @@ trace contract exactly as a record written from a Rust report does.
 **Nothing else in the agent changes, and nothing else learns which SPU served.** Admin
 launches whatever file its `spu-binary` configuration names, and the harness hashes that
 file into `weaver_binaries` at both ends of a run. `spu-binary` is admin-wide, so one
-implementation serves a box for the length of a run. Until the SPU reports its own
-identity, which section 10 defers, the `spu-binary` hash and the environment lock the
-box facts record are what name the implementation that served.
+implementation serves a box for the length of a run.
+
+**What served is named by two digests, and neither waits on the SPU reporting its own
+identity**, which section 10 defers. The first is the `spu-binary` hash. Section 2 ships
+`python-spu` as one file whose first line names the pinned interpreter by absolute path,
+so that hash covers every line of `python-spu`'s own code and fixes which interpreter
+runs it, the interpreter's version being the toolchain reader's to record. The second is
+the digest of the installed tree section 8 defines, which covers the engine as installed
+rather than as the lock says it should be. The box facts carry it beside the lock's
+hash, and the matrix's record carries it once section 5's second precondition reaches
+it.
 
 **It does not replace the Rust SPU.** Both serve, and the record says which. Under the
 deployment tuple a different implementation is a different kernel stack, and so a
@@ -80,7 +88,15 @@ bit for bit.
       tests/             the conformance suite and the behaviour tests
       oracle/            a Rust program linking the workspace crates, which answers
                          the suite with the Rust code's own results
-      scripts/           the model smoke test
+      scripts/           the model smoke test and the build of the one file below
+
+**It ships as one file.** The build packs `src/python_spu/` into a zipapp with the
+standard library's `zipapp` module, its first line naming the pinned interpreter by
+absolute path, and admin's `spu-binary` names that file. A launcher importing a package
+from elsewhere would leave the package out of the hash the harness takes, so two runs of
+different code could report one provenance. The zipapp holds no third-party package: the
+engine is imported from the environment, whose installed tree section 8 digests. The
+file is built, not committed.
 
 **The oracle depends on the workspace crates at a pinned commit and on no copy of
 them.** It is a Rust program outside the workspace, so it is not a member and its
@@ -124,6 +140,50 @@ refuses the load naming it, per `weaver-spu-PRD` section 13.7's rule that a load
 granting an election it cannot honor fails at its cheapest moment. The table is the set
 this document binds, and a row whose instrument is not yet built is a row the
 implementation does not advertise.
+
+### 3.1 The model-free surface, walked
+
+The table above names behaviours. This one walks the code: every public item of
+`weaver-spu` outside its engines, taken from the crate at the commit the oracle pins,
+with the oracle operation that compares `python-spu` against it or the reason it is
+excluded. Each module is `pub` in the crate's root, so every operation calls the Rust
+code itself from outside the crate, and nothing under `crates/` changes for it. Two rows
+are mirrors rather than calls, and each says why: the item they compare against is
+reachable only through a loaded model. The walk is what closes the conformance class. A
+later finding that names an item is answered by its row, and an item added to the crate
+joins the walk in the act that moves the pin to it.
+
+| `weaver-spu` items | Oracle operation, or why excluded |
+| --- | --- |
+| `artifact`: `resolve`, `pin`, `PinnedArtifact` and its accessors, `names_a_split` | `artifact`, over a fixture directory: the resolved paths, the split judgment, each refusal |
+| `artifact`: `read_header`, `ArtifactHeader`, `Container` | `artifact`: the header of a safetensors directory. A GGUF container is refused at admit, a container this implementation does not serve |
+| `artifact`: `weights_hash`, and `residency`: `WeightsHash` and its sentinel | `artifact`: the blake3 digest over the fixture, and the sentinel |
+| `channel`: `adopt`, `Inherited`, `EntryFault` | excluded from the oracle: they read the process's inherited descriptors, which no call can hand over. A process test, per section 3 |
+| `channel`: `LifecycleChannel`, `DecodeSocket`, `lifecycle_from_owned`, `decode_from_owned`, `send`, `recv`, `send_octets`, `recv_octets`, `try_recv_octets`, `as_fd`, `ChannelFault` | `frame`, over a socket pair with the Rust code at one end: envelopes, segmented frames, truncation and closure faults |
+| `channel`: `ClassifySocket`, `adopt_classify` | excluded: the label seam is not this implementation's, per section 1 |
+| `decoder::backend`: `TokenId`, `DecodeFault`, `FlushMechanism`, `for_container` | `session` for the faults and the flush mechanism, `artifact` for the container judgment |
+| `decoder::backend`: `Backend` | excluded as a trait: it is the engine's seam, and the engine is this implementation's own, per section 4. The `session` operation drives the Rust session over a scripted backend so the session's rules are compared without an engine |
+| `decoder::session`: `Session` and every method, `Stopped`, `Generated`, `StopCondition`, `CancelPoll`, `NeverCancels`, `SamplerBuild`, `PositionedSinks` | `session`: one script of opens, appends, generations, re-feeds, flushes, elisions and cancels run through both sessions over a scripted backend, the resident sequence and every answer compared |
+| `family`: the `Family` trait's rendering methods, `render_each`, `render_template`, `common_role_name`, `text_content`, `fold_system_into_first_user`, `RenderRefusal` | `render`: the identity prefix, each delta, and each refusal |
+| `family`: `Family::parse`, `scan`, `Markers`, `Parsed`, `Content`, `Unrecovered`, `has_unrecovered_call`, `text` | `parse`: an emission's canonical text and tool-call blocks over plain text, valid calls, and malformed and unrecovered call fragments. `Generation::content` carries what the parse chose, and a wire round trip proves only its encoding |
+| `family`: `Declaration`, `permits_truncation`, `shards_across`, `FamilyName`, `lookup`, `select`, `same_key`, `normalised_key`, `judge_width`, `FamilyRefusal` | `registry`: selection by architecture and marker set, the key's normalisation, the width judgment, each refusal. Where the Rust code selects a family this implementation does not serve, this implementation refuses at admit, and the operation asserts it refuses exactly there |
+| `family::qwen2`: `renderer`, `Qwen2` | `render` and `parse`, for the first version's one family |
+| `family::gemma4`, `gpt_oss`, `llama`, `mistral3`, `phi`: each renderer and its type | excluded: families the first version does not serve, refused at admit per the `registry` row. Each joins the `render` and `parse` rows when a version serves it |
+| `family::modernbert`: every item | excluded: the classify role, per section 1 |
+| `measurement`: `log_sum_exp`, `entropy_bits`, `surprisal_bits`, `field` | `measure`, over supplied logits |
+| `measurement`: `Accumulator` and its methods, `Signals`, `absent`, `steps`, `NonEmpty` and its methods | `accumulate`: a sequence of records, abandons and a finish, the signals compared, absence included |
+| `measurement`: `PromptPartition` and its accessors, `PartitionDefect` | `partition`: offsets and text lengths, accepted and defective |
+| `readout`: `Reduction` and its methods | `reduce`, over supplied activations and norms |
+| `readout`: `ReadoutElection`, `judge`, `judge_column_ask`, `ReadoutRefusal`, `TapOutcome` | `registry`: each judgment against a declaration |
+| `readout`: `Tap` | excluded as a trait: the tap reads the engine's hidden states and is the engine's own |
+| `residency`: `promote_stop_conditions`, `StopSet` | `stops`, over supplied stop inputs |
+| `residency`: `Headroom`, `AdmitRefusal` | the wire rows of section 3 for the refusals. The headroom judgment needs a device, per the `gpu` row |
+| `residency`: `Residency` and its methods, `Admission` and its accessors, `Resident`'s `model`, `open_session`, `declared_eos` and `stop_set`, `LoadedModel` | excluded from the oracle: each needs a loaded model or a device. The process tests and the contract rows of section 3 |
+| `residency`: `Resident::tokenize`, `Resident::detokenize` | `tokenize`, a mirror. Both reach the native engine's `tokenize` and `detokenize`, which are `pub(crate)` and need a loaded model, so the operation calls `tokenizers` 0.21.4, the version `weaver-spu` links, with the two calls `native.rs` makes, `encode(text, false)` and `decode(ids, false)`, against the artifact's `tokenizer.json`. This implementation pins the Python `tokenizers` release built on the 0.21.4 crate, so both sides run one tokenizer, and the operation compares both directions on the rendered prefix and every delta |
+| `sampling`: `Disposition`, `is_frozen`, `Knobs`, `EffectiveKnobs`, `SessionParameters`, `EffectiveSessionParameters`, `tunable_names`, `resolve`, `KnobRefusal` | `knobs`: resolution against supplied tunable values, and each refusal |
+| `sampling`: `derived_seed` | `seed`, and section 8.5's test vectors |
+| the native engine's `sample` | `generation`, a mirror, per section 5: it needs a loaded model, so the operation runs candle's `LogitsProcessor` at the pinned revision with the engine's penalty over a whole generation |
+| `decoder::native`, `native_pair`, `gguf`, `gguf_tap`, `gpu` | excluded as a whole: the engines, their taps and the device judgment, which section 4 makes this implementation's own, the native sampler excepted per the row above |
 
 ## 4. What is its own
 
@@ -241,12 +301,11 @@ hardened, per Working Process section 6.
 
 **A pass certifies that `python-spu` answers every question the Rust code can answer
 without a model the way the Rust code answers it**, at the commit the oracle pins. Those
-questions are the wire, the framing, the rendering, the seed, the signal arithmetic, the
-refusals and faults, and the sampler's sequence of draws over a whole generation from
-its seed, knobs, resident tail and logits, per section 5. It also certifies every
-check that section 8 of `weaver-harness-spu-decode-contract` lists, and the ordering
-and failure cases of
-`weaver-harness-spu-contract` sections 3 and 5, run against `python-spu` itself.
+questions are every row of section 3.1 that names an oracle operation, the sampler's
+sequence of draws over a whole generation among them, per section 5. It also certifies
+every check that section 8 of `weaver-harness-spu-decode-contract` lists, and the
+ordering and failure cases of `weaver-harness-spu-contract` sections 3 and 5, run
+against `python-spu` itself.
 
 **The evidence is the Rust code's own answer, read by execution.** The oracle links the
 workspace crates at the pinned commit and computes each expected value from them, so the
@@ -282,11 +341,14 @@ measured rather than a variable held apart from it. A difference therefore has o
 in the sense the comparison needs, the implementation, and the implementation includes
 its kernels.
 
-**At the distribution level**, both SPUs are driven along one token path, the
-partner's recorded path, with the re-feed drive of `weaver-spu-Spec` section 4.6, so
-each position is read against the same context. The run elects one probability-field
-depth for both, at least two and never below the effective top-k, which
-`weaver-spu-Spec` section 7.5 already refuses at admit. A position differs
+**At the distribution level**, both SPUs are driven along one token path, the partner's
+recorded path, with the re-feed drive of `weaver-spu-Spec` section 4.6, so each position
+is read against the same context. The re-feed fixes the output path and not the input,
+which each SPU tokenizes for itself, so the same context rests on the `tokenize` row of
+section 3.1 and is checked in every run: each generation's token identifiers in are
+equal on both sides, and a run where they differ is not a comparison. The run elects one
+probability-field depth for both, at least two and never below the effective top-k,
+which `weaver-spu-Spec` section 7.5 already refuses at admit. A position differs
 substantively when any of these holds:
 
 - The two fields name different top-1 tokens, and each SPU's own margin between its
@@ -346,6 +408,12 @@ ranges are replaced by the lock.
 
 **The interpreter is pinned.** One CPython version per build, named in the lock. A build
 under another interpreter is another build.
+
+**The installed tree is digested, because a lock states what should be installed and not
+what is.** The digest is taken over the environment's site-packages directory: its
+files' paths relative to it, sorted, each with its sha256, a symbolic link refused. It
+is recorded beside the lock's hash, and with the `spu-binary` hash it is what section 1
+names as what served.
 
 **The core imports the standard library alone, and the engine is the one addition.** The
 channel ends, the wire, the session, the seed and the sampler's arithmetic are standard
