@@ -182,21 +182,20 @@ rather than relocated into this crate. Whether the fleet should spend this
 device on this agent is the operator's
 question, answered in the configuration before a load is directed at all.
 
-**A backend that delegates the forward to a separate serving process.** What this
-crate carries are engines it runs against weights in its own address space, one
-per artifact container, and an adapter to a general serving process is not a
-further one. The ground is authority over the device rather than the shape of a
-dependency. A serving process runs its own admission, holds the device it placed
-the weights on, and answers from a residency this crate never judged, so a crate
-that delegated would be a client of the device's authority rather than the
-authority itself, and the conflict section 4.1 step 3 refuses would be refused
-somewhere this crate cannot see. The weights hash, the family's marker
-discipline, and the measurement of section 13.6 would move behind that same
-boundary, each becoming a number this crate repeats rather than a fact it holds.
-**How many engines there are is a consequence rather than a policy:** one per
-container this program writes an engine for, the container being a property of
-the artifact read at section 4.1 step 2, so a further engine arrives with a
-container and never with a protocol.
+**A backend that delegates the forward to a separate serving process.** What this crate
+carries are engines it runs against weights in its own address space, one per artifact
+container, and an adapter to a general serving process is not a further one. The ground
+is authority over the device rather than the shape of a dependency. A serving process
+runs its own admission, holds the device it placed the weights on, and answers from a
+residency this crate never judged, so a crate that delegated would be a client of the
+device's authority rather than the authority itself, and the conflict section 4.1 step 3
+refuses would be refused somewhere this crate cannot see. The weights hash, the
+renderers' marker discipline, and the measurement of section 13.6 would move behind that
+same boundary, each becoming a number this crate repeats rather than a fact it holds.
+**How many engines there are is a consequence rather than a policy:** one per container
+this program writes an engine for, the container being a property of the artifact read
+at section 4.1 step 2, so a further engine arrives with a container and never with a
+protocol.
 
 **The agent's configuration file.** `weaver-types-PRD` section 2.1 has one writer, the
 operator, and two readers, admin and the harness. This crate is not a third. The model
@@ -735,11 +734,10 @@ landed reads as settled and an entry landed and not cleared reads as outstanding
   ruling's ratified extension, this seam's loop being loop 1, the builder's
   and variable, defined at the floor because both parties need it and
   neither may depend on the other.
-- `weaver-harness-PRD` section 2: landed in this same act. The framing
-  candidate of section 13.4 ratified, the per-model assembly paragraph
-  rescopes, the deterministic floor staying the harness's and the family
-  template's render seating in the family library, with the rendered reality
-  returning on the report path.
+- `weaver-harness-PRD` section 2: landed in this same act. The framing candidate of
+  section 13.4 ratified, the per-model assembly paragraph rescopes, the deterministic
+  floor staying the harness's and the renderer's seating in the family module, with the
+  rendered reality returning on the report path.
 - `weaver-trace-PRD`, by the token workflow's trace act: **landed 2026-08-02**
   at that charter's section 3.2 rather than 3.1, which is where the shapes
   went, and covering four payloads rather than the three this entry
@@ -858,7 +856,7 @@ splitting across two domains or forcing the harness to link an SPU-domain
 member across the topology's grain. The harness's deterministic assembly
 floor is untouched: order of parts, the message sequence read from the
 working structure, and everything `weaver-harness-PRD` section 2 fixes stay
-the harness's, and what moves is only the family template's application. The
+the harness's, and what moves is only the renderer's application of its template. The
 trace's authorship is untouched, because the render reports back and the
 harness authors the report. The operator ratified the candidate with this
 act and directed the whole change in one place, so the
@@ -1331,18 +1329,16 @@ edit.
 
 ### 13.14 The re-feed drive
 
-**The replay's forward passes run through this crate, and the drive that
-runs them is this clause's**, added 2026-08-31 per `diagnostic-replay-loop`
-section 2, which named it as the one act standing between the diagnostic
-papers and a running null replay. One drive per recorded generation: the
-recorded rendered contribution appends verbatim, no family rendering on
-the way, the forward passes run along the recorded token path, and at each
-position the draw is computed exactly as a generation would compute it -
-the derived seed of 13.8, the effective knobs, the
-sampler consuming the distribution - **and the recorded token appends
-whatever the draw said**. A divergent draw is a finding carried in the
-answer, never a fork in the path, so every later position stays comparable
-to its recorded self instead of drifting behind the first divergence.
+**The replay's forward passes run through this crate, and the drive that runs them is
+this clause's**, added 2026-08-31 per `diagnostic-replay-loop` section 2, which named it
+as the one act standing between the diagnostic papers and a running null replay. One
+drive per recorded generation: the recorded rendered contribution appends verbatim, no
+renderer on the way, the forward passes run along the recorded token path, and at each
+position the draw is computed exactly as a generation would compute it - the derived
+seed of 13.8, the effective knobs, the sampler consuming the distribution - **and the
+recorded token appends whatever the draw said**. A divergent draw is a finding carried
+in the answer, never a fork in the path, so every later position stays comparable to its
+recorded self instead of drifting behind the first divergence.
 
 **The drive draws no token of its own, and the answer's type is what makes
 that checkable.** No token intermediate crosses, there being no drawn piece
@@ -1376,30 +1372,43 @@ does not hold.
 ## 14. The family libraries
 
 **Everything a model family defines is defined once, in that family's module, and
-nowhere else.** A family, Qwen or Gemma or the Harmony speakers, shares its marker
-vocabulary, its tokenizer conventions, its configuration shapes, and its orchestration
-quirks across every operation type that serves its models, and renders one format
-family, a lineage carrying two formats holding both with the artifact's template
-selecting between them, and the prior program proved the premise concretely: its
-encoder's text tower was a decoder-family member, sharing architecture and tokenizer
-with the decoder path that never knew it. The module discipline is the boundary: one
-module per family holding the template, the types, the parsing and rendering, and the
-forward orchestration, with nothing family-specific living outside its module and the
-kernels shared beneath, which is the prior program's own share-kernels-own-orchestration
-rule promoted to a charter line. **A family here is a template lineage, the models that
-render one format family whatever their vendor**, on the operator's ruling of
-2026-09-28: one module holds every architecture entry of the lineage with its
-orchestration, and an architecture is an entry in its lineage's module rather than a
-module of its own. Where one architecture string carries two formats, the module holds
-both and the artifact's own template selects between them.
+nowhere else.** A family is a template lineage, on the operator's ruling of 2026-09-28:
+the models that render one format family whatever their vendor, Qwen or Gemma or the
+Harmony speakers, held in one module with the orchestration quirks the shared kernels
+are driven by. The prior program proved the premise concretely: its encoder's text tower
+was a decoder-family member, sharing architecture and tokenizer with the decoder path
+that never knew it. The module discipline is the boundary: one module per family, with
+nothing family-specific living outside its module and the kernels shared beneath, which
+is the prior program's own share-kernels-own-orchestration rule promoted to a charter
+line.
+
+**What sits beneath a lineage, and which of four things owns each fact, read from the
+code as it stands.** The module, the lineage, owns its placement, its shared
+orchestration, and the one or two renderers it holds. A renderer, the format the module
+renders and the thing an entry names, owns the rendering of an identity prefix and of a
+turn's delta, the fold where its template names no system turn, the marker vocabulary,
+the parsing of the emission, the stop conditions and the turn terminator. A registry
+entry, one per architecture, owns the architecture string the artifact's header declares
+and the tensor layout it names, the configuration shape, the template identity, the
+generation opener, which renderer it names, the markers that select it where its
+architecture is contested, the flush mechanism with rollback derived from it, the
+readout tap, the column, and the shard widths, which together are the capabilities
+admission judges. Which operation an entry's models serve is which table the entry sits
+in, the decode registry or the classify table, and not a field of the entry. The
+artifact owns its tokenizer and its weights, and a lineage's tokenizer conventions are
+what its renderers' markers ask of that tokenizer, every control marker promoting to one
+token. Where one architecture string carries two formats, the module holds both entries
+and the artifact's own template selects between them. Admission and the decode path read
+an entry's facts from the entry the artifact resolved to, and a renderer's from the
+renderer that entry names, never from a module by its name.
 
 **Both directions of the end-to-end template requirement live here and are tested
-here.** Inbound, the family module is what makes input formatted correctly for the
-template the resolved entry renders, and the reference test shape is the prior program's
-marker promotion, every control marker tokenizing to exactly one token because a
-degraded marker is structure read as prose. Outbound, the family module's parsers are
-the recorded bridge from the verbatim emission to the canonical form, with parse
-failures carried as their own distinct facts rather than collapsed into clean turns.
+here.** Inbound, the renderer the resolved entry names is what makes input formatted
+correctly for its template, and the reference test shape is the prior program's marker
+promotion, every control marker tokenizing to exactly one token because a degraded
+marker is structure read as prose. Outbound, the renderer's parser is the recorded
+bridge from the verbatim emission to the canonical form, with parse failures carried as
+their own distinct facts rather than collapsed into clean turns.
 
 **The modules become member crates when the second consumer exists, and
 not before.** This round the decoder is the only consumer, and a shared
@@ -1409,14 +1418,14 @@ act that charters the encoder, which is the reversibility test applied
 to this crate's own future, and the destination is recorded where
 destinations live rather than here.
 
-**A family declares its capabilities, one declaration per architecture entry, and the
-entry the artifact resolves to is consulted at admit.** What operations an entry's
-models serve, what template identity it renders, whether its engine can tap for readout,
-**whether its tap holds a column to answer the diagnostic ask** per 13.7 as amended, and
-**how many devices its backend can shard a model across** are facts the family module
-states for each of its entries, and admission judges a binding against the resolved
-entry's, which is how 13.7's refusal knows to fire and how section 4.1 step 3 knows
-whether an assigned set is servable. The declaration's shape is the Spec's.
+**An entry declares its capabilities, and the entry the artifact resolves to is
+consulted at admit.** The operation its models serve, by the table it sits in, what
+template identity it renders, whether its engine can tap for readout, **whether its tap
+holds a column to answer the diagnostic ask** per 13.7 as amended, and **how many
+devices its backend can shard a model across** are facts the entry states, and admission
+judges a binding against the resolved entry's, which is how 13.7's refusal knows to fire
+and how section 4.1 step 3 knows whether an assigned set is servable. The declaration's
+shape is the Spec's.
 
 ## 15. Classifying content: the classify submodule and the label seam
 

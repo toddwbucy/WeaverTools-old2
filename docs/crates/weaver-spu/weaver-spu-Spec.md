@@ -329,7 +329,7 @@ here. `nix` for the OS surface, on the grounds `weaver-harness-Spec` section 2.4
 argued and this crate inherits: the calls are `recvmsg`, `fcntl`, the dumpable
 `prctl`, and the descriptor adoption of section 2. `safetensors` for the native
 backend's weights, `half` and `bytemuck` for host-side tensor math,
-`tokenizers` for the family tokenizers, `blake3` and `walkdir` for the weights
+`tokenizers` for the artifacts' tokenizers, `blake3` and `walkdir` for the weights
 hash of section 3.
 
 **What does not cross, from a working tree that had it.** No HTTP client and no
@@ -368,14 +368,13 @@ from: weaver-spu
 to: spu-two-feature-gates
 ```
 
-**The `gguf` gate is on by default as of 2026-08-23, and `cuda` is not.** The
-two gates were written together and only one of them earns its default. The
-argument the pair carried, that a build with neither keeps the family surface
-testable on a machine with no device, covers `cuda` and does not cover `gguf`:
-llama.cpp builds and runs on the host, so the GGUF engine's family selection,
-marker promotion, and decode tests need no card. Gating them bought nothing
-the argument named and cost twenty-eight tests, which `cargo test --workspace`
-could not reach because the gate they sat behind was off.
+**The `gguf` gate is on by default as of 2026-08-23, and `cuda` is not.** The two gates
+were written together and only one of them earns its default. The argument the pair
+carried, that a build with neither keeps the family surface testable on a machine with
+no device, covers `cuda` and does not cover `gguf`: llama.cpp builds and runs on the
+host, so the GGUF engine's entry selection, marker promotion, and decode tests need no
+card. Gating them bought nothing the argument named and cost twenty-eight tests, which
+`cargo test --workspace` could not reach because the gate they sat behind was off.
 
 **What the default costs, stated because it is a real cost.** A workspace build
 now compiles llama.cpp, so a machine building this tree whole needs the C++
@@ -460,7 +459,7 @@ already followed - a count taken from the thing under test agrees with itself wh
 the tap did. Each defaults to the fixture its target documents, so a run that names no
 artifact needs none of them.
 
-**The vocabulary set is per family rather than fixed.** `markers.rs` asks each registry
+**The vocabulary set is per entry rather than fixed.** `markers.rs` asks each registry
 entry for its own artifact under `WEAVER_VOCAB_<FAMILY>`, so the set grows with the
 registry and a table listing thirteen names would be stale on the next family. The
 manifest test therefore checks the shape rather than the roster.
@@ -1053,14 +1052,13 @@ from: weaver-spu
 to: spu-no-scoped-clear-surface
 ```
 
-**The prefix is established at open and is permanent.** The open renders the
-identity prefix through the family library, decodes it once, and records the
-resident length it produced. Over a session that keeps serving, no operation
-reduces the resident length below that figure - the flush bounds there as
-arithmetic and the elision refuses a span that reaches into the prefix - and
-no operation short of those two reduces it at all, the close over a backend
-fault clearing the account with the session, per charter sections 13.3 and
-13.13.
+**The prefix is established at open and is permanent.** The open renders the identity
+prefix through the renderer the resolved entry names, decodes it once, and records the
+resident length it produced. Over a session that keeps serving, no operation reduces the
+resident length below that figure - the flush bounds there as arithmetic and the elision
+refuses a span that reaches into the prefix - and no operation short of those two
+reduces it at all, the close over a backend fault clearing the account with the session,
+per charter sections 13.3 and 13.13.
 
 **The session's capacity carries a `Disposition` and is elected like a knob.**
 It is frozen with its value compiled in, or operator-tunable and supplied in
@@ -1170,11 +1168,10 @@ to: spu-terminator-on-every-path
 ### 4.3 The turn, and the cancel
 
 **Append and generate is one call with a token-boundary check.** The delta is rendered
-by the family library, decoded at the resident end, and the generation loop samples
-until the stop condition of the renderer the resolved entry names, the harness's cancel,
-or the session's capacity. The cancel is checked between sampled tokens, per charter
-section 13.5, which bounds the stop by one token's decode rather than by a kernel's
-completion.
+by that renderer, decoded at the resident end, and the generation loop samples until the
+stop condition of the renderer the resolved entry names, the harness's cancel, or the
+session's capacity. The cancel is checked between sampled tokens, per charter section
+13.5, which bounds the stop by one token's decode rather than by a kernel's completion.
 
 ```graph
 node: spu-cancel-bounded-by-one-token
@@ -1326,29 +1323,24 @@ ask.
 
 ### 4.6 The re-feed drive
 
-**Represented on the paths the generation already
-walks**, per charter section 13.14 and the decode contract's sixth
-exchange, added 2026-08-31. The drive is the append's machinery with the
-draw's destination changed and the renderer bypassed: the rendered
-contribution tokenizes and appends verbatim, no family rendering on the
-way per the ruling of 2026-08-12, the
-per-position loop runs the derived seed of section 8.5 and the effective
-knobs of section 8 through the sampler exactly as a generation runs them,
-and where a generation emits the drawn token and streams its piece, the
-drive records the draw's identifier into the measurement's output slots
-and appends the recorded token instead, streaming nothing. The field and
-the column intermediates cross where their elections stand, on the same
-sites the generation crosses them. The answer wraps the generation shape
-under the floor's own `ReFed` arm, the variant and not the payload being
-what keeps a supplied path out of a sampled path's clothes. The
-permission is judged where every admitted member is judged, and the
-two-arm registry is the charter's, cited rather than restated. **The
-watches are the building act's**, per the pattern section 7's unasked
-vector set: the drive is unbuilt, its instruments cannot exist before it,
-and the act that builds it buys them in the same motion or their tags
-stand as the lie 13.7 refuses. The building act bought them, four watches
-below, each seen red under the perturbation it names before its tag
-landed.
+**Represented on the paths the generation already walks**, per charter section 13.14 and
+the decode contract's sixth exchange, added 2026-08-31. The drive is the append's
+machinery with the draw's destination changed and the renderer bypassed: the rendered
+contribution tokenizes and appends verbatim, no renderer on the way per the ruling of
+2026-08-12, the per-position loop runs the derived seed of section 8.5 and the effective
+knobs of section 8 through the sampler exactly as a generation runs them, and where a
+generation emits the drawn token and streams its piece, the drive records the draw's
+identifier into the measurement's output slots and appends the recorded token instead,
+streaming nothing. The field and the column intermediates cross where their elections
+stand, on the same sites the generation crosses them. The answer wraps the generation
+shape under the floor's own `ReFed` arm, the variant and not the payload being what
+keeps a supplied path out of a sampled path's clothes. The permission is judged where
+every admitted member is judged, and the two-arm registry is the charter's, cited rather
+than restated. **The watches are the building act's**, per the pattern section 7's
+unasked vector set: the drive is unbuilt, its instruments cannot exist before it, and
+the act that builds it buys them in the same motion or their tags stand as the lie 13.7
+refuses. The building act bought them, four watches below, each seen red under the
+perturbation it names before its tag landed.
 
 **The session appends the recorded token whatever the draw said**, the
 drawn identifiers landing in the answer's output slots and one measurement
@@ -1417,35 +1409,60 @@ to: spu-refeed-recomputes-the-recorded-draws
 ## 5. The family libraries
 
 **One module per family, holding everything that family defines.** Per charter section
-14: the template and its rendering, the marker vocabulary, the tokenizer conventions,
-the parsing of the family's own output, and the forward orchestration quirks the shared
-kernels are driven by. Nothing family-specific lives outside its module, and the kernels
-beneath are shared, which is the archived tree's share-kernels-own-orchestration rule
-promoted to structure. Review's by non-purchase, the placement of a family's code being
-as readable to a module-boundary test as to a reader and neither being bought here. **A
-family is a template lineage, the models that render one format family whatever their
-vendor**, per charter section 14 as ruled 2026-09-28, so one module holds every
-architecture entry of the lineage with its orchestration, and the registry in
-`family/mod.rs` is where those entries are declared. Where one architecture string
-carries two formats, the module holds both entries and the artifact's own template
-selects between them, which is the contested-architecture mechanism below: phi holds two
-`phi3` entries with disjoint templates and renderers. `qwen2::renderer` serves seven
-entries across vendors, SmolLM2's `llama` and NVIDIA's `nemotron_h_moe` among them.
+14, a family is a template lineage, the models that render one format family whatever
+their vendor, held in one module with the orchestration quirks the shared kernels are
+driven by. Nothing family-specific lives outside its module, and the kernels beneath are
+shared, which is the archived tree's share-kernels-own-orchestration rule promoted to
+structure. Review's by non-purchase, the placement of a family's code being as readable
+to a module-boundary test as to a reader and neither being bought here. The registry in
+`family/mod.rs` is where entries are declared, `qwen2::renderer` serves seven entries
+across vendors, SmolLM2's `llama` and NVIDIA's `nemotron_h_moe` among them, and where
+one architecture string carries two formats the module holds both entries and the
+artifact's own template selects between them, which is the contested-architecture
+mechanism below: phi holds two `phi3` entries with disjoint templates and renderers.
 **The code keeps the older name for the key:** `Declaration::family`, the header's
 `FamilyName` and the `UnknownFamily` refusal name the architecture string, not the
 lineage.
 
+**Four things own a lineage's facts, per charter section 14, and this table says which
+owns each and where it is read.** A sentence in this document naming a fact's owner
+agrees with the table or is a defect.
+
+| Fact | Module, the lineage | Renderer, the format | Entry, the architecture | Artifact | Read at |
+|---|---|---|---|---|---|
+| placement, one module per lineage | x | | | | `family/<name>.rs`, declared in `family/mod.rs` |
+| the shared orchestration quirks | x | | | | the lineage's module |
+| the renderers a lineage holds, one or two | x | | | | `qwen2::renderer`, `phi::tag_renderer` and `phi::sep_renderer` |
+| rendering an identity prefix and a turn's delta | | x | | | `Family::render_identity`, `Family::render_delta` |
+| the fold where the template names no system turn | | x | | | `Family::fold_for_template` |
+| the marker vocabulary | | x | | | the module's markers, `qwen2::RENDERED_MARKERS` |
+| the parse of an emission | | x | | | `Family::parse` |
+| the stop conditions and the turn terminator | | x | | | `Family::stop_conditions` |
+| the architecture string, and the tensor layout it names | | | x | | `Declaration::family` |
+| the configuration shape | | | x | | the native path's per-architecture `Config`, `decoder/native.rs` |
+| the template identity | | | x | | `Declaration::template` |
+| the generation opener | | | x | | `Declaration::generation_opener` |
+| which renderer | | | x | | `Declaration::renderer` |
+| the markers that select it where contested | | | x | | `Declaration::selecting_markers`, `select` |
+| the flush, and rollback derived from it | | | x | | `Declaration::flush`, `Declaration::permits_truncation` |
+| the readout tap, and the column | | | x | | `Declaration::taps_readout`, `Declaration::taps_column` |
+| the shard widths | | | x | | `Declaration::shard_widths`, `Declaration::shards_across` |
+| the operation served, by the table the entry sits in | | | x | | `REGISTRY` for decode, `modernbert::CLASSIFY_FAMILIES` for classify |
+| the tokenizer | | | | x | `tokenizer.json` beside the weights, or the GGUF vocabulary |
+| the chat template, the selector where contested | | | | x | the header's `tokenizer.chat_template`, read by `select` |
+| the weights | | | | x | the container |
+
 **A seated `System` prefix folds where the resolved entry's template names no system
 turn, within the render call it arrives in.** The canonical role of an identity prefix
 is `System`, per `weaver-types-Spec` section 2, and the parse refuses any other. Two
-families in the registry publish templates with no system turn - gemma and mistral - and
-both refused the role at `render_identity`, which after that parse rule left them no
-usable prefix at all: `user` refused above, `system` refused here. **The role is the
-floor's vocabulary and the shape is the family's**, so those families render the role
-rather than refusing it, folding **every** `System` message into the user turn that
-follows it, within the `render_each` call the message arrives in. A `System` message
-with no user turn after it in that call becomes a user turn of its own, a prefix that
-rendered as nothing being a prefix the record cannot account for.
+renderers in the registry, gemma's and mistral's, serve published templates with no
+system turn, and both refused the role at `render_identity`, which after that parse rule
+left them no usable prefix at all: `user` refused above, `system` refused here. **The
+role is the floor's vocabulary and the shape is the family's**, so those families render
+the role rather than refusing it, folding **every** `System` message into the user turn
+that follows it, within the `render_each` call the message arrives in. A `System`
+message with no user turn after it in that call becomes a user turn of its own, a prefix
+that rendered as nothing being a prefix the record cannot account for.
 
 **The merge is within one render call and does not span the prefix and the
 delta**, which are two: the prefix renders at the open and the delta at the
@@ -1459,7 +1476,7 @@ test. What the fold removes is the adjacency within each call, which on a
 here and asserted by a test rather than left for a reader to discover.
 
 **Every position and not only the first**, which is a decision rather than a
-detail. A family that renders system content as user content has no position
+detail. A renderer that renders system content as user content has no position
 at which the role stops being renderable, so refusing a mid-prefix `System`
 while folding a leading one would be a distinction with nothing behind it. An
 earlier form of this clause said "leading" while the code folded all of them,
@@ -1467,7 +1484,7 @@ which is the disagreement that settles here in the code's favour.
 
 **That is the template authority followed and not a shape invented**, which is
 the distinction `mistral3` already drew when it declined to mint a system
-wrapper. Both families' published templates carry system content into the
+wrapper. Both lineages' published templates carry system content into the
 first user turn, so folding is what those authorities name. A `[SYSTEM]`
 block of this program's own devising would be the invention. A `System`
 message with no user turn after it becomes a user turn of its own, a prefix
@@ -1494,36 +1511,37 @@ from: weaver-spu
 to: spu-share-kernels-own-orchestration
 ```
 
-**The surface a family implements is small and named.** Render an identity prefix from
+**The surface a renderer implements is small and named.** Render an identity prefix from
 canonical messages, render a turn's delta, fold messages for a template that names no
 system turn, parse an emission into canonical content with its markers recognized,
-declare the stop conditions, and hand over a declaration. **The facts admission and the
-decode path read are per architecture, not per module:** each is read from the registry
-entry admission resolved for the artifact, by `lookup` against the architecture its
-header declares or, where that architecture is contested, by `select` against the
-artifact's own chat template, and that entry is retained for the session. `lookup` alone
-refuses a contested architecture, and the trait's `declaration()` answers for the entry
-its module is named after, so neither is where a per-artifact fact is read. The entry's
-declaration carries the capabilities admission judges against, per charter section 14,
-which are the readout tap and **the device counts the backend can shard a model
-across**. That last is a set of widths rather than a maximum, because a backend that
-serves one device and a pair is not thereby serving three, and a maximum would imply it
-does. **The entry's declaration also names its flush mechanism, per section 4.4, and
-whether the session's state permits truncation is derived from that entry rather than
-declared beside it.** Truncation is permitted exactly where the flush truncates, so a
-second declaration of it on the trait was one fact in two places, and it left the trait
-on 2026-08-17. The surface's membership is the `Family` trait's and takes no record. The
-declaration's shape does, being this document's own and what section 3 judges against,
-and section 10 buys the test: a declared set with a pair in it and a binding naming
-three devices is arithmetic that runs with no device present. **The fixture the test
-uses declares a non-contiguous set on purpose,** because the set reading and the maximum
-reading answer alike on every contiguous declaration, so a fixture declaring one and two
-would leave the perturbation that matters unwatchable while the test went on passing.
-**The declaration's field is a set type and that half is pinned, per the operator's
-election of 2026-08-04:** a doctest reads a declaration carrying a non-contiguous set
-literal, so a maximum can no longer be declared, only read wrongly, and the perturbation
-keeps the judgment honest where the type cannot reach. The two are two records for that
-reason, per the division rule of Document Format section 3.
+declare the stop conditions, and hand over a declaration. **A renderer's facts are read
+from the renderer the resolved entry names, and an entry's from the entry itself, never
+from a module by its name.** The entry is the one admission resolved for the artifact,
+by `lookup` against the architecture its header declares or, where that architecture is
+contested, by `select` against the artifact's own chat template, and that entry is
+retained for the session. `lookup` alone refuses a contested architecture, and the
+trait's `declaration()` answers for the entry its module is named after, so neither is
+where a per-artifact fact is read. The entry's declaration carries the capabilities
+admission judges against, per charter section 14, which are the readout tap and **the
+device counts the backend can shard a model across**. That last is a set of widths
+rather than a maximum, because a backend that serves one device and a pair is not
+thereby serving three, and a maximum would imply it does. **The entry's declaration also
+names its flush mechanism, per section 4.4, and whether the session's state permits
+truncation is derived from that entry rather than declared beside it.** Truncation is
+permitted exactly where the flush truncates, so a second declaration of it on the trait
+was one fact in two places, and it left the trait on 2026-08-17. The surface's
+membership is the `Family` trait's and takes no record. The declaration's shape does,
+being this document's own and what section 3 judges against, and section 10 buys the
+test: a declared set with a pair in it and a binding naming three devices is arithmetic
+that runs with no device present. **The fixture the test uses declares a non-contiguous
+set on purpose,** because the set reading and the maximum reading answer alike on every
+contiguous declaration, so a fixture declaring one and two would leave the perturbation
+that matters unwatchable while the test went on passing. **The declaration's field is a
+set type and that half is pinned, per the operator's election of 2026-08-04:** a doctest
+reads a declaration carrying a non-contiguous set literal, so a maximum can no longer be
+declared, only read wrongly, and the perturbation keeps the judgment honest where the
+type cannot reach. The two are two records for that reason, per the division rule of
+Document Format section 3.
 
 ```graph
 node: spu-shard-widths-are-a-set
@@ -1615,14 +1633,15 @@ readings were taken. The pin moved to `ecce255b` on 2026-08-17 and these
 readings were not re-taken there, so they stand as readings of the earlier
 revision, and a bump reopens them rather than inheriting them.
 
-**It fails closed on a template it does not recognise, and one family this binary
-already carries is such a template.** Gemma4 returns an error rather than a rendering,
-measured 2026-08-17 against `gemma4-31b-it-Q8_0.gguf` as this workshop holds it. The
-Phi-4-mini reading above is against `unsloth/Phi-4-mini-instruct-GGUF`, header read over
-a range request rather than a held artifact. An unconditional render would therefore
-refuse an entry the registry serves today, which is why the render is reached only where
-an architecture is contested. An architecture carrying one entry selects on the
-architecture and renders nothing, so the artifacts that fail the detector never meet it.
+**It fails closed on a template it does not recognise, and one lineage this binary
+already carries publishes such a template.** Gemma4 returns an error rather than a
+rendering, measured 2026-08-17 against `gemma4-31b-it-Q8_0.gguf` as this workshop holds
+it. The Phi-4-mini reading above is against `unsloth/Phi-4-mini-instruct-GGUF`, header
+read over a range request rather than a held artifact. An unconditional render would
+therefore refuse an entry the registry serves today, which is why the render is reached
+only where an architecture is contested. An architecture carrying one entry selects on
+the architecture and renders nothing, so the artifacts that fail the detector never meet
+it.
 
 **The residual risk is mis-detection, and filtering narrows it rather than closing it.**
 A first-match heuristic can settle on the wrong family and this crate cannot audit that
@@ -1654,13 +1673,12 @@ token table but never emitted by its template would match a vocabulary scan and
 should not, and a rendered probe cannot be fooled by it, because what it reads
 is what the artifact emits.
 
-**Marker sets are compared and templates are not.** A chat template is a
-program, and two that render the same turns can differ in whitespace, in
-comments, and in branches no turn of this program reaches, so comparing them
-whole would refuse artifacts that agree about everything this crate uses. What
-this crate renders is a family's control markers, so what it compares is those,
-and the comparison is the same property `spu-marker-promotion` already tests
-from the other side.
+**Marker sets are compared and templates are not.** A chat template is a program, and
+two that render the same turns can differ in whitespace, in comments, and in branches no
+turn of this program reaches, so comparing them whole would refuse artifacts that agree
+about everything this crate uses. What this crate renders is a renderer's control
+markers, so what it compares is those, and the comparison is the same property
+`spu-marker-promotion` already tests from the other side.
 
 **Two artifacts differing only in whitespace are the standing case rather than
 the hypothetical one.** Phi-3.5-mini and Phi-4-mini render the same markers and
@@ -1733,24 +1751,23 @@ bridge.** Safetensors `mistral` and the registry's `mistral3` are two names for 
 things and stay two keys, and an architecture the registry spells otherwise than a
 container does is a registry question, answered by a row and never by widening the fold.
 
-**Both directions of the template requirement bind here, per the charter, and
-both are bought.** Inbound, the reference test shape is the archived tree's
-marker promotion: every control marker of a family tokenizes to exactly one
-token under the family's tokenizer, because a marker that degrades to subword
-text is structure the model reads as prose. Outbound, the parsers are
-the recorded bridge from the verbatim emission to the canonical form, and a
-parse that recognizes no call where the emission attempted one is its own
-reported fact rather than a clean turn, which is the archived tree's
-distinction between a call that could not be rendered and a call whose name
-could not be recovered. **The two directions are two records and each carries its
-own bullet in section 10,** the two being separate behaviours of one module
-rather than the halves of one claim: a marker that tokenizes cleanly says nothing
-about what the parser does with an emission it cannot recover. The outbound
-bullet lands in the act that closed issue 37, an emission attempting a call the
-parser cannot recover being a fixture rather than a device. An earlier wording of
-this clause said both directions are tested here while the suite bought only one,
-and the assertion pass demoted the outbound half to review rather than naming a
-test, which is the position this act closes from the other end.
+**Both directions of the template requirement bind here, per the charter, and both are
+bought.** Inbound, the reference test shape is the archived tree's marker promotion:
+every control marker a renderer emits tokenizes to exactly one token under the
+artifact's tokenizer, because a marker that degrades to subword text is structure the
+model reads as prose. Outbound, the parsers are the recorded bridge from the verbatim
+emission to the canonical form, and a parse that recognizes no call where the emission
+attempted one is its own reported fact rather than a clean turn, which is the archived
+tree's distinction between a call that could not be rendered and a call whose name could
+not be recovered. **The two directions are two records and each carries its own bullet
+in section 10,** the two being separate behaviours of one module rather than the halves
+of one claim: a marker that tokenizes cleanly says nothing about what the parser does
+with an emission it cannot recover. The outbound bullet lands in the act that closed
+issue 37, an emission attempting a call the parser cannot recover being a fixture rather
+than a device. An earlier wording of this clause said both directions are tested here
+while the suite bought only one, and the assertion pass demoted the outbound half to
+review rather than naming a test, which is the position this act closes from the other
+end.
 
 ```graph
 node: spu-marker-promotion
@@ -1918,19 +1935,18 @@ from: weaver-spu
 to: spu-absent-shape-pinned-by-doctest
 ```
 
-**The token identifiers in and out are the turn's, and neither is the session's.**
-The input identifiers are the turn's delta as the family library rendered it, the
-span the partition labels `turn-delta`, and the identity prefix the open made
-resident per section 4 is outside them on every turn, the first included, so their
-count is not the resident length at the generation's first draw and a reader that
-takes it for one is wrong by the prefix. The output identifiers are the tokens the
-generation drew, paired one for one with the two signal vectors, and the turn
-terminator the generation makes resident after them per section 4 is outside them,
-so their count is not the generation's contribution to the resident count either.
-The session's own figure is the closing count below, and the two members are
-defined here because they travelled without a definition from the seam act to
-2026-09-05 and a contract read the input count as the resident length, per
-issue #461.
+**The token identifiers in and out are the turn's, and neither is the session's.** The
+input identifiers are the turn's delta as the resolved entry's renderer rendered it, the
+span the partition labels `turn-delta`, and the identity prefix the open made resident
+per section 4 is outside them on every turn, the first included, so their count is not
+the resident length at the generation's first draw and a reader that takes it for one is
+wrong by the prefix. The output identifiers are the tokens the generation drew, paired
+one for one with the two signal vectors, and the turn terminator the generation makes
+resident after them per section 4 is outside them, so their count is not the
+generation's contribution to the resident count either. The session's own figure is the
+closing count below, and the two members are defined here because they travelled without
+a definition from the seam act to 2026-09-05 and a contract read the input count as the
+resident length, per issue #461.
 
 **What travels with a generation.** The token identifiers in and out, the two signal
 vectors, the timings the charter's row names, the model identity and its weights hash
@@ -1939,17 +1955,17 @@ session's resident token count and its capacity as the generation closed - the
 generation's own typed members beside the two spliced boxes, never measurement members,
 per issue #221's arc and `weaver-types-Spec` section 4.4 - and beside the measurement
 the model.request content whole, per the custody act of 2026-08-11: the turn's delta as
-the family library rendered it, per the ruling of 2026-08-12, the template identity, and
-the turn's effective sampling values, rendered by this crate because the template and
-the knobs are this crate's, and spliced into the record's request box as the measurement
-splices into its own. **The template identity is the request's member and not the
-measurement's**, per the ruling of 2026-08-17 on #129: it is an input-side fact, what
-was asked rather than what was read off the answer, which is the sampling values' own
-ground for sitting where they sit, and the earlier text listing it in both boxes was one
-fact in two places with no authority named, the defect G5 files. The code and
-`weaver-trace-PRD` section 3 already carried it this way, and this clause catches up to
-them. The harness carries both opaque, neither assembled from members it would parse the
-splice to read. **The generation's bound renders in the request's box beside the
+the resolved entry's renderer rendered it, per the ruling of 2026-08-12, the template
+identity, and the turn's effective sampling values, rendered by this crate because the
+template and the knobs are this crate's, and spliced into the record's request box as
+the measurement splices into its own. **The template identity is the request's member
+and not the measurement's**, per the ruling of 2026-08-17 on #129: it is an input-side
+fact, what was asked rather than what was read off the answer, which is the sampling
+values' own ground for sitting where they sit, and the earlier text listing it in both
+boxes was one fact in two places with no authority named, the defect G5 files. The code
+and `weaver-trace-PRD` section 3 already carried it this way, and this clause catches up
+to them. The harness carries both opaque, neither assembled from members it would parse
+the splice to read. **The generation's bound renders in the request's box beside the
 sampling values**, per charter section 13.6's clause of this date. It is a `stop` object
 carrying `max_tokens`, the resolved per-turn ceiling, `stop_tokens`, the identifier set
 in force, and `terminator`, the turn ender of the renderer the resolved entry names. The
@@ -2972,17 +2988,17 @@ than a code fact.
   break when the terminator step is skipped on the cancelled path.
 - The stop is bounded: a cancel lands within one token's decode, confirmed by
   watching the bound fail when the check moves outside the loop.
-- Marker promotion, per family: every control marker tokenizes to exactly one
+- Marker promotion, per renderer: every control marker tokenizes to exactly one
   token, confirmed by watching a marker degrade to subword text when the
   special-token path is bypassed. **This is the inbound direction of section 5
   and only that,** the outbound direction taking the bullet below, which is why
   that clause reads as two records.
-- The parse reports an unrecovered call: an emission opening a family's call
-  marker and naming nothing the parser can recover answers with that fact rather
-  than with a clean turn's content, confirmed by watching the fragment arrive as
-  ordinary assistant text when the unrecovered case collapses into the text path.
-  The fixture is a rendered string against a family module, so the watch reads
-  the parse's own answer and reaches neither a model nor a device.
+- The parse reports an unrecovered call: an emission opening a renderer's call marker
+  and naming nothing the parser can recover answers with that fact rather than with a
+  clean turn's content, confirmed by watching the fragment arrive as ordinary assistant
+  text when the unrecovered case collapses into the text path. The fixture is a rendered
+  string against a family module, so the watch reads the parse's own answer and reaches
+  neither a model nor a device.
 - The registry substitutes nothing: an artifact whose header names an architecture this
   binary does not carry refuses at admit naming that architecture, confirmed by watching
   the admit proceed on a carried architecture's module when the table gains a
@@ -3239,22 +3255,22 @@ Admission judges the binding against the resolved entry's declared capabilities 
 device's room exactly as the decoder's admission judges its own, the model first per the
 charter's ordering, and the readiness emission is the label seam's first message.
 
-**The first classify family is `modernbert`, entering section 5's registry with its
-capabilities declared, and the registry's selection gains the operation as a filter.**
-Charter section 14 already has every family declaring what operations its models serve,
-and the selection reads that declaration: a decode admission selects among entries
-declaring decode, by architecture and the marker set as before, and a classify admission
-selects among entries declaring classify the same way, so neither operation's candidates
-shadow the other's. The template joins the key only where an entry renders one, per the
-template-joins-the-key ruling, and a classify family renders none, so its key is the
-architecture and the operation alone. The decoder's selection behavior does not move.
-`modernbert` serves classify and nothing else, renders no template, and reads its head
-from the artifact's own declaration, the label names being the artifact's `id2label` in
-index order, which is the head defining its labels the charter requires. The scores are
-the head's softmax, finite by construction over finite logits, one per label. Where the
-logits arrive non-finite the exchange faults rather than answers, per the trio's
-finiteness rule. The forward is the fork's `ModernBertForSequenceClassification`, and
-the tokenizer walks the same artifact-sidecar path the native decode families walk.
+**The first classify family is `modernbert`, and it enters a table of its own beside
+section 5's registry, `modernbert::CLASSIFY_FAMILIES`, keyed by architecture and
+selected by `select_classify`.** Charter section 14 has the operation an entry's models
+serve be the table the entry sits in: a decode admission selects among the registry's
+entries, by architecture and the marker set as before, and a classify admission selects
+among the classify table's, so neither operation's candidates shadow the other's. The
+template joins the key only where an entry renders one, per the template-joins-the-key
+ruling, and a classify entry renders none, so its key is the architecture and the
+operation alone. The decoder's selection behavior does not move. `modernbert` serves
+classify and nothing else, renders no template, and reads its head from the artifact's
+own declaration, the label names being the artifact's `id2label` in index order, which
+is the head defining its labels the charter requires. The scores are the head's softmax,
+finite by construction over finite logits, one per label. Where the logits arrive
+non-finite the exchange faults rather than answers, per the trio's finiteness rule. The
+forward is the fork's `ModernBertForSequenceClassification`, and the tokenizer walks the
+same artifact-sidecar path the native decode path walks.
 
 **Statelessness is structural.** The process holds the admitted artifact
 and no session type: each exchange tokenizes, forwards, and answers from
