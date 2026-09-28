@@ -12,7 +12,7 @@ later releasing it.
 **Parent:** `weaver-agents-PRD`
 **Companion contract:** `weaver-harness-spu-contract`, drafted with this document
 **Editorial:** Per the Working Rules.
-**Landing PR:** #722
+**Landing PR:** #727
 
 ---
 
@@ -66,6 +66,17 @@ section 3 gives it model residency, GPU arbitration at the device, decode comput
 embedding compute, and the cache, and has the harness holding no weights and performing
 no forward pass. That is a statement about this crate read from the other side, and this
 charter states it from this one so that a reader arriving here is not sent back.
+
+**The organ has a second implementation of its decode role, and it is the same organ.**
+`python-spu`, per `python-spu-Spec`, implements the decode process in Python as a
+program outside the crate tree and is party to the residency and decode contracts. What
+this charter says of the organ binds it: the residency, the device, the cache and its
+rule, the seams it serves and the one organ per agent. What it says of this crate's own
+code does not, and the classify role of section 15 stays with this crate's classify
+process, which `python-spu` does not replace. One decode implementation serves a box for
+the length of a run, admin's `spu-binary` naming which, so the sentence above holds of
+the decode process on every box: whichever implementation serves is the one decode
+process there holding device memory.
 
 **It is a domain root, and its members are not enumerated here.** The domain is semantic
 processing, all of it, per the reading the stub carried and this charter keeps: decode
@@ -764,6 +775,9 @@ is bounded, not drafted here, and incomplete for the same reason the charter is.
   token seam, elected with a measurement.
 - The family libraries of section 14: the per-family module surface and the per-entry
   capability declaration.
+- `python-spu-Spec`, the second implementation of this organ's decode role, filed
+  2026-09-28 on epic #726: which of this crate's behaviours it carries identically and
+  how each is proven, which are its own, and what comparing the two certifies.
 
 Contracts this crate is party to are written with the PRDs of their other parties, one
 per seam in section 6, and are not children of this document.
