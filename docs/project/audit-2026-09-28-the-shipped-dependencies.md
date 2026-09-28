@@ -56,21 +56,22 @@ here. Neither is skipped silently.
 ## What each crate ships, at its default features
 
 The direct normal dependencies, the features they are taken with, what each does in
-the crate, and the crate's linked closure. Workspace-internal crates are named where
-they are linked and not counted as external.
+the crate, and the crate's linked closure. Every workspace crate a package depends on
+directly, as `cargo tree -e normal --depth 1` shows it, is named in its row, and none
+is counted as external.
 
 | Crate | Direct external dependencies | What for | Linked | Call |
 |---|---|---|---|---|
-| `weaver-traits` | `serde` (derive) | the message model's wire derives | 2 | none |
-| `weaver-types` | `serde` (derive), `serde_json` (raw_value), `serde_yaml_ng` behind the `config` feature | the wire types, the record's raw boxes, the declaration parse | 6 | **[1]** the YAML parser is one function's |
-| `weaver-trace` | `serde` (derive), `serde_json` (raw_value) | the record's line encoding | 6 | none |
+| `weaver-traits` | `serde` (derive), links no workspace crate | the message model's wire derives | 2 | none |
+| `weaver-types` | `serde` (derive), `serde_json` (raw_value), `serde_yaml_ng` behind the `config` feature, links `weaver-traits` | the wire types, the record's raw boxes, the declaration parse | 6 | **[1]** the YAML parser is one function's |
+| `weaver-trace` | `serde` (derive), `serde_json` (raw_value), links no workspace crate | the record's line encoding | 6 | none |
 | `weaver-diagnostic` | `serde` (derive), `serde_json` (raw_value), links `weaver-traits` | the diagnostic trace's encoding | 6 | none |
 | `weaver-harness` | `serde_json`, `nix` (socket, fs, process, uio, user, poll, signal), `pyo3` behind `pyworker`, links `weaver-traits`, `weaver-types`, `weaver-trace`, `weaver-diagnostic` | the sockets and the fork, the Python loop | 11 | **[2]** `pyworker`, and **[3]** the `nix` feature set |
 | `weaver-gate` | `serde_json`, `nix` (socket, fs, process, user, poll, signal), links `weaver-types` | the gate socket and its peer checks | 11 | **[3]** |
 | `weaver-admin` | `serde_json`, `nix` (socket, fs, process, uio, user), `sha2`, links `weaver-types` with `config` | the coordination socket, the inventory's digests | 24 | **[4]** `sha2` is two functions' |
 | `weaver-state` | `serde_json` (raw_value), `nix` (socket, fs, uio, user, poll), `rusqlite` (bundled) behind `sqlite`, on by default, `postgres` behind `postgres`, links `weaver-types` | the member's socket, the two store engines | 19 | **[5]** `postgres`, **[6]** `rusqlite` bundled |
-| `weaver-analysis` | `serde` (derive), `serde_json` (raw_value), `safetensors`, `sha2` | the record reader, the residual columns, the capture digests | 19 | **[7]** `safetensors` |
-| `weaver-internal` | none | the pure member, by its own manifest instrument | 0 | none |
+| `weaver-analysis` | `serde` (derive), `serde_json` (raw_value), `safetensors`, `sha2`, links no workspace crate | the record reader, the residual columns, the capture digests | 19 | **[7]** `safetensors` |
+| `weaver-internal` | none, and links no workspace crate | the pure member, by its own manifest instrument | 0 | none |
 
 **What `nix` is used for, read from the source against what each feature gates.** A
 feature named in a manifest is code compiled whether or not the crate calls it, so the
