@@ -16,8 +16,11 @@ The deposits are on the shared bulk store, which olympus exports and the thinkpa
 at `/mnt/bulk-store/weaver-testing/`, and none of them is copied here. The Ada deposit
 carries its own `RESULT-2026-09-28.md`, and the same note sits beside this README as
 `fred-ada/RESULT-2026-09-28.md`. `../2026-09-28-ampere/` holds the A6000 pair's report
-and `../2026-09-28-blackwell/` run3's. This README is the comparison across the four,
-and a copy of it is in the Ada deposit as `RESULT-2026-09-28-ada-cell.md`.
+and `../2026-09-28-blackwell/` run3's. This README is the comparison across the four. It
+is kept twice, byte for byte, in the repository as `2026-09-28-ada/README.md` under the
+determinism matrix's `results/` and in the Ada deposit as
+`RESULT-2026-09-28-ada-cell.md`, and every relative path in it, every "here" and every
+"beside this README" is read from the repository's copy.
 
 ## Why this cell
 

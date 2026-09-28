@@ -16,8 +16,11 @@ log, box facts, config and `evidence/`, and none of them is copied here. Each ol
 deposit also carries its own `RESULT-2026-09-28.md`, and the same two notes sit beside
 this README as `karl-a6000/RESULT-2026-09-28.md` and `fred-a6000/RESULT-2026-09-28.md`.
 Run3 carries thinkpad's own note, and `../2026-09-28-blackwell/` holds its report. This
-README is the comparison across the three, and a copy of it is in each olympus deposit
-as `RESULT-2026-09-28-a6000-pair.md`.
+README is the comparison across the three. It is kept three times, byte for byte, in the
+repository as `2026-09-28-ampere/README.md` under the determinism matrix's `results/`
+and in each olympus deposit as `RESULT-2026-09-28-a6000-pair.md`, and every relative
+path in it, every "here" and every "beside this README" is read from the repository's
+copy.
 
 ## Facts found
 
