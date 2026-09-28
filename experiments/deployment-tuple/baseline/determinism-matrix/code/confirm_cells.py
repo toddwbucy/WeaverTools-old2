@@ -1,40 +1,19 @@
 #!/usr/bin/env python3
-"""Cross-precision / cross-architecture reproducibility cells.
+"""The replay harness the determinism matrix imports.
 
-For each cell (one artifact at one precision): load the agent on that
-artifact, serve one short and one longer turn at the gate socket,
-unload fully, reload, read the request texts back from the record's
-own message.user events, reissue them byte-exact in order, and compare
-the two runs field by field. Stdlib only, so any box with the runtime
-can run it unchanged.
+It holds what every session and every run shares: the one session
+verification, `verify_session`, which serves a session's turns, unloads
+fully, reloads, reissues them byte-exact from the record and compares the
+two runs field by field, the readers of the stack and the device, the
+preflight checks, and the run-wide verdict, `run_verdict`. Stdlib only, so
+any box with the runtime can run it unchanged.
 
-The pinning discipline is the point: same commit, same declaration
-apart from the artifact path, same declared seed, same turn texts. A
-box needing its own build records that build as an arm, not a
-nuisance.
-
-Usage:  confirm_cells.py --config <box>.json [--outdir DIR]
-
-Config (JSON):
-{
-  "box":          "thinkpad",
-  "agent":        "karl",
-  "declaration":  "/home/todd/.weaveragents/karl.yaml",
-  "gate_socket":  "/run/weaver-karl/gate.sock",
-  "trace":        "/home/todd/.weaveragents/karl/trace.ndjson",
-  "admin_bin":    "/opt/weaver/bin/weaver-admin",
-  "admin_config": "/etc/weaver/admin",
-  "repo":         "/home/todd/Projects/WeaverTools_Project/WeaverTools",
-  "spu_bin":      "optional; overrides the spu-binary named in admin_config",
-  "build_flags":  "cargo build --release --workspace --features weaver-spu/cuda",
-  "loop_sha256":  "optional; the sha256 of the loop file the box composes with",
-  "cells": [
-    {"name": "q8",   "precision": "q8_0", "artifact": "/opt/weaver/models/qwen2.5-0.5b-instruct-q8_0.gguf"},
-    {"name": "bf16", "precision": "bf16", "artifact": "/opt/weaver/models/qwen2.5-0.5b-instruct-bf16.gguf"}
-  ]
-}
+**It has no entry point of its own** (#716, on the operator's ruling of
+2026-09-27). The cross-precision protocol it once ran standalone, one
+artifact at one precision per cell, is the matrix's `--cells` mode, with
+one main, one session loop and one exit, and the matrix's README gives the
+config.
 """
-import argparse
 import hashlib
 import json
 import os
@@ -42,17 +21,9 @@ import re
 import socket
 import stat
 import subprocess
-import sys
 import time
 
 # Pinned across every box and every cell. Do not edit per box.
-SHORT_TEXT = "Introduce yourself in exactly one short sentence."
-LONG_TEXT = (
-    "Write a detailed step-by-step explanation of how a binary search "
-    "works, then implement it in Python with comments, then walk "
-    "through an example run on a list of twenty numbers."
-)
-
 CHECKS = [
     ("rendered prompt", "model.request", "/rendered"),
     ("derived generation seed", "model.request", "/sampling/generation_seed"),
@@ -72,8 +43,8 @@ def sh(args, **kw):
     `subprocess.run` raises when the binary is absent or `cwd` does not
     exist, and the provenance readers below call it for `rustup`, `ldd`, and
     `git` - none of which a box is obliged to carry. Raising there aborts
-    either entry point at its preflight with a traceback rather than a
-    refusal naming the reading. That is the rule `device_bindings` and
+    the run at its preflight with a traceback rather than a refusal naming
+    the reading. That is the rule `device_bindings` and
     `engine_libraries` already state, applied to the primitive they share:
     these facts exist to make a deposit worth trusting, so none may be the
     reason there is no deposit.
@@ -303,7 +274,7 @@ SEED_KEY = re.compile(r"^[ \t]*seed:(.*)$", re.M)
 
 def declaration_seed(declaration):
     """The one seed the declaration holds, read as a YAML scalar and held to
-    the sampler's u64, whichever entry point reads it (#716 round eight)."""
+    the sampler's u64, whichever caller reads it (#716 round eight)."""
     values = SEED_KEY.findall(declaration)
     if len(values) != 1:
         raise ValueError(f"the declaration carries {len(values)} seed lines, not one")
@@ -314,13 +285,11 @@ def declaration_seed(declaration):
     return seed_value(value, "the declaration's seed")
 
 
-# The config keys each entry point reads, and the optional ones. A key is a
-# value or absent: an empty string reads as neither, and a test of its truth
-# would take it for absent and guess in its place (#716 round eight). The
-# cross-precision entry point also reads `box` and `build_flags`, into its
-# file names and every cell's metadata (#716 round nine).
+# The config keys a run reads, and the optional ones. A key is a value or
+# absent: an empty string reads as neither, and a test of its truth would
+# take it for absent and guess in its place (#716 round eight). A cells run
+# also reads `cells`, checked by `cells_values`.
 CONFIG_KEYS = ("agent", "declaration", "gate_socket", "trace", "admin_bin", "admin_config", "repo")
-CELL_CONFIG_KEYS = CONFIG_KEYS + ("box", "build_flags")
 OPTIONAL_KEYS = ("spu_bin", "loop_sha256", "build_flags")
 # **A path the stack resolves is absolute** (#716 round ten). The worker and
 # the admin's units resolve a relative path against their own working
@@ -392,6 +361,26 @@ def cell_values(cell):
     return cell
 
 
+def cells_values(cfg):
+    """A cells run's `cells`: a non-empty list of cells, each checked by
+    `cell_values`, whose names are labels a record and the weights reading
+    carry, so each is a plain name and none repeats (#716 rounds seven and
+    ten)."""
+    cells = cfg.get("cells")
+    if not isinstance(cells, list) or not cells:
+        raise ValueError(f"the config's cells {cells!r} is not a non-empty list")
+    for c in cells:
+        cell_values(c)
+        if SAFE_NAME.fullmatch(c["name"]) is None:
+            raise ValueError(f"the cell name {c['name']!r} is not a plain name")
+    names = [c["name"] for c in cells]
+    repeated = sorted({n for n in names if names.count(n) > 1})
+    if repeated:
+        raise ValueError(f"the cell names {repeated} repeat, and each cell's record and"
+                         " weights reading carry its name")
+    return cells
+
+
 def openable(path, what, mode="rb"):
     """`path` opened as the run will open it and closed again, nothing read
     or written, or the refusal naming why it cannot be."""
@@ -439,7 +428,7 @@ def held_declaration(cfg, held):
 
 
 def opening_readings(cfg):
-    """The stack as the run opens, read at preflight by both entry points:
+    """The stack as the run opens, read at preflight:
     the SPU resolved once for both collectors, the engine libraries, the
     binaries and the toolchain. Every file the run reads for provenance is
     opened here, the admin configuration's entries, the binaries they name,
@@ -659,7 +648,8 @@ def provenance_close(cfg, reader, at_start, what, essence=None):
     """Read again at the close and say how the two readings relate.
 
     Lifted from the matrix driver per #379: `close()` and its helpers were
-    local to `determinism_matrix.main` while this driver compared with a raw
+    local to `determinism_matrix.main` while this file's own driver, folded
+    into the matrix since, compared with a raw
     `!=`, so the two drivers answered one question differently - the matrix
     would not claim a change it could not support and this driver would.
     One implementation, every driver a caller.
@@ -716,16 +706,22 @@ def _sha256(path):
     return h.hexdigest()
 
 
-def weights(path):
-    """A provenance reader for the weights field: the artifact by sha256, or a
-    note saying why it could not be read. Both entry points read it at the
-    two ends of their window, the matrix's run and each cell (#716 round
-    eleven)."""
+def weights(paths):
+    """A provenance reader for the weights field: each artifact by sha256, or
+    a note saying why it could not be read, read at the two ends of the
+    run's window. One path is keyed `artifact`, as every earlier summary
+    keys it, and a mapping keys each artifact by its name, a cells run by
+    the cell's."""
+    named = {"artifact": paths} if isinstance(paths, str) else dict(paths)
+
     def read(cfg):
-        try:
-            return {"artifact": {"path": path, "sha256": _sha256(path)}}
-        except OSError as e:
-            return {"artifact": {"path": path, "unreadable": _why(e)}}
+        out = {}
+        for key, path in named.items():
+            try:
+                out[key] = {"path": path, "sha256": _sha256(path)}
+            except OSError as e:
+                out[key] = {"path": path, "unreadable": _why(e)}
+        return out
     return read
 
 
@@ -1176,9 +1172,8 @@ def load_held(cfg, before, declaration_sha, half, rec, log=None, timeout=15.0):
     by the digest the load event records, which is the declaration file's
     sha256, so the artifact path, the seed, the sampling knobs and every other
     declared field are held per load. Answers True where both hold, and
-    otherwise sets the verdict and answers False. Shared by both entry
-    points, the matrix's `run_session` and this file's `run_cell`, so every
-    load either makes is held one way (#716 rounds two and six)."""
+    otherwise sets the verdict and answers False. Every load a session
+    makes is held here, one way (#716 rounds two and six)."""
     refused = assert_loop(cfg, cfg["trace"], before)
     if refused:
         loop_refusal(rec, refused, half, log or (lambda m: None))
@@ -1208,14 +1203,13 @@ INTERRUPTED = "interrupted"
 
 
 def verify_session(cfg, texts, rec, declared_seed, declaration_sha,
-                   step=None, log=None, turn_timeout=600, require_completed=False,
-                   declaration=None):
-    """**The one session verification**, shared by both entry points: the
-    matrix's `run_session` and this file's `run_cell` call it, and neither
-    verifies anything outside it (#716 round eight). Three checks the matrix
-    made had each gone missing from the standalone path in turn, the
-    declaration digest, then the recorded seed, and one function is what
-    stops a fourth.
+                   step=None, log=None, turn_timeout=600, declaration=None):
+    """**The one session verification**: the matrix's `run_session` calls
+    it for every session, a matrix cell or a cell of the cross-precision
+    protocol, and verifies nothing outside it (#716 round eight). Three
+    checks the matrix made had each gone missing from a standalone path in
+    turn, the declaration digest, then the recorded seed, and one function,
+    and since the fold one entry point, is what stops a fourth.
 
     It serves `texts`, unloads, reloads, reissues the turns from the record
     and compares them. It holds each half's load to the session's
@@ -1323,13 +1317,6 @@ def verify_session(cfg, texts, rec, declared_seed, declaration_sha,
         broken = next((st for st in source_turns if st["incomplete"]), None)
         if broken:
             return fault(f"source {broken['turn']} is incomplete: {', '.join(broken['incomplete'])}")
-        if require_completed:
-            for st in source_turns:
-                finish = pointer(st["payload"].get("model.output"), "/finish")
-                if finish != "completed":
-                    return fault(f"source {st['turn']} finished {finish!r} rather than"
-                                 " completed - a capped turn is a defective specimen"
-                                 " and the cell fails rather than records")
         # **The seed the record carries is read back, never assumed**: one
         # seed, present, and the one the session was declared under.
         recorded, why = seed_of(source_turns, "source")
@@ -1604,212 +1591,11 @@ def whole_ms(t):
     return (b - a) if a is not None and b is not None else None
 
 
-def cell_metadata(cfg, cell, libraries, binaries, tools, texts=None):
-    # **The artifact's hash degrades rather than raising.** A missing or
-    # unreadable artifact would otherwise abort `run_cell` before its report
-    # exists and take every remaining cell with it, which is the class of
-    # defect the rest of this act removes: a metadata read is not a reason a
-    # run does not happen.
-    opened = weights(cell["artifact"])(cfg)["artifact"]
-    artifact_sha = opened["sha256"] if "sha256" in opened else {"unreadable": opened["unreadable"]}
-    # **Both read the returncode, because `sh` no longer raises.** Softening
-    # `sh` to answer 127 rather than throw fixed the readers that could abort
-    # a run and broke these two, which took `.stdout` blind: on a box without
-    # `nvidia-smi` or `git` on PATH the driver used to die loudly and would
-    # now deposit `""` and report REPRODUCED. An empty string that does not
-    # say it is empty is the absence the `device` retirement exists to end.
-    gpu = _said_or_unreadable(
-        sh(["nvidia-smi", "--query-gpu=name,driver_version",
-            "--format=csv,noheader"]),
-        "nvidia-smi",
-    )
-    # `.get`, as `toolchain` and `_resolve_spu` both use: a config naming no
-    # repository is a config error rather than a crash, and `git -C` against
-    # `None` would not survive the call anyway.
-    repo = cfg.get("repo")
-    commit = (
-        _said_or_unreadable(sh(["git", "-C", repo, "rev-parse", "HEAD"]), "git rev-parse")
-        if repo
-        else {"unreadable": "the config names no repo"}
-    )
-    return {
-        "box": cfg["box"],
-        "precision": cell["precision"],
-        "artifact": cell["artifact"],
-        "artifact_sha256": artifact_sha,
-        # **`device` is retired rather than redefined**, per issue #370. It
-        # held this whole-machine listing, so every GPU present appeared in
-        # every report and the one that answered appeared nowhere. Reusing
-        # the key for the serving device would leave old and new reports
-        # disagreeing in meaning under one name, which is worse than either
-        # meaning: the reader cannot tell which they hold. The listing keeps
-        # a name that says what it is, and `serving_device` is filled in
-        # after the load by the party that knows.
-        "machine_gpus": gpu,
-        # Filled in after each load by the party that knows. `source` and
-        # `replay` are recorded apart because they are two loads and may
-        # not bind the same devices, per finding 3 of the olympus seat.
-        "serving_device": {"source": None, "replay": None},
-        # Hoisted: the libraries cannot change during a run and
-        # `libggml-cuda` built for four architectures is 142 MiB to hash.
-        "engine_libraries": libraries,
-        # **What a reader compares to answer "same build".** The commit
-        # cannot answer it: two boxes compiling one commit produce different
-        # bytes, so `commit` distinguishes source, and these distinguish
-        # builds.
-        "weaver_binaries": binaries,
-        "build_flags": cfg["build_flags"],
-        # `rustc` reports the toolchain in force at the repository rather
-        # than on the ambient PATH, and `active_toolchain` makes an override
-        # visible. The olympus arms of 2026-08-27 recorded two compilers for
-        # one binary set because the old field followed the launch
-        # directory.
-        "toolchain": tools,
-        "commit": commit,
-        # **The texts recorded are the texts served.** With `texts` supplied
-        # the pinned pair below is wrong by construction - a caller passing
-        # its own turn list would deposit metadata naming prompts the record
-        # does not carry, which is the misstating-provenance defect this
-        # repository keeps paying for. The two constant keys stay for the
-        # default so existing deposits keep their schema.
-        **({"short_text": SHORT_TEXT, "long_text": LONG_TEXT}
-           if texts is None else {"turn_texts": list(texts)}),
-    }
-
-
-def run_cell(cfg, cell, outdir, libraries, binaries, tools,
-             texts=None, require_completed=False, turn_timeout=600, declaration=None):
-    """One session under the serve-unload-reload-reissue protocol.
-
-    `texts` is the turn list, defaulted to the two pinned constants so the
-    cross-precision cells read as they always did. The trace-generation
-    driver passes its own list - the protocol is one and the sessions are
-    not, which is issue #379's ruling applied before the second
-    implementation exists rather than after.
-
-    `require_completed` makes a cap-hit a verdict rather than a recorded
-    field: a capped turn is a defective specimen for a trace whose purpose
-    is source material, per the 8B sketch's parameter section, so the cell
-    fails loudly instead of depositing a truncation that reads as an answer.
-
-    `declaration` is the declaration text the run read at preflight, which
-    the cell's is made from, and read from the file only where no caller
-    holds one. The cell's artifact is read at its open and again at its
-    close, the cell's weights window, recorded as `metadata.weights`
-    (#716 round eleven).
-    """
-    # **Materialized once, sentinel preserved.** The caller's value is
-    # listed exactly one time, so an iterator cannot be consumed by the
-    # serving loop and then re-listed empty into the metadata - the
-    # misstating-provenance defect this parameter exists to close, reachable
-    # by input shape. `None` still selects the short_text/long_text schema
-    # the existing confirm deposits carry.
-    texts = None if texts is None else list(texts)
-    name = cell["name"]
-    log = lambda m: print(f"[{name}] {m}", flush=True)
-    report = {"cell": name,
-              "metadata": cell_metadata(cfg, cell, libraries, binaries, tools,
-                                        texts=texts),
-              "steps": [], "turns": [], "verdict": None}
-    if texts is None:
-        texts = [SHORT_TEXT, LONG_TEXT]
-    # The cell's weights window: the artifact as `cell_metadata` read it at
-    # the cell's open, read again at its close whichever way the cell ends.
-    sha = report["metadata"]["artifact_sha256"]
-    weights_open = {"artifact": dict({"path": cell["artifact"]},
-                                     **({"sha256": sha} if isinstance(sha, str) else sha))}
-
-    def closed():
-        report["metadata"]["weights"] = provenance_close(
-            cfg, weights(cell["artifact"]), weights_open, "weights")
-        return report
-
-    # The declaration with this cell's artifact, everything else as
-    # the operator wrote it.
-    if declaration is None:
-        try:
-            with open(cfg["declaration"]) as f:
-                declaration = f.read()
-        except OSError as e:
-            # The one step here that reaches the box, a fault in the form
-            # `verify_session` records every other raise in.
-            report["verdict"] = f"error: {type(e).__name__}: {e}"
-            return closed()
-    try:
-        swapped = with_artifact(declaration, cell["artifact"])
-    except ValueError as e:
-        report["verdict"] = f"the cell's artifact cannot be declared: {e}"
-        return closed()
-    # The seed the cell's declaration holds, which its record must bear out,
-    # as the matrix's must (#716 round eight).
-    try:
-        declared_seed = declaration_seed(swapped)
-    except ValueError as e:
-        report["verdict"] = f"the cell's declaration carries no seed to hold: {e}"
-        return closed()
-
-    def step(verb):
-        a = admin(cfg, verb)
-        report["steps"].append({verb: a})
-        log(f"{verb}: {json.dumps(a)}")
-        return a
-
-    # **Verified by the one function both entry points share**, and nothing
-    # here verifies anything of its own: this records, names and deposits.
-    # It writes the cell's declaration and holds both loads to its digest
-    # (#716 round six), and records any raise as the cell's fault.
-    pairs, evidence = verify_session(cfg, texts, report, declared_seed, None,
-                                     step=step, log=log, turn_timeout=turn_timeout,
-                                     require_completed=require_completed, declaration=swapped)
-    report["metadata"]["serving_device"]["source"] = evidence["source_read"]
-    report["metadata"]["serving_device"]["replay"] = evidence["replay_read"]
-    if "invocations" in report:
-        report["metadata"]["invocations"] = report["invocations"]
-    for st, rt, checks in pairs:
-        ok = all(c["match"] for c in checks)
-        m = st["payload"]["model.measurement"]
-        report["turns"].append({
-            "turn": st["turn"],
-            "reproduced": ok,
-            "checks": checks,
-            "tokens_in": len(m.get("input_tokens", [])),
-            "tokens_out": len(m.get("entropies", [])),
-            "source_ms": whole_ms(st),
-            "replay_ms": whole_ms(rt),
-        })
-        log(f"{st['turn']}: {'MATCH' if ok else 'DIVERGED: ' + ', '.join(c['check'] for c in checks if not c['match'])}")
-    if report["verdict"] not in ("REPRODUCED", "DIVERGED"):
-        return closed()
-    # The cross-precision protocol's name for a divergence, which its
-    # earlier deposits carry.
-    if report["verdict"] == "DIVERGED":
-        report["verdict"] = "NOT REPRODUCED"
-    # **Deposited from a fresh read rather than from the snapshots the
-    # comparison used**, which on the source side were taken before its
-    # unload, so a deposit from them would hold a run with no closing event.
-    # A trace that cannot be read again deposits the snapshots rather than
-    # losing a compared cell.
-    try:
-        _, whole = read_runs(cfg["trace"], keep=6)
-    except OSError:
-        whole = {}
-    for label, run in (("source", report["source_run"]), ("replay", report["replay_run"])):
-        run_events = whole.get(run) or evidence[f"{label}_events"]
-        with open(os.path.join(outdir, f"cell-{name}-{label}.ndjson"), "w") as f:
-            for e in run_events:
-                f.write(json.dumps(e) + "\n")
-    return closed()
-
-
-def stale_outputs(outdir, names, pattern=None):
+def stale_outputs(outdir, names):
     """The outputs a run writes that already stand in `outdir`: a run
     writes into a deposit no earlier run has written, so its record and its
     summary are of one invocation (#716 round five)."""
-    import glob
-    found = [n for n in names if os.path.lexists(os.path.join(outdir, n))]
-    if pattern:
-        found += sorted(os.path.basename(p) for p in glob.glob(os.path.join(outdir, pattern)))
-    return found
+    return [n for n in names if os.path.lexists(os.path.join(outdir, n))]
 
 
 def run_binding(records):
@@ -1827,22 +1613,11 @@ def run_binding(records):
     return {"varied": seen}
 
 
-# The stack both entry points read at both ends of a run, and the windows
-# every run's verdict requires: the weights and the stack (#716 round
-# eleven). An entry point that passes no weights window fails it.
+# The stack a run reads at both ends, and the windows every run's verdict
+# requires: the weights and the stack (#716 round eleven). A caller that
+# passes no weights window fails it.
 STACK_WINDOW = ("engine_libraries", "weaver_binaries", "toolchain")
 REQUIRED_WINDOWS = ("weights",) + STACK_WINDOW
-
-
-def cells_weights(reports):
-    """The weights window of a cells run: each cell's artifact read at the
-    cell's open and again at its close, `unchanged` only where every cell's
-    is and one cell at least ran. A window cannot see a swap made and
-    reverted between its two reads."""
-    each = {r["cell"]: (r.get("metadata") or {}).get("weights") for r in reports}
-    held = bool(each) and all(isinstance(e, dict) and e.get("status") == "unchanged"
-                              for e in each.values())
-    return {"status": "unchanged" if held else "not unchanged in every cell", "cells": each}
 
 
 def guessed(reading):
@@ -1867,11 +1642,10 @@ def release(cfg):
 
 
 def run_verdict(records, windows, interrupted=False):
-    """**The run-wide verdict**, which both entry points exit on and only
-    format (#716 round nine), as `verify_session` is the one session
-    verification. `records` are the sessions, matrix records or cell
-    reports, and `windows` the closing envelopes the entry point read, the
-    stack's and any more. Answers whether every session reproduced, one at
+    """**The run-wide verdict**, which the matrix exits on and only formats
+    (#716 round nine), as `verify_session` is the one session verification.
+    `records` are the run's session records, and `windows` the closing
+    envelopes it read, the weights, the stack's and any more. Answers whether every session reproduced, one at
     least having run and no interrupt having cut the run short, and the held
     fields the run cannot show held:
 
@@ -1898,189 +1672,10 @@ def run_verdict(records, windows, interrupted=False):
 def hold_invocations(rec, seen):
     """Every load of a run is its own unit invocation: one an earlier
     session read is a load that did not happen, and the session's verdict
-    says so. Both entry points hold each record to it as it closes (#716
-    round nine), `seen` carrying the run's invocations so far."""
+    says so. The matrix holds each record to it as it closes (#716 round
+    nine), `seen` carrying the run's invocations so far."""
     reused = [i for i in rec.get("invocations") or [] if i in seen]
     if reused:
         rec["verdict"] = f"a load read invocation {reused[0]}, which an earlier session read"
     seen.update(rec.get("invocations") or [])
     return rec
-
-
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--config", required=True)
-    ap.add_argument("--outdir", default=".")
-    args = ap.parse_args()
-    # Every value the run takes and every file it opens is checked before it
-    # writes or loads anything (#716 rounds seven and nine): the names that
-    # become filenames, each cell, its artifact against the declaration and
-    # opened, the loop digest, the files the run opens, and the stack's
-    # opening readings.
-    try:
-        if not args.outdir:
-            raise ValueError("--outdir is empty")
-        cfg = read_config(args.config)
-        config_values(cfg, CELL_CONFIG_KEYS)
-        if not isinstance(cfg.get("cells"), list) or not cfg["cells"]:
-            raise ValueError(f"the config's cells {cfg.get('cells')!r} is not a non-empty list")
-        for c in cfg["cells"]:
-            cell_values(c)
-        loop_digest(cfg)
-        for what, name in [("box", cfg["box"])] + [("cell name", c["name"]) for c in cfg["cells"]]:
-            if SAFE_NAME.fullmatch(name) is None:
-                raise ValueError(f"the {what} {name!r} is not a name a deposit file can carry")
-        # Each cell's deposit files carry its name, so two cells of one name
-        # would write one pair of files (#716 round ten).
-        names = [c["name"] for c in cfg["cells"]]
-        repeated = sorted({n for n in names if names.count(n) > 1})
-        if repeated:
-            raise ValueError(f"the cell names {repeated} repeat, and each cell deposits under its name")
-        # A backup already standing is a run that never restored the
-        # declaration, whose file is then not the operator's: refused rather
-        # than overwritten with the unrestored text (#716 round five).
-        backup = cfg["declaration"] + ".pre-cells"
-        if os.path.lexists(backup):
-            raise ValueError(f"a previous run left the declaration unrestored: its backup stands at"
-                             f" {backup}. Restore the declaration from it and remove it first.")
-        stale = stale_outputs(args.outdir, [f"report-{cfg['box']}.json"], "cell-*.ndjson") \
-            if os.path.isdir(args.outdir) else []
-        if stale:
-            raise ValueError(f"the outdir already holds a run's output: {', '.join(stale)}."
-                             " A run writes into a deposit no earlier run has written.")
-        held = run_files(cfg, rewrites=True)
-        standing = held.decode()
-        declaration_seed(standing)
-        for c in cfg["cells"]:
-            with_artifact(standing, c["artifact"])
-            openable(c["artifact"], f"cell {c['name']}'s artifact")
-        opening = opening_readings(cfg)
-        held_declaration(cfg, held)
-    except ValueError as e:
-        print(str(e), file=sys.stderr)
-        sys.exit(2)
-    # Read once for the run: the libraries cannot change under it, and
-    # `libggml-cuda` built for four architectures is 142 MiB to hash.
-    libraries, binaries, tools = (opening[k] for k in STACK_WINDOW)
-    os.makedirs(args.outdir, exist_ok=True)
-    # The backup and the restore are the bytes read at preflight, not a
-    # copy of the file as it stands (#716 round eleven).
-    with open(backup, "xb") as fh:
-        fh.write(held)
-    reports, interrupted = [], False
-    out = os.path.join(args.outdir, f"report-{cfg['box']}.json")
-
-    def deposit():
-        # **Written after every cell and after the closing read**, so a raise
-        # anywhere past the first cell costs the tail and never the record -
-        # defect 2 of #379. The old single write sat after the try and a
-        # seven-hour arm dying in the closing block would have left a
-        # restored declaration and no deposit.
-        with open(out, "w") as f:
-            json.dump(reports, f, indent=1)
-
-    try:
-        # The stack was read at preflight, one resolution for both
-        # collectors so the two fields cannot disagree about which SPU they
-        # measured.
-        print(f"engine libraries: {json.dumps(libraries)}", flush=True)
-        print(f"weaver binaries: {json.dumps(binaries)}", flush=True)
-        print(f"toolchain: {json.dumps(tools)}", flush=True)
-        # **An interrupt stops the cells and still closes the run**, as it
-        # stops the matrix's sessions (#716 round ten): the cell it cut short
-        # is recorded as `interrupted`, the window is read, the deposit is
-        # written, and the run exits 1.
-        invocations = set()
-        try:
-            for cell in cfg["cells"]:
-                report = hold_invocations(
-                    run_cell(cfg, cell, args.outdir, libraries, binaries, tools,
-                             declaration=standing), invocations)
-                reports.append(report)
-                deposit()
-                if report["verdict"] == INTERRUPTED:
-                    raise KeyboardInterrupt
-        except KeyboardInterrupt:
-            interrupted = True
-            print("interrupted", flush=True)
-
-        # **The provenance is read again after the cells have run**, the way
-        # the matrix reads it at its close. A run unloads and reloads the
-        # agent several times and can span an operator installing over it, so
-        # a build swapped mid-run would otherwise be recorded nowhere and the
-        # opening read asserted across the whole window.
-        # **Guarded rather than raw**, per defect 1 of #379: the old `!=`
-        # compared a failed closing read against a good opening one and
-        # printed PROVENANCE MOVED out of a transient failure to look. The
-        # lifted close claims `varied` only where both readings are sound
-        # and looked at the same places.
-        closing_spu, spu_note = closing_resolution(cfg)
-        closings = {
-            "engine_libraries": provenance_close(
-                cfg, lambda c: spu_note or engine_libraries(c, closing_spu),
-                libraries, "engine_libraries"),
-            "weaver_binaries": provenance_close(
-                cfg, lambda c: spu_note or weaver_binaries(c, closing_spu),
-                binaries, "weaver_binaries"),
-            "toolchain": provenance_close(
-                cfg, toolchain, tools, "toolchain", essence=close_whole),
-        }
-        # Carried on every cell rather than beside them, the reports being a
-        # list of cells and a reader of any one of them needing to know the
-        # window did not hold. **One envelope on every branch** - defect 4's
-        # shape half: a consumer reads `status`, never type-tests the field.
-        for report in reports:
-            report["metadata"]["provenance_at_close"] = closings
-        unquiet = {k: v["status"] for k, v in closings.items()
-                   if v["status"] != "unchanged"}
-        if unquiet:
-            print(f"PROVENANCE DID NOT HOLD QUIET: {json.dumps(unquiet)}",
-                  flush=True)
-        deposit()
-    finally:
-        with open(cfg["declaration"], "wb") as fh:
-            fh.write(held)
-        os.unlink(backup)
-        print("declaration restored", flush=True)
-        # The run's own last unload, as the matrix makes it (#716 round
-        # twelve).
-        released = release(cfg)
-        if released:
-            print(released, flush=True)
-
-    deposit()
-    print(f"\nreport: {out}")
-    for r in reports:
-        print(f"  cell {r['cell']}: {r['verdict']}")
-    refused = [r["cell"] for r in reports if r.get("loop_refused")]
-    if refused:
-        print(f"LOOP REFUSED on {len(refused)} cell(s): {', '.join(refused)}"
-              " - the box composed with a loop other than the one the config"
-              " declares, and those cells deposited no comparison", flush=True)
-    # **The window is part of the verdict** - defect 4's consequence half: a
-    # detected mid-run swap, or a close that could not certify the window,
-    # is not a reproduction result and must not exit 0. The verdict is
-    # `run_verdict`, the one both entry points exit on (#716 round nine), so
-    # the guessed binary and the one device binding are held here as the
-    # matrix holds them. `closings` is bound only when every cell ran, and
-    # an abort before it raises out of the `try` above.
-    #
-    # **A stably unreadable reader fails the gate, and that is a decision
-    # rather than an inheritance**, named per #399's review: a box whose
-    # config names no repo cannot read its toolchain at either end, and a
-    # run that cannot read its toolchain cannot certify that its window
-    # held. Every committed config names a repo. The alternative #379
-    # sketched - is_reading distinguishing a partial reading from an
-    # unusable one - stays open there for the reader that earns it.
-    reproduced, failing = run_verdict(reports, dict(closings, weights=cells_weights(reports)),
-                                      interrupted)
-    if interrupted:
-        print("interrupted - not a reproduction result", flush=True)
-    if reproduced and failing:
-        print("cells reproduced but these held fields did not hold:"
-              f" {', '.join(failing)} - not a reproduction result", flush=True)
-    sys.exit(0 if reproduced and not failing else 1)
-
-
-if __name__ == "__main__":
-    main()

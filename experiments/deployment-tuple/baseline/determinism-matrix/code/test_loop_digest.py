@@ -17,6 +17,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import confirm_cells as g  # noqa: E402
+import determinism_matrix as dm  # noqa: E402
 
 DECLARED = "aa" * 32
 OTHER = "bb" * 32
@@ -130,10 +131,11 @@ class _Served(BaseException):
     round ten), so it stops the drive at the gate."""
 
 
-def _drive_run_cell(composer_digest, served=None):
-    """`run_cell` with the box stubbed, up to the first turn. The load event
-    records the declaration file's digest as it stands at the load, as the
-    admin does, or `served` where a test gives one."""
+def _drive_cell(composer_digest, served=None):
+    """One cell of the matrix's cells mode, by `run_session`, with the box
+    stubbed, up to the first turn. The load event records the declaration
+    file's digest as it stands at the load, as the admin does, or `served`
+    where a test gives one."""
     saved = {n: getattr(g, n) for n in
              ("admin", "wait_socket", "gate_turn", "serving_device", "unit_invocation")}
     td = tempfile.mkdtemp()
@@ -142,13 +144,12 @@ def _drive_run_cell(composer_digest, served=None):
     # appends this cell's own load event, the way the harness does.
     trace = _trace(td, [_load("r-old", _file("alpha_loop.py", DECLARED))])
     decl = os.path.join(td, "k.yaml")
+    standing = "artifact: /a\nseed: 7\n"
     with open(decl, "w") as f:
-        f.write("artifact: /a\nseed: 7\n")
-    out = os.path.join(td, "out")
-    os.makedirs(out)
-    cfg = {"box": "t", "agent": "karl", "declaration": decl, "trace": trace,
+        f.write(standing)
+    cfg = {"agent": "karl", "declaration": decl, "trace": trace,
            "gate_socket": "/s", "admin_bin": "/bin/true", "admin_config": td,
-           "repo": td, "build_flags": "x", "loop_sha256": DECLARED}
+           "repo": td, "loop_sha256": DECLARED}
     cell = {"name": "c1", "precision": "q8", "artifact": "/a"}
     steps = []
 
@@ -176,45 +177,43 @@ def _drive_run_cell(composer_digest, served=None):
         outcome = "returned"
         report = None
         try:
-            report = g.run_cell(cfg, cell, out, {}, {}, {})
+            report = dm.run_session(cfg, next(dm.cell_sessions(standing, [cell])))
         except _Served:
             outcome = "served"
-        deposits = [n for n in os.listdir(out) if n.startswith("cell-")]
-        return outcome, report, steps, deposits
+        return outcome, report, steps
     finally:
         for n, fn in saved.items():
             setattr(g, n, fn)
 
 
-def test_run_cell_refuses_before_a_turn_is_served():
-    outcome, report, steps, deposits = _drive_run_cell(OTHER)
+def test_a_cell_refuses_before_a_turn_is_served():
+    outcome, report, steps = _drive_cell(OTHER)
     assert outcome == "returned", outcome
     assert report["verdict"].startswith("loop refused at the source load"), report
     refused = report["loop_refused"]
     assert refused["declared"] == DECLARED and refused["recorded"] == OTHER
     assert refused["half"] == "source" and refused["run"] == "r-cell"
-    assert report["turns"] == [] and "source_run" not in report
-    assert deposits == [], deposits
+    assert report["turns"] == [] and report["source_run"] is None
     # the finally still released the device
     assert steps[-1] == "unload", steps
 
 
-def test_run_cell_holds_each_load_to_the_declaration_it_wrote():
+def test_a_cell_holds_each_load_to_the_declaration_it_wrote():
     # #716 round six: the standalone entry point checked the loop and never
     # the declaration, so a declaration changed between the rewrite and a
     # load served another artifact or seed on both halves. Perturbation:
-    # restore the bare assert_loop in run_cell, and the cell is served.
-    outcome, report, steps, deposits = _drive_run_cell(DECLARED, served="e" * 64)
+    # restore the bare assert_loop in load_held, and the cell is served.
+    outcome, report, steps = _drive_cell(DECLARED, served="e" * 64)
     assert outcome == "returned", outcome
     assert report["verdict"].startswith("the source load served another declaration"), report["verdict"]
-    assert report["turns"] == [] and deposits == [], (report["turns"], deposits)
+    assert report["turns"] == [], report["turns"]
 
 
-def test_run_cell_proceeds_on_the_declared_digest():
+def test_a_cell_proceeds_on_the_declared_digest():
     """The same drive with the digest matching reaches the gate, which is
     the perturbation half: remove the check and the refusing test above
     lands here instead."""
-    outcome, report, steps, deposits = _drive_run_cell(DECLARED)
+    outcome, report, steps = _drive_cell(DECLARED)
     assert outcome == "served", outcome
     assert steps == ["unload", "load", "unload"], steps
 

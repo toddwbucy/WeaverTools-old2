@@ -145,7 +145,7 @@ def session(agent, depth=2, declared_seed=None, declaration_sha=None, cfg=CFG):
     try:
         for k in saved:
             setattr(base, k, getattr(agent, k))
-        return dm.run_session(cfg, dm.PROMPTS[0], depth, 1, declared_seed, declaration_sha)
+        return dm.run_session(cfg, dm.matrix_session(dm.PROMPTS[0], depth, 1, declared_seed), declaration_sha)
     finally:
         for k, v in saved.items():
             setattr(base, k, v)
@@ -395,16 +395,17 @@ def run_main(agent, device=None, hours="0.00003", extra=(), prepare=None, inspec
     return code, records, summary_read
 
 
-def cells_main(tmp, change=None, declared=None, prepare=None, fakes=None, outdir=None):
-    """The cross-precision `main` whole on a full config in `tmp`, the stack
-    faked and the admin recording its verbs: the exit code, the verbs and
-    what the run printed. `fakes` replaces more of confirm_cells."""
+def cells_main(tmp, change=None, declared=None, prepare=None, fakes=None, outdir=None, dm_fakes=None):
+    """The matrix's `--cells` mode whole on a full config in `tmp`, the stack
+    faked and the admin recording its verbs. Answers the exit code, the
+    verbs, what the run printed, its records and its summary, the last two
+    None where it wrote none. `fakes` replaces more of confirm_cells and
+    `dm_fakes` of the matrix."""
     import io
     decl = os.path.join(tmp, "karl.yaml")
     with open(decl, "w") as fh:
         fh.write(declared if declared is not None else f"artifact: {MODEL}\nseed: {SEED}\n")
-    cfg = dict(CFG, box="thinkpad", build_flags="x", declaration=decl,
-               cells=[{"name": "q8", "precision": "q8", "artifact": MODEL}])
+    cfg = dict(CFG, declaration=decl, cells=[{"name": "q8", "precision": "q8", "artifact": MODEL}])
     for k, v in (change or {}).items():
         if v is None:
             cfg.pop(k, None)
@@ -418,19 +419,29 @@ def cells_main(tmp, change=None, declared=None, prepare=None, fakes=None, outdir
     called, out = [], io.StringIO()
     every = dict(stack_fakes(), admin=lambda c, v: called.append(v) or answer(v))
     every.update(fakes or {})
-    argv = sys.argv
+    outdir = outdir if outdir is not None else os.path.join(tmp, "out")
+    argv, saved = sys.argv, {k: getattr(dm, k) for k in (dm_fakes or {})}
     try:
-        sys.argv = ["confirm_cells.py", "--config", path, "--outdir",
-                    outdir if outdir is not None else os.path.join(tmp, "out")]
+        for k, v in (dm_fakes or {}).items():
+            setattr(dm, k, v)
+        sys.argv = ["determinism_matrix.py", "--config", path, "--outdir", outdir, "--cells", "--hours", "1"]
         with patched(every), contextlib.redirect_stdout(out):
             try:
-                base.main()
+                dm.main()
                 code = 0
             except SystemExit as e:
                 code = e.code
     finally:
         sys.argv = argv
-    return code, called, out.getvalue()
+        for k, v in saved.items():
+            setattr(dm, k, v)
+    records = summary = None
+    try:
+        records = [json.loads(line) for line in open(os.path.join(outdir, "matrix.jsonl"))]
+        summary = json.load(open(os.path.join(outdir, "summary.json")))
+    except (OSError, ValueError):
+        pass
+    return code, called, out.getvalue(), records, summary
 
 
 class Reloading(Agent):

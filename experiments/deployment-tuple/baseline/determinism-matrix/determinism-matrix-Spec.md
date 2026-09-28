@@ -102,6 +102,15 @@ A run is bounded by wall clock and not by a count: it finishes the session in ha
 and stops once its hours are spent, so a run cut short by the clock still covers the
 matrix rather than the front of it.
 
+**The cells mode is the same run over other sessions.** With `--cells` the run serves
+the config's cells, each once: the cross-precision protocol, one artifact at one
+precision per cell, the protocol's two pinned turns, one short and one longer, under the
+declaration with that cell's artifact and everything else as the operator wrote it. The
+schedule is data, the sessions it yields, and nothing else differs: one main, one
+session loop and one exit, per the operator's ruling of 2026-09-27. A cell's record is
+labelled by its name, precision and artifact, and the summary counts cells as
+`by_cell`. `confirm_cells.py` has no entry point of its own.
+
 ## 3. The session
 
 **One session is serve, unload, reload, reissue, compare.** In order:
@@ -122,8 +131,8 @@ prints its refusal and exits 1, and an answer counts only where the two agree. A
 must answer the state `idle`. The unload between the halves and the unload that closes
 the session must answer `unloaded`, and the unload that opens it `unloaded` or the
 refusal `no_residency`, nothing resident being a clean start. Any other answer is a
-fault naming it, the first fault of a session standing. The unload each entry point
-makes as its run ends is read too, and a refusal is logged as the agent perhaps still
+fault naming it, the first fault of a session standing. The unload the run makes as
+it ends is read too, and a refusal is logged as the agent perhaps still
 loaded, since no session's verdict rests on it.
 
 **A turn is compared on eight fields**, per `CHECKS`: the rendered prompt, the derived
@@ -150,8 +159,8 @@ anything but a string, a source turn the replay does not carry, a check a record
 no value for, source or replay turns split across runs, under a run the gate names by
 anything but a string, or short of the depth, a replay read short, a seed mismatch under
 section 4, an exception, recorded as `error: <type>: <message>`, or an interrupt,
-recorded as `interrupted`. Both entry points record each of these in the one session
-path, so neither loses a session to a raise. A replay read short is the sink one turn
+recorded as `interrupted`. The one session path records each of these, so no session
+is lost to a raise. A replay read short is the sink one turn
 behind and is kept apart from DIVERGED, which is the strongest negative the harness
 emits. Faults are counted apart from both verdicts, as the summary's `errors`, so a
 run's divergence count is never inflated by sessions that were not compared.
@@ -207,9 +216,10 @@ close is kept as a record and not counted. The summary carries these as `weights
 `engine_libraries`, `weaver_binaries`, `toolchain` and `serving_device`, the window read
 as `serving_device_journal_window`, and the counts as `sessions`, `reproduced`,
 `diverged` and `errors`, the faults, with the verdicts by prompt character and by
-declared seed as `by_character` and `by_seed`, the schedule as `declared_seed_schedule`,
-and the first twenty divergences and faults as `diverged_detail` and `error_detail`. The
-keys are the ones the earlier deposits' summaries carry.
+declared seed as `by_character` and `by_seed`, the verdicts by cell in a cells run as
+`by_cell`, the schedule as `declared_seed_schedule`, and the first twenty divergences
+and faults as `diverged_detail` and `error_detail`. The keys are the ones the earlier
+deposits' summaries carry, `by_cell` aside, which the fold added.
 
 **Every load is held to the session's declaration and loop.** Each load event records
 the digest of the declaration it served, the sha256 of the declaration file, and the
@@ -221,46 +231,67 @@ the run read at preflight, or the bytes it wrote for the session, by the digest 
 bytes and never by a read of the file back, and the disk is held to them before the run
 starts. **Every check a session makes is one function**, `verify_session` in
 `confirm_cells.py`: the load, declaration, loop and device holds, the recorded seed,
-absence, the comparison and the surplus. Both entry points call it, the matrix's
-`run_session` and the cross-precision protocol's `run_cell`, and neither verifies
-anything outside it, so a check cannot hold on one path and be missing from the other.
+absence, the comparison and the surplus. The one session function, the matrix's
+`run_session`, calls it for every session in either mode and verifies nothing outside
+it, so no check can hold for one kind of session and be missing from another.
 It records a raise from its closing unload as it records any other, an interrupt there
 as `interrupted` and anything else as a fault. A config naming no loop leaves the loop
 unchecked.
 
 **The run-wide verdict is one function too**, `run_verdict` in `confirm_cells.py`: at
 least one session ran and every session reproduced, every window field reads
-`unchanged`, the weights window and the stack's three required of both, no binary was
-resolved by a guess, and the sessions read one device binding. Both entry points exit on
-it and only format it. The invocation rule, that no invocation recurs in a run, is held
-on each record as it closes by `hold_invocations`, which both entry points call.
+`unchanged`, the weights window and the stack's three required, no binary was resolved
+by a guess, and the sessions read one device binding. The one main exits on it and only
+formats it. The invocation rule, that no invocation recurs in a run, is held on each
+record as it closes by `hold_invocations`, which the one session loop calls.
 
 **Each tuple field the probe holds, and how:**
 
 | Field | Held how | Counted at the exit |
 | --- | --- | --- |
-| weights | the artifact's path held per load by the declaration's digest, and its bytes read at both ends of the window: the run's for the matrix, each cell's for the cross-precision protocol | yes, `weights` must read `unchanged`, in every cell |
+| weights | the artifact's path held per load by the declaration's digest, and its bytes read at both ends of the run's window, every cell's artifact in a cells run | yes, `weights` must read `unchanged` |
 | precision | fixed by the weights hash | yes, with the weights |
 | device | each load's binding read by its unit invocation as it stands, both halves on one under two invocations, and every session on the same one | yes, `serving_device` must be one binding |
 | kernel stack | the engine libraries, the binaries and the toolchain read at both ends | yes, each must read `unchanged` |
 | batch composition | recorded, not held: one caller and one turn at a time by construction, and the record carries nothing a second caller would change | no |
 | sampler and seed | the declared seed on every session's recorded seed, the replay's equal to the source's, the knobs compared per turn and held per load by the declaration's digest | yes, every session's verdict |
 
-**The exit code is the whole claim.** A run of either entry point exits 0 only where it
-ran a session, every session reproduced, and every field counted above held, and
+**The exit code is the whole claim.** A run in either mode exits 0 only where it ran a
+session, every session reproduced, and every field counted above held, and
 otherwise 1, with a log line naming the fields that did not hold. A field read only at
 the two ends is held against a change that stands at the close, not one undone within
 the run, and the per-load declaration digest is what holds the declared fields between.
 
-**A window cannot see a swap made and reverted between its two reads.** The weights and
-the stack are read at the ends of a window, the run's or the cell's, so bytes replaced
-for one load and put back before the close read as `unchanged`. The declaration's
-digest binds each load to the artifact's path and not to its bytes. The instrument that
-would close the gap is a per-load hash of the weights and the stack, read at each load
-and held like the declaration, and this probe has not bought it.
+**What an exit 0 certifies.** Every session's replay, served by a fresh process on the
+declared stack, matched its source on all eight `CHECKS` fields, and every field counted
+above held across the run's window. Each of those facts rests on evidence the harness
+read itself: the admin's answers with their exit status, each load's unit invocation and
+the device its journal names, each load event's declaration and loop digests, the
+recorded seeds and turns from the trace, and the stack and the weights by sha256 at both
+ends. None rests on a party's word that a step happened.
+
+**It guards against accidental change.** A build or an install landing mid-run, a
+deposit an earlier run left, a config that is wrong, malformed or names a relative path,
+a step the admin refused or that failed, a value a record does not carry, and an
+interrupted run each make the run refuse at preflight or exit 1, as the sections above
+and section 7 say.
+
+**It does not guard against a deliberate party on the operator's box racing the run.**
+An edit made to a file between two of the harness's reads of it, or an artifact swapped
+for one load and restored before the window's closing read, is outside what an exit 0
+claims. A window cannot see a swap made and reverted between its two reads, and the
+declaration's digest binds each load to the artifact's path and not to its bytes. A
+finding that needs such a party is declined by citing this section. The instrument that
+would buy the guarantee is a per-load hash of the weights and the stack, read at each
+load and held like the declaration, and this probe has not bought it.
+
+**The boundary is this measurement's alone.** The custody rule for privileged steps,
+that no privileged step acts on a copy of a fact without verified evidence, is the
+Blackwell probe's, in `blackwell-probe-Spec` section 5, and this section leaves it
+unchanged.
 
 **A run killed outright writes no summary.** An interrupt ends the run cleanly and still
-writes it, in either entry point: the session it cut short is recorded as `interrupted`,
+writes it, in either mode: the session it cut short is recorded as `interrupted`,
 the window is read at the close, and the run exits 1, since a session it began did not
 complete. A hangup, which is what closing the operator's terminal sends, ends the
 process before it does, and the per-session record written as each session closes is
@@ -316,14 +347,14 @@ re-read the stack and found it unchanged.
 The seeds, per section 4, `--hours`, which must be finite, positive and a deadline the
 clock reaches, the config's `loop_sha256`, which must be 64 lowercase hex digits, and
 the declaration's artifact and any `--artifact` are refused by name, and the outdir is
-made only once every check has passed. The cross-precision entry point checks its box
-and cell names, which become filenames, and each cell's artifact the same way, and it
-requires `box`, `build_flags` and each cell's name, precision and artifact as non-empty
-strings, since it reads each into every cell's record. A refused run exits 2.
+made only once every check has passed. A cells run checks each cell's artifact the same
+way, and requires `cells` to be a non-empty list of cells whose name, precision and
+artifact are non-empty strings, the names plain and none repeated, since each labels its
+cell's record and its weights reading. A refused run exits 2.
 
 **Every file a run opens is opened at preflight too.** The config must parse as a JSON
-object. The artifact is opened and hashed as the weights' opening reading, and each
-cell's artifact is opened. The declaration is read, and where the run rewrites it, it is
+object. The artifact, or in a cells run each cell's, is opened and hashed as the
+weights' opening reading. The declaration is read, and where the run rewrites it, it is
 opened for writing and its directory must be writable for the backup. The admin binary
 must be a regular file with an execute bit, since it runs under `sudo`, and the
 repository a directory. The stack's opening readings are taken there, the admin
@@ -342,9 +373,8 @@ every binary the admin configuration names are refused at preflight unless absol
 and a library `ldd` names by any other path is unreadable. The paths only the harness
 opens, the declaration file, `admin_bin`, `repo` and the outdir, are its own.
 
-**Every file a run writes is its own.** The matrix writes three fixed names. The
-cross-precision entry point writes its report under the box's name and each cell's two
-trace files under the cell's name, so two cells of one name are refused at preflight.
+**Every file a run writes is its own.** A run in either mode writes three fixed names
+into its outdir, and its declaration backup beside the declaration.
 
 **A run writes into a deposit no earlier run wrote.** An outdir already holding
 `matrix.jsonl`, `matrix.log` or `summary.json` is refused before anything is written,
@@ -396,4 +426,6 @@ and the seed and W0 runs of 2026-09-08. On thinkpad: 2026-08-27, 2026-08-29 at
 `616d0d4` and 2026-08-29 on the basic loop. The clock-state driver, which locks the
 card's clock before every load, stays in `weaver-experiments` with the result it
 produced and joins this probe by its own act. How to run the probe on a box is
-`code/README.md`'s.
+`code/README.md`'s, as is its file list: `determinism_matrix.py`, the one entry point,
+`confirm_cells.py`, the harness it imports, with no entry point of its own, and the
+tests.

@@ -12,7 +12,7 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import determinism_matrix as dm  # noqa: E402
-from test_recorded_seed import SEED, Agent, Reloading, cells_main, run_main, session  # noqa: E402
+from test_recorded_seed import CFG, SEED, Agent, Reloading, cells_main, run_main, session  # noqa: E402
 
 base = dm.base
 BOUNDARY = "ggml_cuda_init: found 1 CUDA devices (Total VRAM: 24075 MiB):"
@@ -142,16 +142,17 @@ def test_an_unrestored_declaration_is_refused_and_a_restored_one_leaves_no_backu
     assert after == {"backup": False, "seed": SEED}, after
 
 
-def test_the_cells_deposit_and_backup_refuse_an_earlier_run():
-    # The same class in confirm_cells: a report or a cell file an earlier
-    # run wrote, or its declaration backup, refuses before anything runs.
-    # Perturbation: drop either refusal, and the admin is called.
-    for stand in ("report-thinkpad.json", "cell-q8-source.ndjson", "BACKUP"):
+def test_a_cells_run_refuses_an_earlier_runs_deposit_and_backup():
+    # The same class in the cells mode, whose deposit is the matrix's: a
+    # record or summary an earlier run wrote, or its declaration backup,
+    # refuses before anything runs. Perturbation: drop either refusal, and
+    # the admin is called.
+    for stand in ("matrix.jsonl", "summary.json", "BACKUP"):
         with tempfile.TemporaryDirectory() as tmp:
             def prepare(tmp, decl, stand=stand):
-                with open(decl + ".pre-cells" if stand == "BACKUP" else os.path.join(tmp, stand), "w") as fh:
+                with open(decl + ".pre-matrix" if stand == "BACKUP" else os.path.join(tmp, stand), "w") as fh:
                     fh.write("x")
-            code, called, _ = cells_main(tmp, prepare=prepare, outdir=tmp)
+            code, called, *_ = cells_main(tmp, prepare=prepare, outdir=tmp)
             assert code == 2 and called == [], (stand, code, called)
 
 
@@ -249,31 +250,32 @@ def test_a_surplus_replay_turn_is_a_fault_not_a_divergence():
 
 
 def drive_cell(agent, tmp, artifact="/m.gguf"):
-    """`run_cell` whole on the fake agent: the cell writes its declaration,
-    loads, serves, reloads, reissues and compares, and the report returns."""
+    """One cell of the matrix's cells mode, run whole by `run_session` on the
+    fake agent: the session writes the cell's declaration, loads, serves,
+    reloads, reissues and compares, and its record returns."""
     decl = os.path.join(tmp, "karl.yaml")
+    standing = f"artifact: {artifact}\nseed: {SEED}\n"
     with open(decl, "w") as fh:
-        fh.write(f"artifact: {artifact}\nseed: {SEED}\n")
-    cfg = {"box": "t", "agent": "karl", "declaration": decl, "trace": os.path.join(tmp, "trace"),
-           "gate_socket": "/s", "admin_bin": "/bin/true", "admin_config": tmp, "repo": tmp,
-           "build_flags": "x"}
+        fh.write(standing)
+    cfg = dict(CFG, declaration=decl, trace=os.path.join(tmp, "trace"))
     names = ("admin", "wait_socket", "gate_turn", "await_turns", "newest_load", "serving_device",
-             "unit_invocation", "read_runs")
+             "unit_invocation")
     saved = {n: getattr(base, n) for n in names}
     try:
-        for n in names[:-1]:
+        for n in names:
             setattr(base, n, getattr(agent, n))
-        base.read_runs = lambda path, keep=None: ([], {})
-        return base.run_cell(cfg, {"name": "c", "precision": "q6", "artifact": artifact}, tmp, {}, {}, {})
+        cell = {"name": "c", "precision": "q6", "artifact": artifact}
+        return dm.run_session(cfg, next(dm.cell_sessions(standing, [cell])))
     finally:
         for n, fn in saved.items():
             setattr(base, n, fn)
 
 
-def test_the_standalone_entry_point_holds_both_loads_to_its_declaration():
-    # #716 round six: run_cell checked only the loop after each load. Both
-    # loads now go through load_held. Perturbation: restore the bare
-    # assert_loop at either site, and that half's case reads REPRODUCED.
+def test_a_cell_holds_both_loads_to_its_declaration():
+    # #716 round six: the standalone run_cell checked only the loop after
+    # each load. A cell's loads go through load_held as every session's do.
+    # Perturbation: restore the bare assert_loop at either site, and that
+    # half's case reads REPRODUCED.
     import hashlib
     for served, half in [(("e" * 64, None), "source"), ((None, "e" * 64), "replay")]:
         with tempfile.TemporaryDirectory() as tmp:

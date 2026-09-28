@@ -1,5 +1,5 @@
 """Every admin answer is read, its exit status and its kind agreeing, at
-every site of both entry points (#716 round twelve).
+every site of a session, in both modes (#716 round twelve).
 
 Run with `python3 test_round_twelve.py` or under pytest.
 """
@@ -46,17 +46,17 @@ class Refusing(Reloading):
 
 
 def through_both(site, said):
-    """The first session's verdict and the exit code through each exit."""
+    """The first session's verdict and the exit code in each mode, the
+    matrix's and the cells'."""
     code, records, _ = run_main(Refusing(site, said))
-    cell_code, _, printed = cells_run(Refusing(site, said))
-    first = next(line for line in printed.splitlines() if line.startswith("  cell q8:"))
-    return (records[0]["verdict"], code), (first[len("  cell q8: "):], cell_code)
+    cell_code, _, _, cell_records, _ = cells_run(Refusing(site, said))
+    return (records[0]["verdict"], code), (cell_records[0]["verdict"], cell_code)
 
 
-def test_each_refusal_at_each_site_is_a_fault_through_both_exits():
+def test_each_refusal_at_each_site_is_a_fault_in_both_modes():
     # Codex round eleven's thread: every unload answer was dropped. Each of
     # the admin's refusals, at each of a session's five calls, is a fault
-    # naming it on both paths, except nothing resident at the opening
+    # naming it in both modes, except nothing resident at the opening
     # unload, which is a clean start. Perturbation: drop the check at any
     # site, and its cases read REPRODUCED and exit 0.
     for site in SITES:
@@ -103,10 +103,10 @@ def test_admin_carries_the_exit_status_beside_the_answer():
         base.sh = saved
 
 
-def test_the_runs_last_unload_is_read_on_both():
-    # The unload each main makes as it ends: its answer is read, and a
+def test_the_runs_last_unload_is_read_in_both_modes():
+    # The unload the main makes as a run ends: its answer is read, and a
     # refusal says the agent may still be loaded. No session rests on it.
-    # Perturbation: drop release from either main, and its note is gone.
+    # Perturbation: drop release from the main, and its note is gone.
     class RefusingLast(Reloading):
         def __init__(self):
             Reloading.__init__(self)
@@ -128,7 +128,7 @@ def test_the_runs_last_unload_is_read_on_both():
     try:
         code, records, _ = run_main(agent, inspect=read_log)
         agent.last = False
-        cell_code, _, printed = cells_run(agent)
+        cell_code, _, printed, *_ = cells_run(agent)
     finally:
         base.release = real
     note = "the run's closing unload was refused, the agent may still be loaded"

@@ -36,6 +36,14 @@ Run:
 
 Wall-clock bounded: it finishes the session in hand and stops, so an
 overnight run ends cleanly rather than mid-cell.
+
+**One entry point, and the sessions it runs are data** (#716, on the
+operator's ruling of 2026-09-27). `--cells` runs the config's cells, each
+once, the cross-precision protocol: one artifact at one precision per
+cell, served one short and one longer turn. Without it the run sweeps the
+prompt-by-depth matrix until its deadline. Both are the same main, the
+same session loop and the same exit, differing only in the sessions the
+schedule yields.
 """
 
 import argparse
@@ -134,7 +142,7 @@ def seed_for(schedule, iteration, cell_index):
 
 
 # The declaration's seed, read as a scalar within the sampler's u64 by the
-# one reader both entry points share (#716 round eight).
+# one reader every session's seed is read by (#716 round eight).
 standing_seed = base.declaration_seed
 
 
@@ -198,6 +206,62 @@ DEPTHS = [2, 8, 16, 32]
 # its own.
 FILLER = "In one short sentence, name a colour and nothing else."
 
+# The cross-precision protocol's two pinned turns, one short and one
+# longer, served in every cell, as its earlier deposits served them.
+CELL_TEXTS = (
+    "Introduce yourself in exactly one short sentence.",
+    "Write a detailed step-by-step explanation of how a binary search "
+    "works, then implement it in Python with comments, then walk "
+    "through an example run on a list of twenty numbers.",
+)
+
+
+def matrix_session(probe, depth, iteration, declared_seed=None, declaration=None):
+    """One session of the prompt-by-depth matrix, as data: the labels its
+    record carries, its texts, which of them is the probe, the seed it is
+    declared under, and the declaration text written for it where the run
+    rewrites one per session. The probe sits last, so its ordinal is the
+    depth and everything before it is the state the depth exists to
+    build."""
+    key, character, text = probe
+    return {"label": {"probe": key, "character": character, "depth": depth,
+                      "iteration": iteration},
+            "name": f"i{iteration} {key}/d{depth}",
+            "texts": [FILLER] * (depth - 1) + [text], "probe": text,
+            "declared_seed": declared_seed, "declaration": declaration}
+
+
+def matrix_sessions(standing, seed, schedule):
+    """The matrix's sessions, sweep after sweep without end, the run's
+    deadline stopping it. Sweeps rather than repeats: every combination is
+    seen once before any is seen twice, so a run cut short by the clock
+    still covers the matrix rather than the front of it."""
+    iteration = 0
+    while True:
+        iteration += 1
+        cell_index = 0
+        for depth in DEPTHS:
+            for probe in PROMPTS:
+                declared_seed = session_seed(schedule, seed, iteration, cell_index)
+                cell_index += 1
+                # Under a schedule the shared path writes the session's
+                # declaration and holds its loads to that digest.
+                yield matrix_session(probe, depth, iteration, declared_seed,
+                                     with_declared_seed(standing, declared_seed)
+                                     if schedule is not None else None)
+
+
+def cell_sessions(standing, cells):
+    """The cells' sessions, each cell once: the declaration with the cell's
+    artifact and everything else as the operator wrote it, under its own
+    seed, serving the protocol's two turns."""
+    for cell in cells:
+        declaration = base.with_artifact(standing, cell["artifact"])
+        yield {"label": {"cell": cell["name"], "precision": cell["precision"],
+                         "artifact": cell["artifact"], "iteration": 1},
+               "name": f"cell {cell['name']}", "texts": list(CELL_TEXTS), "probe": None,
+               "declared_seed": base.declaration_seed(declaration), "declaration": declaration}
+
 
 def entropies_of(turn):
     e = base.pointer(turn["payload"]["model.measurement"], "/entropies")
@@ -221,28 +285,21 @@ def entropies_of(turn):
     return summary
 
 
-def run_session(cfg, probe, depth, iteration, declared_seed=None, declaration_sha=None,
-                declaration=None):
-    """One matrix cell: serve, unload, reload, reissue, compare, by the one
-    session verification both entry points share (`confirm_cells.
-    verify_session`, #716 round eight). This builds the matrix cell's texts
-    and its record and formats the compared turns, and verifies nothing of
-    its own. `declaration`, where the run rewrites it, is the session's
-    declaration text, written by the shared path. The agent is left unloaded
-    whichever path this takes, and a raise is the session's verdict, recorded
-    by the shared path on both entry points (#716 round ten).
+def run_session(cfg, session, declaration_sha=None):
+    """One session, a matrix cell or a cell of the cross-precision protocol:
+    serve, unload, reload, reissue, compare, by `confirm_cells.
+    verify_session`, the one session verification (#716 round eight). This
+    builds the session's record from its labels and formats the compared
+    turns, and verifies nothing of its own. `declaration_sha` is the digest
+    of the declaration the run holds, for a session that writes none of its
+    own. The agent is left unloaded whichever path this takes, and a raise
+    is the session's verdict, recorded by the shared path (#716 round ten).
     """
-    key, character, text = probe
-    rec = {"probe": key, "character": character, "depth": depth,
-           "iteration": iteration, "verdict": None, "turns": [],
-           "declared_seed": declared_seed, "recorded_seed": None,
-           "replay_recorded_seed": None, "source_run": None, "replay_run": None}
-
-    # The probe sits last, so its ordinal is the depth and everything
-    # before it is the state the depth exists to build.
-    texts = [FILLER] * (depth - 1) + [text]
-    pairs, _ = base.verify_session(cfg, texts, rec, declared_seed, declaration_sha,
-                                   declaration=declaration)
+    rec = dict(session["label"], verdict=None, turns=[],
+               declared_seed=session["declared_seed"], recorded_seed=None,
+               replay_recorded_seed=None, source_run=None, replay_run=None)
+    pairs, _ = base.verify_session(cfg, session["texts"], rec, session["declared_seed"],
+                                   declaration_sha, declaration=session["declaration"])
     for st, rt, checks in pairs:
         # The emission's digest rides beside the verdict so a reading across
         # sessions, which is what a varied seed is read by, needs no second
@@ -250,7 +307,7 @@ def run_session(cfg, probe, depth, iteration, declared_seed=None, declaration_sh
         emission = base.pointer(st["payload"]["model.output"], "/emission")
         rec["turns"].append({
             "turn": st["turn"],
-            "is_probe": st["text"] == text,
+            "is_probe": st["text"] == session["probe"],
             "matched": all(c["match"] for c in checks),
             "failed_checks": [c["check"] for c in checks if not c["match"]],
             "entropy": entropies_of(st),
@@ -273,6 +330,9 @@ def main():
                     help="comma-separated declared seeds; the declaration's seed"
                          " line is rewritten before each session, rotating"
                          " through the list, and restored on exit")
+    ap.add_argument("--cells", action="store_true",
+                    help="run the config's cells, each once, in place of the"
+                         " prompt-by-depth matrix")
     args = ap.parse_args()
     # **Preflight, whole, before the run writes or loads anything** (#716
     # round seven): every value checked against its consumer's domain, the
@@ -288,6 +348,11 @@ def main():
         hours_value(args.hours)
         if args.seed_schedule is not None:
             schedule = parse_seed_schedule(args.seed_schedule)
+        # A cell names its own artifact and runs under the declaration's
+        # seed, so neither override has a meaning for a cells run.
+        if args.cells and (args.artifact is not None or schedule is not None):
+            raise ValueError("--cells takes neither --artifact nor --seed-schedule:"
+                             " each cell names its artifact and runs under the declaration's seed")
     except ValueError as e:
         refuse(str(e))
 
@@ -297,6 +362,8 @@ def main():
         cfg = base.read_config(args.config)
         base.config_values(cfg)
         base.loop_digest(cfg)
+        if args.cells:
+            base.cells_values(cfg)
     except ValueError as e:
         refuse(str(e))
     # A run that rewrites the declaration leaves this backup until it has
@@ -310,7 +377,8 @@ def main():
 
     # The run rewrites the declaration where it overrides the artifact or
     # the seed, and only there.
-    rewrites = args.artifact is not None or schedule is not None
+    # A cells run rewrites the declaration for every cell.
+    rewrites = args.cells or args.artifact is not None or schedule is not None
     try:
         # The files the run opens, the declaration among them, checked as
         # the run will use them (#716 round nine).
@@ -333,7 +401,17 @@ def main():
         # The declaration's own seed and artifact, read on every path so a
         # run without a schedule holds them too.
         seed = standing_seed(standing)
-        artifact = artifact_of(standing)
+        # The artifacts the run reads as its weights window, keyed as the
+        # reading carries them: the declaration's one, or each cell's by the
+        # cell's name, each cell's declaration checked here as the session
+        # will write it.
+        if args.cells:
+            artifacts = {}
+            for c in cfg["cells"]:
+                base.declaration_seed(base.with_artifact(standing, c["artifact"]))
+                artifacts[c["name"]] = c["artifact"]
+        else:
+            artifacts = artifact_of(standing)
     except ValueError as e:
         refuse(str(e))
 
@@ -351,7 +429,7 @@ def main():
     # cannot read, or a stack reading the exit could never count held, is
     # refused here rather than failing every session or the run's exit.
     try:
-        weights_open = base.weights(artifact)(cfg)
+        weights_open = base.weights(artifacts)(cfg)
         if not base.is_reading(weights_open):
             raise ValueError(f"the artifact cannot be read: {json.dumps(weights_open)}")
         opening = base.opening_readings(cfg)
@@ -366,7 +444,7 @@ def main():
     # cannot reach back past this run.
     run_started = time.strftime(
         "%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 1))
-    results, iteration, invocations, interrupted = [], 0, set(), False
+    results, invocations, interrupted = [], set(), False
     logpath = os.path.join(args.outdir, "matrix.log")
 
     def log(msg):
@@ -375,8 +453,13 @@ def main():
         with open(logpath, "a") as fh:
             fh.write(line + "\n")
 
-    log(f"matrix start, deadline in {args.hours}h, "
-        f"{len(PROMPTS)} prompts x {len(DEPTHS)} depths")
+    if args.cells:
+        sessions = cell_sessions(standing, cfg["cells"])
+        log(f"matrix start, deadline in {args.hours}h, {len(cfg['cells'])} cells")
+    else:
+        sessions = matrix_sessions(standing, seed, schedule)
+        log(f"matrix start, deadline in {args.hours}h, "
+            f"{len(PROMPTS)} prompts x {len(DEPTHS)} depths")
     if schedule is not None:
         log(f"declared seed schedule: {schedule}")
     if rewrites:
@@ -403,42 +486,28 @@ def main():
         log(f"weaver binaries: {json.dumps(binaries)}")
         log(f"toolchain: {json.dumps(tools)}")
 
-        # Sweeps rather than repeats: every combination is seen once
-        # before any is seen twice, so a run cut short by the clock still
-        # covers the matrix rather than the front of it.
-        while time.time() < deadline:
-            iteration += 1
-            cell_index = 0
-            for depth in DEPTHS:
-                for probe in PROMPTS:
-                    if time.time() >= deadline:
-                        break
-                    declared_seed = session_seed(schedule, seed, iteration, cell_index)
-                    # Under a schedule the shared path writes the session's
-                    # declaration and holds its loads to that digest.
-                    declaration = (with_declared_seed(standing, declared_seed)
-                                   if schedule is not None else None)
-                    cell_index += 1
-                    started = time.time()
-                    rec = run_session(cfg, probe, depth, iteration, declared_seed,
-                                      standing_sha, declaration)
-                    rec["seconds"] = round(time.time() - started, 1)
-                    # Every load of a run is its own invocation, held as
-                    # the cross-precision entry point holds it.
-                    results.append(base.hold_invocations(rec, invocations))
-                    ent = ""
-                    for t in rec["turns"]:
-                        if t.get("is_probe") and t.get("entropy"):
-                            ent = f" H_mean={t['entropy']['mean']}"
-                    seed_note = f" seed={declared_seed}" if schedule is not None else ""
-                    log(f"i{iteration} {probe[0]}/d{depth}: "
-                        f"{rec['verdict']} ({rec['seconds']}s){ent}{seed_note}")
-                    with open(os.path.join(args.outdir, "matrix.jsonl"), "a") as fh:
-                        fh.write(json.dumps(rec) + "\n")
-                    # The session an interrupt cut short is recorded, and the
-                    # run stops on it, as the cells stop (#716 round ten).
-                    if rec["verdict"] == base.INTERRUPTED:
-                        raise KeyboardInterrupt
+        # **One session loop**, over whichever sessions the schedule yields,
+        # until they end or the deadline passes.
+        for session in sessions:
+            if time.time() >= deadline:
+                break
+            started = time.time()
+            rec = run_session(cfg, session, standing_sha)
+            rec["seconds"] = round(time.time() - started, 1)
+            # Every load of a run is its own invocation.
+            results.append(base.hold_invocations(rec, invocations))
+            ent = ""
+            for t in rec["turns"]:
+                if t.get("is_probe") and t.get("entropy"):
+                    ent = f" H_mean={t['entropy']['mean']}"
+            seed_note = f" seed={session['declared_seed']}" if schedule is not None else ""
+            log(f"{session['name']}: {rec['verdict']} ({rec['seconds']}s){ent}{seed_note}")
+            with open(os.path.join(args.outdir, "matrix.jsonl"), "a") as fh:
+                fh.write(json.dumps(rec) + "\n")
+            # The session an interrupt cut short is recorded, and the run
+            # stops on it (#716 round ten).
+            if rec["verdict"] == base.INTERRUPTED:
+                raise KeyboardInterrupt
     except KeyboardInterrupt:
         interrupted = True
         log("interrupted")
@@ -460,11 +529,15 @@ def main():
     diverged = [r for r in results if r["verdict"] == "DIVERGED"]
     errors = [r for r in results if r["verdict"] not in ("REPRODUCED", "DIVERGED")]
 
-    by_character = {}
+    # By prompt character for the matrix's sessions and by cell for the
+    # cells', each over the records that carry the label.
+    by_character, by_cell = {}, {}
     for r in results:
-        b = by_character.setdefault(r["character"], {"n": 0, "ok": 0})
-        b["n"] += 1
-        b["ok"] += 1 if r["verdict"] == "REPRODUCED" else 0
+        for table, key in ((by_character, r.get("character")), (by_cell, r.get("cell"))):
+            if key is not None:
+                b = table.setdefault(key, {"n": 0, "ok": 0})
+                b["n"] += 1
+                b["ok"] += 1 if r["verdict"] == "REPRODUCED" else 0
     # By seed: the within-session verdict per declared seed, so a seed that
     # fails to reproduce is visible on its own. Every session carries one
     # since #716, a run without a schedule reading the declaration's own.
@@ -478,8 +551,8 @@ def main():
     # #370's third ask. The olympus deposit of 2026-08-27 carried its
     # serving device and engine libraries in a hand-written `box-facts.txt`
     # beside this file, which works exactly once and only if whoever runs
-    # the matrix next remembers. The readers are the confirm driver's, so
-    # the two instruments answer this question the same way or not at all.
+    # the matrix next remembers. The readers are `confirm_cells`', shared
+    # by every mode of this one instrument.
     #
     # **Every binding in the window is checked rather than the last one**,
     # per finding 6 of the olympus seat. An earlier draft recorded the last
@@ -532,7 +605,7 @@ def main():
 
     # **One resolution for both collectors at each end**, so the two fields
     # cannot disagree about which SPU they measured - the same sharing the
-    # confirm driver does at its own two reads.
+    # opening readings do at preflight.
     closing_spu, spu_note = base.closing_resolution(cfg)
     binaries_at_close = close(
         lambda c: spu_note or base.weaver_binaries(c, closing_spu), binaries, "weaver_binaries"
@@ -549,7 +622,7 @@ def main():
     tools = close(base.toolchain, tools, "toolchain", essence=whole)
     # The weights field, the artifact's bytes, read like the stack at both
     # ends (#716 round two).
-    weights_at_close = close(base.weights(artifact), weights_open, "weights")
+    weights_at_close = close(base.weights(artifacts), weights_open, "weights")
 
     try:
         bindings = base.device_bindings(cfg, run_started)
@@ -574,26 +647,27 @@ def main():
         "diverged": len(diverged),
         "errors": len(errors),
         "by_character": by_character,
+        "by_cell": by_cell,
         "declared_seed_schedule": schedule,
         "by_seed": by_seed,
         "diverged_detail": diverged[:20],
-        "error_detail": [{"probe": r["probe"], "depth": r["depth"],
-                          "verdict": r["verdict"]} for r in errors[:20]],
+        "error_detail": [dict({k: r[k] for k in ("probe", "depth", "cell") if k in r},
+                              verdict=r["verdict"]) for r in errors[:20]],
     }
     with open(os.path.join(args.outdir, "summary.json"), "w") as fh:
         json.dump(summary, fh, indent=1)
 
     log(f"done: {good}/{total} reproduced, {len(diverged)} diverged, "
         f"{len(errors)} errors")
-    for ch, b in sorted(by_character.items()):
+    for ch, b in sorted(by_character.items()) + sorted(by_cell.items()):
         log(f"  {ch}: {b['ok']}/{b['n']}")
     # **Every held field joins the verdict at the exit** (#716 round two).
     # The window fields, the weights among them, must read unchanged, per
     # #399's review, and the serving device must be one binding for the run,
     # read and not varied: a run whose sessions all reproduce while a field
     # it claims held moved, or was never read, is not a reproduction result.
-    # The verdict is `run_verdict`, the one both entry points exit on (#716
-    # round nine).
+    # The verdict is `run_verdict`, the one run-wide verdict (#716 round
+    # nine).
     reproduced, failing = base.run_verdict(results, {
         "weights": weights_at_close, "engine_libraries": libraries,
         "weaver_binaries": binaries_at_close, "toolchain": tools}, interrupted)

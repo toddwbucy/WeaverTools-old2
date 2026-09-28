@@ -5,16 +5,18 @@ establish are `../determinism-matrix-Spec.md`'s. This page is how to run it on a
 
 ## What is here
 
-`determinism_matrix.py` drives the matrix and imports `confirm_cells.py`, the replay
-harness, from beside it. Both come from the `weaver-experiments` tree at `d04da2a`. Both
-carry the fixes of #716, named in the Spec's section 0, with a test holding that on the
-path the 2026-09-27 runs took every verdict, seed and turn is what it was before, the
-fields that move named: the declared seed and the device each load logged. The
-`test_*.py` files are the tests of the two, three from that tree and
-`test_recorded_seed.py`, `test_absence_and_evidence.py`, `test_round_five.py`,
-`test_round_seven.py`, `test_round_eight.py`, `test_round_nine.py`, `test_round_ten.py`,
-`test_round_eleven.py` and `test_round_twelve.py` from #716. Each is a plain script and
-exits non-zero on the first failure:
+`determinism_matrix.py` is the one entry point and imports `confirm_cells.py`, the
+replay harness, from beside it. `confirm_cells.py` has no entry point of its own: the
+cross-precision protocol it once ran is the matrix's `--cells` mode. Both come from the
+`weaver-experiments` tree at `d04da2a`. Both carry the fixes of #716, named in the
+Spec's section 0, with a test holding that on the path the 2026-09-27 runs took every
+verdict, seed and turn is what it was before, the fields that move named: the declared
+seed and the device each load logged. The `test_*.py` files are the tests of the two,
+three from that tree and `test_recorded_seed.py`, `test_absence_and_evidence.py`,
+`test_round_five.py`, `test_round_seven.py`, `test_round_eight.py`,
+`test_round_nine.py`, `test_round_ten.py`, `test_round_eleven.py`,
+`test_round_twelve.py` and `test_one_entry_point.py` from #716. Each is a plain script
+and exits non-zero on the first failure:
 
 ```
 python3 test_seed_schedule.py
@@ -29,6 +31,7 @@ python3 test_round_nine.py
 python3 test_round_ten.py
 python3 test_round_eleven.py
 python3 test_round_twelve.py
+python3 test_one_entry_point.py
 ```
 
 Stdlib only. It needs the installed agent stack, one agent whose declaration it
@@ -40,21 +43,27 @@ One JSON file per box. The matrix reads these fields:
 
 | Field | Box-specific | What it names |
 | --- | --- | --- |
-| `box` | yes | the box's name, recorded in the deposit |
 | `agent` | no | the agent the admin loads and unloads, `karl` for the baseline |
-| `declaration` | yes | the agent's declaration file, whose one seed and one artifact are read at the start, whose digest every load is held to, and which a seed schedule or `--artifact` rewrites and restores |
+| `declaration` | yes | the agent's declaration file, whose one seed and one artifact are read at the start, whose digest every load is held to, and which a seed schedule, `--artifact` or `--cells` rewrites and restores |
 | `gate_socket` | yes | the agent's gate socket, under the admin's coordination root |
 | `trace` | yes | the agent's trace sink, which every comparison is read from |
 | `admin_bin` | yes | the installed `weaver-admin` |
 | `admin_config` | yes | the admin's configuration directory, passed as `WEAVER_ADMIN_CONFIG` |
 | `repo` | yes | the checkout the stack was built from, for the toolchain reading |
 | `spu_bin` | optional | overrides the `spu-binary` the admin configuration names |
-| `build_flags` | yes | a description of the build, recorded and not parsed, required by `confirm_cells.py`'s own entry point |
 | `loop_sha256` | optional | the sha256 of the loop the agent composes with, 64 lowercase hex digits or refused at preflight, which every load is held to, a load composed by another being a fault. Absent, the loop is unchecked |
 
-**`cells` is not read by the matrix.** It lists artifacts for `confirm_cells.py`'s own
-entry point, the cross-precision protocol, and a config shared with that protocol
-may carry it. The matrix takes its artifact from the declaration or from `--artifact`.
+**`cells` is read only by `--cells`.** It lists the cross-precision protocol's cells,
+each an object with a `name`, a `precision` and an absolute `artifact`, the names plain
+and none repeated. With `--cells` the run serves each cell once, the protocol's two
+turns under the declaration with that cell's artifact, in place of the prompt-by-depth
+matrix, and takes neither `--artifact` nor `--seed-schedule`. Without it the run takes
+its artifact from the declaration or from `--artifact`. Other keys, such as a `box` or
+`build_flags` an older config carries, are not read.
+
+```
+python3 determinism_matrix.py --config <deposit>/config.json --outdir <deposit> --cells
+```
 
 **Every file the config names is opened before the run writes anything.** The artifact
 must be readable, the declaration writable where the run rewrites it, `admin_bin` an
@@ -93,17 +102,16 @@ and on a box keeping minutes that is the tail of a run.
 ## What the exit code says
 
 **Exit 0 means every session reproduced and every field the run holds held.** The
-weights, the engine libraries, the binaries and the toolchain must read the same at the
-start and the end, the weights at each cell's start and end for the cross-precision
-protocol, the serving device must be one binding for the whole run, and every
-session must bear out its declared seed and serve its declared declaration. Anything
-less exits 1, and the log names the fields that did not hold. Both entry points exit
-on the one verdict, `run_verdict`, so the cross-precision protocol holds the same
-fields. A session that raises is recorded as `error: <type>: <message>` on either, and
-an interrupt records the session it cut short as `interrupted`, closes the run and
-exits 1. Batch composition is
+weights, every cell's artifact in a cells run, the engine libraries, the binaries and
+the toolchain must read the same at the start and the end, the serving device must be
+one binding for the whole run, and every session must bear out its declared seed and
+serve its declared declaration. Anything less exits 1, and the log names the fields
+that did not hold. Both modes exit on the one verdict, `run_verdict`. A session that
+raises is recorded as `error: <type>: <message>`, and an interrupt records the session
+it cut short as `interrupted`, closes the run and exits 1. Batch composition is
 recorded rather than held: one caller and one turn at a time by construction, which the
-record cannot show. The Spec's section 5 has the table.
+record cannot show. What an exit 0 certifies, and what it does not guard against, is
+the Spec's section 5, with the table.
 
 ## The sudo requirement
 
@@ -165,7 +173,7 @@ remove it first:
 | --- | --- |
 | `config.json` | the config the run read |
 | `box-facts.txt` | the box facts, per the Spec's section 6.2 |
-| `matrix.jsonl` | one line per session, written as each session closes |
+| `matrix.jsonl` | one line per session, written as each session closes, a cell's labelled by its name, precision and artifact |
 | `matrix.log` | the run's log, including the stack it read at the start |
 | `summary.json` | counts and provenance, written at the end |
 | `clock.log` | the `dmon` samples |

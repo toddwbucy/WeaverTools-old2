@@ -1,4 +1,4 @@
-"""One run-wide verdict for both entry points, record values compared by
+"""One run-wide verdict for every run, record values compared by
 type as well as value, and every file a run opens opened at preflight
 (#716 round nine).
 
@@ -72,9 +72,10 @@ GUESSED = {"spu-binary": {"path": "/x", "sha256": "a" * 64,
 
 # Class 1: one run-wide verdict.
 
-def test_both_entry_points_exit_on_the_one_run_wide_verdict():
-    # Each exit calls run_verdict. Perturbation: inline a rule back into
-    # either main, bypassing the function, and its call count drops.
+def test_both_modes_exit_on_the_one_run_wide_verdict():
+    # The one main calls run_verdict in either mode, and the standalone
+    # main is gone. Perturbation: inline a rule back into the main,
+    # bypassing the function, and its call count drops.
     calls = []
     real = base.run_verdict
 
@@ -85,33 +86,33 @@ def test_both_entry_points_exit_on_the_one_run_wide_verdict():
     try:
         code, _, _ = run_main(Reloading())
         assert code == 0 and calls == ["called"], (code, calls)
-        code, _, _ = cells_run(Reloading())
+        code, _, _, *_ = cells_run(Reloading())
         assert code == 0 and calls == ["called"] * 2, (code, calls)
     finally:
         base.run_verdict = real
-    assert not hasattr(dm, "unheld") and not hasattr(base, "windows_held")
+    assert not hasattr(dm, "unheld") and not hasattr(base, "windows_held") and not hasattr(base, "main")
 
 
-def test_a_device_varying_across_sessions_fails_both_exits():
+def test_a_device_varying_across_sessions_fails_the_exit_in_both_modes():
     # Codex round eight's thread 1: each cell internally stable, the cells
     # on different cards, and the standalone exit read 0. Perturbation: drop
-    # the device rule in run_verdict, and both exits read 0.
+    # the device rule in run_verdict, and both modes read 0.
     code, records, s = run_main(SwitchingCard(), hours="0.0002")
     assert len(records) >= 2 and all(r["verdict"] == "REPRODUCED" for r in records), len(records)
     assert code == 1 and "varied" in s["serving_device"], (code, s["serving_device"])
-    code, _, printed = cells_run(SwitchingCard())
+    code, _, printed, *_ = cells_run(SwitchingCard())
     assert code == 1 and "did not hold: serving_device" in printed, (code, printed)
 
 
-def test_a_window_that_moved_fails_both_exits():
-    # Perturbation: drop the window rule, and both exits read 0.
+def test_a_window_that_moved_fails_the_exit_in_both_modes():
+    # Perturbation: drop the window rule, and both modes read 0.
     code, records, s = run_main(Reloading(), stack=varying_toolchain())
     assert records and code == 1 and s["toolchain"]["status"] == "varied", (code, s["toolchain"])
-    code, _, printed = cells_run(Reloading(), stack=varying_toolchain())
+    code, _, printed, *_ = cells_run(Reloading(), stack=varying_toolchain())
     assert code == 1 and "did not hold: toolchain" in printed, (code, printed)
 
 
-def test_a_reused_invocation_fails_both_exits():
+def test_a_reused_invocation_fails_the_exit_in_both_modes():
     # The run-wide invocation rule, held in the matrix loop alone until
     # now. Perturbation: drop hold_invocations from either loop, and that
     # exit reads 0.
@@ -119,13 +120,13 @@ def test_a_reused_invocation_fails_both_exits():
     assert len(records) >= 2 and code == 1, (len(records), code)
     assert records[0]["verdict"] == "REPRODUCED"
     assert all(r["verdict"].startswith("a load read invocation") for r in records[1:]), records[1]["verdict"]
-    code, _, printed = cells_run(ReusedInvocation())
+    code, _, printed, *_ = cells_run(ReusedInvocation())
     assert code == 1 and "cell bf16: a load read invocation" in printed, (code, printed)
 
 
 def test_a_guessed_binary_is_refused_before_either_run_starts():
     # A binary resolved by a guess can never be counted held at the exit,
-    # so both entry points refuse it at preflight. Perturbation: drop the
+    # so a run in either mode refuses it at preflight. Perturbation: drop the
     # guessed clause in opening_readings, and both runs start.
     guessed = {"weaver_binaries": lambda c, s: GUESSED}
     agent = Reloading()
@@ -133,7 +134,7 @@ def test_a_guessed_binary_is_refused_before_either_run_starts():
     assert code == 2 and records is None and agent.starts == 0, (code, agent.starts)
     err = io.StringIO()
     with contextlib.redirect_stderr(err):
-        code, _, _ = cells_run(Reloading(), stack=guessed)
+        code, _, _, *_ = cells_run(Reloading(), stack=guessed)
     assert code == 2 and "resolved a binary by a guess" in err.getvalue(), (code, err.getvalue())
 
 
@@ -176,13 +177,13 @@ def test_an_unreadable_opening_reading_is_refused_by_both():
     assert code == 2 and records is None and agent.starts == 0, (code, agent.starts)
     err = io.StringIO()
     with contextlib.redirect_stderr(err):
-        code, _, _ = cells_run(Reloading(), stack=gone)
+        code, _, _, *_ = cells_run(Reloading(), stack=gone)
     assert code == 2 and "the opening engine_libraries is not a reading" in err.getvalue(), (code, err.getvalue())
 
 
 # Class 2: a record value is compared by type as well as value.
 
-def test_a_recorded_seed_of_another_type_is_refused_on_both_paths():
+def test_a_recorded_seed_of_another_type_is_refused_in_both_modes():
     # Codex round eight's thread 2: `True == 1` and `1.0 == 1`, so a seed
     # recorded as true or 1.0 matched the declared 1. Perturbation: compare
     # before recorded_seed, and the float case reads REPRODUCED on both.
@@ -339,19 +340,19 @@ def test_the_matrix_opens_every_file_at_preflight():
     assert code == 0 and records, code
 
 
-def test_the_cells_open_every_file_and_read_every_key_at_preflight():
-    # Codex round eight's thread 4: build_flags optional at preflight and
-    # read unconditionally in every cell's metadata. Perturbation: drop any
-    # one check, and its case calls the admin or leaves the backup.
+def test_a_cells_run_opens_every_file_and_reads_every_key_at_preflight():
+    # Codex round eight's thread 4: a key read after preflight but not
+    # checked there. `build_flags`, the key it named, is no longer read,
+    # the cell metadata that read it gone with the standalone main.
+    # Perturbation: drop any one check, and its case calls the admin or
+    # leaves the backup.
     def read_only(tmp, decl):
         os.chmod(decl, 0o444)
-    cases = [("the config's build_flags None", dict(change=dict(build_flags=None))),
-             ("the config's build_flags ''", dict(change=dict(build_flags=""))),
-             ("the cell's precision 12", dict(change=dict(cells=[dict(TWO_CELLS[0], precision=12)]))),
+    cases = [("the cell's precision 12", dict(change=dict(cells=[dict(TWO_CELLS[0], precision=12)]))),
              ("the cell's precision None",
               dict(change=dict(cells=[{k: v for k, v in TWO_CELLS[0].items() if k != "precision"}]))),
              ("the config's cell 'q8' is not an object", dict(change=dict(cells=["q8"]))),
-             ("cell q8's artifact /no/such.gguf cannot be opened",
+             ("the artifact cannot be read",
               dict(change=dict(cells=[dict(TWO_CELLS[0], artifact="/no/such.gguf")]))),
              ("the config's admin_bin /no/such/admin cannot be read", dict(change=dict(admin_bin="/no/such/admin"))),
              ("is not an executable file", dict(change=dict(admin_bin=MODEL))),
@@ -360,9 +361,9 @@ def test_the_cells_open_every_file_and_read_every_key_at_preflight():
     for want, case in cases:
         err = io.StringIO()
         with tempfile.TemporaryDirectory() as tmp, contextlib.redirect_stderr(err):
-            code, called, _ = cells_main(tmp, **case)
+            code, called, *_ = cells_main(tmp, **case)
             assert code == 2 and called == [] and not os.path.exists(os.path.join(tmp, "out")) \
-                and not os.path.exists(os.path.join(tmp, "karl.yaml.pre-cells")), (case, code, called)
+                and not os.path.exists(os.path.join(tmp, "karl.yaml.pre-matrix")), (case, code, called)
         assert want in err.getvalue(), (want, err.getvalue())
 
 

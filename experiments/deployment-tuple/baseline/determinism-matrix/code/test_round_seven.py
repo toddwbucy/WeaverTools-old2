@@ -118,19 +118,19 @@ def test_a_refused_run_makes_no_outdir():
         assert code == 2 and not os.path.exists(out), (code, os.path.exists(out))
 
 
-def test_the_cells_refuse_at_preflight_and_write_nothing():
-    # The cross-precision entry point: a name that becomes a filename, a
-    # cell artifact the declaration cannot carry, or a malformed loop digest
-    # is refused before the outdir, the backup or a load. Perturbation: drop
-    # the preflight, and the bad name writes outside the outdir or the bad
-    # artifact reaches its cell's load.
-    for change in (dict(box="../elsewhere"), dict(cells=[{"name": "q8/..", "precision": "q8", "artifact": MODEL}]),
+def test_a_cells_run_refuses_at_preflight_and_writes_nothing():
+    # The cells mode: a cell name that is not a plain name, a cell artifact
+    # the declaration cannot carry, or a malformed loop digest is refused
+    # before the outdir, the backup or a load. The config's `box`, once a
+    # file name, is no longer read. Perturbation: drop the preflight, and
+    # the bad name or the bad artifact reaches its cell's load.
+    for change in (dict(cells=[{"name": "q8/..", "precision": "q8", "artifact": MODEL}]),
                    dict(cells=[{"name": "q8", "precision": "q8", "artifact": "/my model.gguf"}]),
                    dict(loop_sha256="short")):
         with tempfile.TemporaryDirectory() as tmp:
-            code, called, _ = cells_main(tmp, change)
+            code, called, *_ = cells_main(tmp, change)
             assert code == 2 and called == [] and not os.path.exists(os.path.join(tmp, "out")) \
-                and not os.path.exists(os.path.join(tmp, "karl.yaml.pre-cells")), (change, code, called)
+                and not os.path.exists(os.path.join(tmp, "karl.yaml.pre-matrix")), (change, code, called)
 
 
 if __name__ == "__main__":

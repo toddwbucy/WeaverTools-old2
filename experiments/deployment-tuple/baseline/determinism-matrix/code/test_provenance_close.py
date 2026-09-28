@@ -69,68 +69,46 @@ def test_absent_rustup_is_a_reading():
 
 
 def _drive_main(die_second_cell=False, swap_libs=False):
-    """confirm_cells.main whole, with the box stubbed - defects 2 and 4."""
+    """The matrix's cells mode whole, with the box stubbed - defects 2 and 4
+    of #379, found in the standalone driver since folded into the matrix."""
+    import tempfile
+    from test_recorded_seed import cells_main
     LIBS = {"lib": {"path": "/l", "sha256": "aa", "resolved_by": "cfg"}}
     BINS = {"bin": {"path": "/b", "sha256": "bb", "resolved_by": "cfg"}}
     TOOLS = {"rustc": "rustc stub", "active_toolchain": "nightly-stub"}
-    saved = {n: getattr(g, n) for n in
-             ("_resolve_spu", "engine_libraries", "weaver_binaries",
-              "toolchain", "run_cell")}
     calls = {"n": 0}
 
-    def fake_run_cell(cfg, cell, outdir, *a, **k):
+    def fake_run_session(cfg, session, declaration_sha=None):
         calls["n"] += 1
         if calls["n"] == 2 and die_second_cell:
             raise RuntimeError("cell two died")
-        return {"cell": cell["name"], "metadata": {"weights": {"status": "unchanged"}}, "devices": [{"ordinal": 0}],
-                "verdict": "REPRODUCED", "turns": [], "steps": []}
+        return dict(session["label"], declared_seed=session["declared_seed"], devices=[{"ordinal": 0}],
+                    verdict="REPRODUCED", turns=[])
 
     lib_seq = [json.loads(json.dumps(LIBS)),
-               {"lib": {"path": "/l", "sha256": "SWAPPED",
-                        "resolved_by": "cfg"}}]
-    try:
-        g._resolve_spu = lambda cfg: ("/stub", "stub")
-        g.engine_libraries = (
-            (lambda cfg, spu=None: lib_seq.pop(0)) if swap_libs
-            else (lambda cfg, spu=None: json.loads(json.dumps(LIBS))))
-        g.weaver_binaries = lambda cfg, spu=None: json.loads(json.dumps(BINS))
-        g.toolchain = lambda cfg: dict(TOOLS)
-        g.run_cell = fake_run_cell
-
-        td = tempfile.mkdtemp()
-        # The artifact preflight opens.
+               {"lib": {"path": "/l", "sha256": "SWAPPED", "resolved_by": "cfg"}}]
+    fakes = {"_resolve_spu": lambda cfg: ("/stub", "stub"),
+             "closing_resolution": lambda cfg: (("/stub", "stub"), None),
+             "engine_libraries": ((lambda cfg, spu=None: lib_seq.pop(0)) if swap_libs
+                                  else (lambda cfg, spu=None: json.loads(json.dumps(LIBS)))),
+             "weaver_binaries": lambda cfg, spu=None: json.loads(json.dumps(BINS)),
+             "toolchain": lambda cfg: dict(TOOLS)}
+    cells = [{"name": "c1", "precision": "q8", "artifact": None}, {"name": "c2", "precision": "bf", "artifact": None}]
+    with tempfile.TemporaryDirectory() as td:
         artifact = os.path.join(td, "a")
         with open(artifact, "w") as f:
             f.write("weights")
-        decl = os.path.join(td, "k.yaml")
-        with open(decl, "w") as f:
-            f.write(f"artifact: {artifact}\nseed: 7\n")
-        cfgp = os.path.join(td, "c.json")
-        with open(cfgp, "w") as f:
-            json.dump({"box": "t", "declaration": decl, "repo": ".",
-                       "build_flags": "x", "admin_config": td,
-                       "admin_bin": "/bin/true", "agent": "karl",
-                       "gate_socket": "/s", "trace": "/t",
-                       "cells": [
-                           {"name": "c1", "precision": "q8", "artifact": artifact},
-                           {"name": "c2", "precision": "bf", "artifact": artifact},
-                       ]}, f)
-        out = os.path.join(td, "out")
-        os.makedirs(out)
-        sys.argv = ["confirm", "--config", cfgp, "--outdir", out]
-        code = "none"
+        for c in cells:
+            c["artifact"] = artifact
         try:
-            g.main()
-        except SystemExit as e:
-            code = e.code
+            code, _, _, records, summary = cells_main(
+                td, dict(cells=cells), declared=f"artifact: {artifact}\nseed: 7\n",
+                fakes=fakes, dm_fakes={"run_session": fake_run_session})
         except RuntimeError as e:
-            code = f"raised:{e}"
-        rp = os.path.join(out, "report-t.json")
-        deposit = json.load(open(rp)) if os.path.exists(rp) else None
-        return code, deposit
-    finally:
-        for n, fn in saved.items():
-            setattr(g, n, fn)
+            code, summary = f"raised:{e}", None
+            path = os.path.join(td, "out", "matrix.jsonl")
+            records = [json.loads(line) for line in open(path)] if os.path.exists(path) else None
+    return code, records, summary
 
 
 def test_failed_resolution_closes_unreadable_not_lost():
@@ -152,26 +130,24 @@ def test_failed_resolution_closes_unreadable_not_lost():
 
 
 def test_clean_run_exits_zero_window_quiet():
-    code, dep = _drive_main()
-    assert code == 0 and len(dep) == 2
-    assert all(v.get("status") == "unchanged"
-               for v in dep[0]["metadata"]["provenance_at_close"].values())
+    code, records, summary = _drive_main()
+    assert code == 0 and len(records) == 2, code
+    assert all(summary[k]["status"] == "unchanged" for k in g.REQUIRED_WINDOWS)
 
 
 def test_midrun_raise_keeps_partial_deposit():
     """Defect 2: the deposit survives a raise past the first cell."""
-    code, dep = _drive_main(die_second_cell=True)
-    assert str(code).startswith("raised")
-    assert dep is not None and len(dep) == 1
+    code, records, _ = _drive_main(die_second_cell=True)
+    assert str(code).startswith("raised"), code
+    assert records is not None and len(records) == 1
 
 
 def test_midrun_swap_exits_one_over_green_cells():
     """Defect 4: a moved window is not a reproduction result."""
-    code, dep = _drive_main(swap_libs=True)
+    code, records, summary = _drive_main(swap_libs=True)
     assert code == 1, code
-    pac = dep[0]["metadata"]["provenance_at_close"]
-    assert pac["engine_libraries"]["status"] == "varied"
-    assert all(r["verdict"] == "REPRODUCED" for r in dep)
+    assert summary["engine_libraries"]["status"] == "varied"
+    assert all(r["verdict"] == "REPRODUCED" for r in records)
 
 
 if __name__ == "__main__":

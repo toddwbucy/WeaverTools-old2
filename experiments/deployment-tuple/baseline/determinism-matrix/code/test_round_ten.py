@@ -1,4 +1,4 @@
-"""A raise and an interrupt are one verdict on both entry points, every path
+"""A raise and an interrupt are one verdict on every session, every path
 the stack resolves is absolute, and every file a run writes is its own
 (#716 round ten).
 
@@ -50,48 +50,47 @@ def refused(fn, *args):
 
 
 def cells_deposit(agent):
-    """Two cells through the cross-precision `main`, and its deposit read
-    back: the exit code, what it printed and the reports."""
+    """Two cells through the matrix's cells mode, and its deposit read
+    back: the exit code, what it printed, the records, the summary, and the
+    declaration and its backup after the run."""
     digest = hashlib.sha256(f"artifact: {MODEL}\nseed: {SEED}\n".encode()).hexdigest()
     agent.served = (digest, digest)
     with tempfile.TemporaryDirectory() as tmp:
-        code, _, printed = cells_main(tmp, dict(cells=TWO_CELLS), fakes=agent_fakes(agent))
-        with open(os.path.join(tmp, "out", "report-thinkpad.json")) as fh:
-            reports = json.load(fh)
+        code, _, printed, records, summary = cells_main(tmp, dict(cells=TWO_CELLS), fakes=agent_fakes(agent))
         restored = open(os.path.join(tmp, "karl.yaml")).read()
-        backup = os.path.lexists(os.path.join(tmp, "karl.yaml.pre-cells"))
-    return code, printed, reports, (restored, backup)
+        backup = os.path.lexists(os.path.join(tmp, "karl.yaml.pre-matrix"))
+    return code, printed, records, summary, (restored, backup)
 
 
 # Class 1: one session path, whatever the session meets.
 
-def test_a_raising_session_is_one_fault_through_both_exits():
-    # Codex round nine's thread 1: run_cell let a raise out, so the
-    # standalone run lost the cell, its closing window and its verdict.
-    # Perturbation: drop the Exception clause in verify_session, and the
-    # cells run raises out of main while the matrix, without its own catch,
-    # does the same.
+def test_a_raising_session_is_one_fault_in_both_modes():
+    # Codex round nine's thread 1: the standalone run_cell let a raise out,
+    # so the run lost the cell, its closing window and its verdict.
+    # Perturbation: drop the Exception clause in verify_session, and a run
+    # in either mode raises out of main.
     code, records, s = run_main(Truncating())
     assert records and code == 1 and {r["verdict"] for r in records} == {WANT}, (code, records[:1])
     assert s["errors"] == len(records)
-    code, printed, reports, (restored, backup) = cells_deposit(Truncating())
+    code, printed, reports, summary, (restored, backup) = cells_deposit(Truncating())
     assert code == 1 and [r["verdict"] for r in reports] == [WANT, WANT], (code, reports)
-    assert all("provenance_at_close" in r["metadata"] for r in reports)
+    assert all(summary[k]["status"] == "unchanged" for k in base.REQUIRED_WINDOWS)
     assert restored == f"artifact: {MODEL}\nseed: {SEED}\n" and not backup
 
 
-def test_neither_session_function_converts_a_raise_of_its_own():
+def test_the_session_function_converts_no_raise_of_its_own():
     # The conversion lives in verify_session alone. Perturbation: put a
-    # catch back into either caller, and this names it.
-    for fn in (dm.run_session, base.run_cell):
+    # catch back into run_session, and this names it.
+    for fn in (dm.run_session,):
         assert "except Exception" not in inspect.getsource(fn), fn.__name__
     assert "except Exception" in inspect.getsource(base.verify_session)
 
 
-def test_an_interrupt_records_its_session_and_closes_both_runs():
+def test_an_interrupt_records_its_session_and_closes_the_run_in_both_modes():
     # Ctrl-C mid-session: the matrix dropped the session and could exit 0,
-    # and the cells raised out with no closing window. Both now record the
-    # session as `interrupted`, stop, close the run and exit 1.
+    # and the standalone cells raised out with no closing window. A run in
+    # either mode now records the session as `interrupted`, stops, closes
+    # the run and exits 1.
     # Perturbation: drop the KeyboardInterrupt clause in verify_session, or
     # the interrupted flag in run_verdict, and a clause here fails.
     code, records, s = run_main(InterruptedSecond(), hours="0.01")
@@ -101,16 +100,16 @@ def test_an_interrupt_records_its_session_and_closes_both_runs():
     class InterruptedFirst(Reloading):
         def gate_turn(self, cfg, text, timeout=None):
             raise KeyboardInterrupt
-    code, printed, reports, (restored, backup) = cells_deposit(InterruptedFirst())
+    code, printed, reports, summary, (restored, backup) = cells_deposit(InterruptedFirst())
     assert code == 1 and [r["verdict"] for r in reports] == ["interrupted"], (code, reports)
-    assert "provenance_at_close" in reports[0]["metadata"] and "interrupted - not a reproduction result" in printed
+    assert summary["engine_libraries"]["status"] == "unchanged" and "interrupted - not a reproduction result" in printed
     assert restored == f"artifact: {MODEL}\nseed: {SEED}\n" and not backup
     assert base.run_verdict([{"verdict": "REPRODUCED", "devices": [{}]}], {}, interrupted=True)[0] is False
 
 
 def test_the_session_declaration_is_written_inside_the_shared_path():
     # The per-session rewrite moved into verify_session from the matrix's
-    # loop and from run_cell, so a failing write is a fault on both paths.
+    # loop and from the standalone run_cell, so a failing write is a fault.
     # Perturbation: write outside the try, and this raises.
     with tempfile.TemporaryDirectory() as tmp:
         rec = session(Agent(), declared_seed=SEED, cfg=dict(CFG, declaration=tmp))
@@ -119,38 +118,6 @@ def test_the_session_declaration_is_written_inside_the_shared_path():
                             step=lambda verb: {"kind": "state"})
     assert rec["verdict"] == "REPRODUCED", rec["verdict"]
     assert rec2["verdict"].startswith("error: IsADirectoryError"), rec2["verdict"]
-
-
-def test_run_cells_own_steps_are_faults_in_the_same_form():
-    # run_cell's one read of its own, the declaration, is a fault in the
-    # form verify_session records, and a trace that cannot be read again at
-    # the deposit falls back to the compared snapshots. Perturbation: let
-    # either raise, and this raises.
-    with tempfile.TemporaryDirectory() as tmp:
-        report = base.run_cell(dict(CFG, declaration=tmp, box="t", build_flags="x"),
-                               {"name": "c", "precision": "q8", "artifact": MODEL}, tmp, {}, {}, {})
-        assert report["verdict"].startswith("error: IsADirectoryError"), report["verdict"]
-    from test_round_five import drive_cell
-    saved = base.read_runs
-    digest = hashlib.sha256(f"artifact: /m.gguf\nseed: {SEED}\n".encode()).hexdigest()
-
-    def gone(path, keep=None):
-        raise FileNotFoundError(path)
-    with tempfile.TemporaryDirectory() as tmp:
-        agent = Agent(served=(digest, digest))
-        real_drive = base.run_cell
-
-        def run_cell(*a, **k):
-            base.read_runs = gone
-            return real_drive(*a, **k)
-        base.run_cell = run_cell
-        try:
-            report = drive_cell(agent, tmp)
-        finally:
-            base.run_cell, base.read_runs = real_drive, saved
-        assert report["verdict"] == "REPRODUCED", report["verdict"]
-        with open(os.path.join(tmp, "cell-c-source.ndjson")) as fh:
-            assert sum(1 for _ in fh) == 12
 
 
 # Class 2: a path the stack resolves is absolute.
@@ -169,7 +136,7 @@ def test_every_stack_path_is_absolute_or_refused():
     assert base.config_values(dict(CFG, declaration="/k.yaml", spu_bin="/opt/spu")) is not None
 
 
-def test_both_entry_points_refuse_a_relative_path_before_writing():
+def test_both_modes_refuse_a_relative_path_before_writing():
     def relative_artifact(tmp, decl):
         with open(decl, "w") as fh:
             fh.write(f"model-binding:\n  artifact: model.gguf\ntunable-values:\n  seed: {SEED}\n")
@@ -184,7 +151,7 @@ def test_both_entry_points_refuse_a_relative_path_before_writing():
                          (dict(trace="trace.ndjson"), "the config's trace 'trace.ndjson' is not an absolute path")):
         err = io.StringIO()
         with tempfile.TemporaryDirectory() as tmp, contextlib.redirect_stderr(err):
-            code, called, _ = cells_main(tmp, change)
+            code, called, *_ = cells_main(tmp, change)
             assert code == 2 and called == [] and not os.path.exists(os.path.join(tmp, "out")), (change, code)
         assert want in err.getvalue(), (want, err.getvalue())
 
@@ -230,18 +197,19 @@ def test_an_ldd_path_that_is_not_absolute_is_unreadable():
     assert reading["libllama.so.0"]["unreadable"] == "ldd reports it not found", reading
 
 
-# Class 3: every file a run writes is its own.
+# Class 3: every file a run writes is its own, and every label.
 
 def test_two_cells_of_one_name_are_refused_before_anything_is_written():
     # Codex round nine's thread 3: the second cell overwrote the first's
-    # source and replay files. Perturbation: drop the repeat check, and the
-    # run starts.
+    # source and replay files. Those files left with the standalone main,
+    # and a cell's name still labels its record and its weights reading.
+    # Perturbation: drop the repeat check, and the run starts.
     err = io.StringIO()
     same = [TWO_CELLS[0], dict(TWO_CELLS[1], name=TWO_CELLS[0]["name"])]
     with tempfile.TemporaryDirectory() as tmp, contextlib.redirect_stderr(err):
-        code, called, _ = cells_main(tmp, dict(cells=same))
+        code, called, *_ = cells_main(tmp, dict(cells=same))
         assert code == 2 and called == [] and not os.path.exists(os.path.join(tmp, "out")) \
-            and not os.path.exists(os.path.join(tmp, "karl.yaml.pre-cells")), (code, called)
+            and not os.path.exists(os.path.join(tmp, "karl.yaml.pre-matrix")), (code, called)
     assert "the cell names ['q8'] repeat" in err.getvalue(), err.getvalue()
     assert cells_run(Reloading())[0] == 0
 
