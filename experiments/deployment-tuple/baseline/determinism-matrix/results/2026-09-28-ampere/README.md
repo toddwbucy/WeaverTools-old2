@@ -91,11 +91,11 @@ change. The sessions with no sample inside were shorter than the five-second cad
   these runs do not separate them. "The device moves the output" is not what they show.
 - **The two follow-ups that do separate them.** The Ada cell on olympus runs karl's
   declaration on the RTX 2000 Ada, compute 8.9, with the same binaries and the same
-  library files as the A6000 pair, started 2026-09-28 08:33 CDT, its result to follow.
-  Against the A6000 pair it holds every file and varies only the generation and its
-  kernel path. Thinkpad's rerun on olympus's whole install set, the six weaver binaries
-  and the five library files, holds every file across the two boxes while the card and
-  kernel path differ.
+  library files as the A6000 pair, ran 2026-09-28 08:33 to 15:33 CDT, and its result is
+  in `../2026-09-28-ada/`. Against the A6000 pair it holds every file and varies only
+  the generation and its kernel path. Thinkpad's rerun on olympus's whole install set,
+  the six weaver binaries and the five library files, holds every file across the two
+  boxes while the card and kernel path differ.
 - **Anything the Spec's section 5 leaves out, and the baseline's limits of section 8.**
   The agent declares no loop file, the model is the 0.5b at q6_k, most turns generate
   one token (4,634 of 76,640 on each A6000 generated more), time to first token is not
@@ -134,6 +134,8 @@ notes state, each taking the deposits as arguments and writing nothing:
 
 Each olympus deposit also holds an `evidence/` directory: the agent's trace, the smokes
 its box facts cite, and `JOURNAL-NOT-CAPTURED.txt`, which says why the window's journal
-records are absent. karl's trace is its sink file whole. fred's sink file also carries
-the Ada cell, which appends to it, so fred-a6000 holds a snapshot until that run ends
-and the file is split by run id between the two deposits.
+records are absent. karl's trace is its sink file whole. fred's sink file also carried
+the Ada cell, which appended to it, and after that run ended the file was split by run
+id between the two deposits, each smoke's records beside its smoke under
+`evidence/smokes/`. fred-a6000 keeps the snapshot it held before the split until the
+split is reviewed.
