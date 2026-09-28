@@ -44,7 +44,8 @@ request carries an `Implements:` line whose Spec sections the Planner grades. Fi
 class and walk every site before the next pass. Working Process v0.35 adds three rules
 that #716 earned: code whose exit is a verdict has its Spec state what a pass certifies
 before it is hardened, a carry into the tree is not a hardening, and more than four
-review rounds returns the pull request to design. The Blackwell probe's Spec, section 5,
+review rounds is a checkpoint at which the Planner asks whether the findings converge,
+relaxed from a stop on 2026-09-28. The Blackwell probe's Spec, section 5,
 carries the rule that no privileged step acts on a copy of a fact held by another party
 without checking it against evidence it verified itself, as a rule of that probe's
 custody.

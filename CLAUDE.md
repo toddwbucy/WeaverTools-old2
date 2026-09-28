@@ -389,13 +389,15 @@ its class, and a site fix answers the finding while the reviewer finds the next 
 every consumer of the same shape in every file of the act, tables each site in the body
 with its disposition, and only then takes the next pass.
 
-**More than four review rounds means the diff is not the problem.** The pull request
-returns to authoring, which is the rule that stopped #683 at twenty-eight passes: the
-findings were valid to the last pass, each the next site of a few classes, and the
-series stopped because a review that long is authoring by another name. Working
-Process section 6 owns the rule, with the two that come before it on the ruling of
-2026-09-27: a verdict's pass is stated in its Spec before it is hardened, and a carry is
-not a hardening.
+**More than four review rounds is a checkpoint, not a stop**, on the operator's word of
+2026-09-28. The bound was chiefly a cost control from the CodeRabbit era, and Codex's
+review is a fixed cost. Past four rounds the Planner evaluates whether the findings
+converge. Valid, distinct findings, each a new class, keep the loop going. The same
+class found again, or findings sharing one design question, return the pull request to
+design, which is how #683's twenty-eight passes ended: each finding was the next site of
+a few classes. Working Process section 6 owns the rule, with the two that come before it
+on the ruling of 2026-09-27: a verdict's pass is stated in its Spec before it is
+hardened, and a carry is not a hardening.
 
 **Gates before review**: a reviewer's attention on what a command can check is attention
 not on "does this fix hold". The order, then, is this. The gates come first - `lock.sh`,
@@ -405,7 +407,7 @@ every section the `Implements:` line names, then out of draft, which fires the C
 pass. Every finding of the pass is graded and answered, fixed or declined with the
 reason on the pull request. The fixes pass the gates and then are pushed, that push
 fires a pass and the Planner grades it, and the loop repeats until a pass leaves nothing
-to push, more than four rounds of it being the bound above. Then the operator's merge.
+to push, past four rounds of it the checkpoint above. Then the operator's merge.
 
 **A pull request names what it answers, and a merge is not done until the ledger
 is.** On the operator's ruling of 2026-09-26, after an audit of the eleven epics

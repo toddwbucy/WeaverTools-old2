@@ -1,6 +1,6 @@
 # WeaverTools Working Process
 
-**Version:** v0.35, 2026-09-27. Companion to the Working Rules, the Document
+**Version:** v0.36, 2026-09-28. Companion to the Working Rules, the Document
 Format, and the Handoff Format. The apex says what we are building. The Working
 Rules say how we write. The Document Format says what shape a document takes. The
 Handoff Format says what shape a batch takes when it moves between seats. This says
@@ -609,15 +609,21 @@ a second act, with the statement of its pass written first. An act that does bot
 the surface each rework puts in front of the next pass, which is how #716's carry became
 its hardening one finding at a time.
 
-**More than four review rounds returns the pull request to design**, on the same ruling,
-and this section owns the rule that `CLAUDE.md`'s pull request path carries. The fifth
-round does not answer the next finding. It asks what design question the findings share,
-and the answer is an act of its own or a ruling. #683 stopped at twenty-eight passes
-under this rule. #716 met the bound at its fourth pass and went on under the operator's
-word that its bugs be fixed rather than deferred, and the fold of its two entry points
-and the statement of its pass, taken at the twelfth, were that return to design arriving
-eight rounds late. The operator can still hold a pull request past the bound, and the
-ruling is recorded on the pull request with the design question it answers.
+**More than four review rounds is a checkpoint, not a stop**, on the operator's word of
+2026-09-28, which relaxed the stop this section first stated. The first statement
+returned a pull request to design at its fifth round. The bound was chiefly a cost
+control from the CodeRabbit era, and Codex's review is a fixed cost, so more back and
+forth is affordable where it improves the work. Past four rounds the Planner evaluates
+whether the findings converge, and says so on the pull request:
+
+- Valid, distinct findings, each a new class, keep the loop going.
+- The same class found again, or a run of findings sharing one design question, returns
+  the pull request to design, as an act of its own or a ruling.
+
+#683 stopped at twenty-eight passes of narrowly fixed classes. #716 met the fifth round
+and went on, and the fold of its two entry points and the statement of its pass, taken
+at the twelfth, were that design question answered eight rounds late. The rule is that
+the question is asked when the rounds pass four, not that the rounds stop there.
 
 **A pull request names what it answers, and a merge is not done until the ledger
 is**, on the operator's ruling of 2026-09-26. The body carries every issue the act
