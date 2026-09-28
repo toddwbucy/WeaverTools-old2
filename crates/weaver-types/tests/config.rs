@@ -633,3 +633,30 @@ fn a_misspelled_surprisal_election_refuses() {
         "an unknown member refuses rather than being ignored"
     );
 }
+
+/// **The declaration `weaver-analysis derive` writes loads here**, per
+/// `weaver-analysis-Spec` section 3: the derived declaration is the one the
+/// operator loads. The file is the analysis crate's own pinned output, which
+/// its driver test holds byte for byte, so this parse and that derivation
+/// read one text. It carries an identity character the record escaped as a
+/// surrogate pair, which crosses as the character.
+#[test]
+fn the_declaration_weaver_analysis_derives_parses() {
+    let config = parse(include_str!(
+        "../../weaver-analysis/tests/fixtures/derived-surrogate.toml"
+    ))
+    .expect("the derived declaration parses");
+    assert_eq!(
+        config.binding_kind,
+        Some(weaver_types::BindingKind::Diagnostic)
+    );
+    match config.spu_instruction.decoder.identity[0]
+        .content
+        .as_slice()
+    {
+        [weaver_traits::ContentBlock::Text { text }] => {
+            assert!(text.starts_with("You are Karl \u{1F600}"), "{text}")
+        }
+        other => panic!("one text block, got {other:?}"),
+    }
+}

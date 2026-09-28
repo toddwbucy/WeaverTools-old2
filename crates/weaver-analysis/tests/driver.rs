@@ -21,6 +21,24 @@ use weaver_analysis::{AnalystInputs, DeriveRefusal, parse_record, project, rende
 
 const SOURCE: &str = include_str!("fixtures/serving-source.ndjson");
 
+/// A derived declaration read back as the TOML value it is, so an assertion
+/// reads a member's value rather than one spelling of it.
+fn declared(text: &str) -> toml::Table {
+    text.parse().expect("the derived declaration is TOML")
+}
+
+fn at<'a>(table: &'a toml::Table, path: &str) -> &'a toml::Value {
+    let mut parts = path.split('.');
+    let mut value = &table[parts.next().expect("a path")];
+    for part in parts {
+        value = match part.parse::<usize>() {
+            Ok(index) => &value[index],
+            Err(_) => &value[part],
+        };
+    }
+    value
+}
+
 fn inputs() -> AnalystInputs {
     AnalystInputs {
         destination: "s-diagnostic".to_string(),
@@ -128,15 +146,22 @@ fn the_derived_sink_carries_the_shape_the_analyst_elected() {
     };
     let declaration =
         weaver_analysis::derive(&parse_record(SOURCE), &piped).expect("the record is whole");
-    assert!(declaration.contains("kind = \"pipe\""), "{declaration}");
-    assert!(
-        declaration.contains("create = true"),
+    assert_eq!(
+        at(&declared(&declaration), "trace-sink.kind").as_str(),
+        Some("pipe")
+    );
+    assert_eq!(
+        at(&declared(&declaration), "trace-sink.create").as_bool(),
+        Some(true),
         "a pipe is created where absent"
     );
 
     let filed =
         weaver_analysis::derive(&parse_record(SOURCE), &inputs()).expect("the record is whole");
-    assert!(filed.contains("kind = \"file\""), "{filed}");
+    assert_eq!(
+        at(&declared(&filed), "trace-sink.kind").as_str(),
+        Some("file")
+    );
 }
 
 /// **A record holding two sessions or two runs refuses before any member
@@ -292,19 +317,33 @@ fn the_seal_is_an_empty_object_on_its_own_line() {
 fn the_declaration_derives_every_source_run_fact() {
     let declaration =
         weaver_analysis::derive(&parse_record(SOURCE), &inputs()).expect("the record is whole");
-    assert!(declaration.contains(
-        "artifact = \"/bulk-store/weaver-testing/cross-precision-repro/qwen2.5-0.5b-instruct-q8_0.gguf\""
-    ));
-    assert!(declaration.contains("seed = 451234785645"));
-    assert!(declaration.contains("context-capacity = 16384"));
-    assert!(declaration.contains("max-tokens-per-turn = 1024"));
-    assert!(declaration.contains("binding-kind = \"diagnostic\""));
+    let d = declared(&declaration);
+    assert_eq!(
+        at(&d, "spu-instruction.decoder.model-binding.artifact").as_str(),
+        Some("/bulk-store/weaver-testing/cross-precision-repro/qwen2.5-0.5b-instruct-q8_0.gguf")
+    );
+    let tunable = "spu-instruction.decoder.tunable-values";
+    assert_eq!(
+        at(&d, &format!("{tunable}.seed")).as_integer(),
+        Some(451234785645)
+    );
+    assert_eq!(
+        at(&d, &format!("{tunable}.context-capacity")).as_integer(),
+        Some(16384)
+    );
+    assert_eq!(
+        at(&d, &format!("{tunable}.max-tokens-per-turn")).as_integer(),
+        Some(1024)
+    );
+    assert_eq!(at(&d, "binding-kind").as_str(), Some("diagnostic"));
     assert!(
-        declaration.contains("You are Karl"),
-        "the seated prefix crosses verbatim"
+        at(&d, "spu-instruction.decoder.identity.0.content.0.text")
+            .as_str()
+            .is_some_and(|t| t.starts_with("You are Karl")),
+        "the seated prefix crosses value for value"
     );
     assert!(
-        !declaration.contains("gate-instruction"),
+        !d.contains_key("gate-instruction"),
         "a diagnostic declaration carries no gate"
     );
 
@@ -316,10 +355,61 @@ fn the_declaration_derives_every_source_run_fact() {
     };
     let declaration =
         weaver_analysis::derive(&parse_record(SOURCE), &hostile).expect("the record is whole");
-    assert!(
-        declaration.contains("path = \"/tmp/x = \\\"{y}\\\" [z]\""),
+    assert_eq!(
+        at(&declared(&declaration), "trace-sink.path").as_str(),
+        Some("/tmp/x = \"{y}\" [z]"),
         "a TOML-significant path stays a value: {declaration}"
     );
+}
+
+/// **A character the record escapes as a surrogate pair crosses as that
+/// character**, the declaration being written by the toml crate rather than
+/// respelled from the JSON: a respelling copied `\ud83d\ude00` as two escapes
+/// TOML refuses. The derived text is pinned byte for byte in
+/// `fixtures/derived-surrogate.toml`, and `weaver-types`'s config tests parse
+/// that same file with `weaver_types::parse`, this crate linking no
+/// `weaver-*` crate to do it itself.
+///
+/// Perturbation: carry each payload string as its JSON text rather than its
+/// decoded value and the pinned bytes and the character both fail. Watched
+/// under exactly that change.
+#[test]
+fn a_surrogate_pair_crosses_as_its_character() {
+    let source = SOURCE.replace("You are Karl", "You are Karl \\ud83d\\ude00");
+    assert_ne!(source, SOURCE, "the escape landed in the record");
+    let declaration =
+        weaver_analysis::derive(&parse_record(&source), &inputs()).expect("the record is whole");
+    assert_eq!(declaration, include_str!("fixtures/derived-surrogate.toml"));
+    assert!(
+        at(
+            &declared(&declaration),
+            "spu-instruction.decoder.identity.0.content.0.text"
+        )
+        .as_str()
+        .is_some_and(|t| t.starts_with("You are Karl \u{1F600}")),
+        "{declaration}"
+    );
+}
+
+/// **A recorded seed the declaration's integer cannot hold refuses the
+/// derivation, naming the member**, per `determinism-matrix-Spec` section 4's
+/// declared-seed domain of 0 to `i64::MAX`: written as it stands it is a
+/// declaration the stack's parser refuses, and derive answered it as whole.
+///
+/// Perturbation: let `carried` cross an integer past `i64::MAX` as a float
+/// and drop the seed's integer check, and this derives. Watched under exactly
+/// that change.
+#[test]
+fn a_seed_past_the_declarations_integer_refuses() {
+    let source = SOURCE.replace("451234785645", "9223372036854775808");
+    assert_ne!(source, SOURCE, "the seed landed in the record");
+    match weaver_analysis::derive(&parse_record(&source), &inputs()) {
+        Err(DeriveRefusal::MemberUncarried { member, met }) => {
+            assert_eq!(member, "tunable-values.seed");
+            assert_eq!(met, "9223372036854775808");
+        }
+        other => panic!("a seed past i64::MAX refuses naming the member, got {other:?}"),
+    }
 }
 
 // A real CLI process and a listening preload door. Refusals must not even
@@ -675,8 +765,13 @@ fn derive_requires_and_renders_a_distinct_destination() {
             String::from_utf8_lossy(&result.stderr)
         );
         if succeeds {
-            assert!(
-                String::from_utf8_lossy(&result.stdout).starts_with("session = \"diagnostic\"\n")
+            assert_eq!(
+                at(
+                    &declared(&String::from_utf8_lossy(&result.stdout)),
+                    "session"
+                )
+                .as_str(),
+                Some("diagnostic")
             );
         } else {
             assert!(String::from_utf8_lossy(&result.stderr).contains("destination"));

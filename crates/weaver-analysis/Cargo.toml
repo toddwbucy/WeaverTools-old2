@@ -25,3 +25,14 @@ safetensors = "0.7"
 # identity check written here would be this crate's approximation of a
 # standard. Already in this workspace's resolved tree.
 sha2 = "0.10"
+# The declaration derive writes, per weaver-types-Spec section 2, built as a
+# typed value and serialized here so no member crosses as hand-written text.
+# The same crate weaver-types parses the declaration with, already in this
+# workspace's resolved tree, taking serde and display to write and no parser.
+toml = { version = "1.1", default-features = false, features = ["std", "serde", "display"] }
+
+[dev-dependencies]
+# The tests read a derived declaration back as the TOML value it is, so an
+# assertion reads a member's value rather than one spelling of it. The parser
+# is the tests' alone: the binary writes a declaration and never reads one.
+toml = { version = "1.1", default-features = false, features = ["std", "serde", "display", "parse"] }
