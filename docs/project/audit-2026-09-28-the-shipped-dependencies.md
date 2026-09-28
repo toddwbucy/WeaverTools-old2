@@ -13,11 +13,13 @@ asked.
 
 ## The rule, and the hypothesis it tests
 
-The operator's rule of 2026-09-23, recorded on #577: nothing is compiled into a
-binary unless operations require it, and a library pulled in for one function
-is a vulnerability import. The epic's hypothesis is that this program's shape,
-Unix sockets, no async runtime, no network stack and no web framework, keeps
-the surface small and mostly justified. This report measures that.
+The operator's rule of 2026-09-23, recorded on #577: nothing is compiled into a binary
+unless operations require it, and a library pulled in for one function is a
+vulnerability import. The epic's hypothesis is that this program's shape, Unix sockets,
+no async runtime, no network stack and no web framework, keeps the surface small and
+mostly justified. This report measures that twice: each crate alone, which is the rule's
+per-crate reading, and as the deploy compiles the workspace, where cargo unifies
+features across members.
 
 **The counting basis, and why it changed.** The rule is about what is compiled into
 a binary, so the count is the linked closure: the crates `cargo tree` reaches over
@@ -61,7 +63,7 @@ hidden, and what the operator decides about them is the report's largest call.
 repository on 2026-09-26 for `WeaverTools_Project/weaver-web/` and is not read
 here. Neither is skipped silently.
 
-## What each crate ships, at its default features
+## What each crate ships alone, at its default features
 
 The direct normal dependencies, the features they are taken with, what each does in
 the crate, and the crate's linked closure. Every workspace crate a package depends on
@@ -118,7 +120,7 @@ State names `uio` and moves no descriptor over its socket, so none of the messag
 that need it are made. Each is a feature the manifest names and no line of the shipped
 crate needs, and each is **[3]**.
 
-## The linked closure at default features, thirty-six crates
+## The linked closure of each crate alone at default features, thirty-six crates
 
 The basis in one sentence: every crate `cargo tree -e normal,no-proc-macro` lists for a
 package at its default features, by name and version, counted once however many groups
@@ -155,7 +157,7 @@ three between thirty-six and thirty-three. Each version has its own puller, `has
 the two `foldhash`, and no one binary links more than one of each at default features,
 so this is lock hygiene rather than shipped surface, noted as **[8]**.
 
-## The linked closure at the features the deploy builds
+## The linked closure of each crate alone at the features the deploy names
 
 `deploy/update-stack.sh` builds the workspace with `weaver-harness/pyworker`,
 `weaver-state/sqlite` and `weaver-state/postgres`, and installs `worker`,
@@ -208,18 +210,57 @@ is `--no-default-features`, eleven crates: the eight of the SQLite group are wha
 default adds. `weaver-types` with `config` is twelve crates in place of six, the six of
 the YAML parser's group, and admin is the one consumer that turns it on.
 
+## The linked closure as the deploy compiles it
+
+`deploy/update-stack.sh` builds once, `cargo build --release --locked --workspace
+--features
+weaver-spu/cuda,weaver-harness/pyworker,weaver-state/sqlite,weaver-state/postgres`, and
+cargo resolves one set of features per dependency across every member it builds. A
+feature one crate elects is then on for every crate that links the same dependency. The
+closure of each shipped binary here is its member's subtree of `cargo tree --workspace
+--features <that string> -e normal,no-proc-macro --locked --offline --prefix depth
+--no-dedupe`, by name and version with the by-name figure beside it, and each list below
+was checked against that tree.
+
+| Binary | Each crate alone, deploy features | As the deploy compiles it | By name |
+|---|---|---|---|
+| `worker`, `pyworker` (`weaver-harness`) | 15 | 21 | 21 |
+| `weaver-gate` | 11 | 17 | 17 |
+| `weaver-admin` | 24 | 24 | 24 |
+| `weaver-state` | 69 | 75 | 73 |
+
+**What unification adds, and to whom.** Admin takes `weaver-types` with `config`, so
+under the one build every member linking `weaver-types` gets the YAML parser's group,
+the same six crates for each: `serde_yaml_ng`, `unsafe-libyaml`, `indexmap`,
+`hashbrown` 0.17, `equivalent` and `ryu`. The harness, the gate and state each gain
+those six and nothing else, and admin, which elected them, gains nothing. State then
+links `hashbrown` at 0.15 and 0.17 in one binary, beside `fallible-iterator` at 0.2 and
+0.3, which is why its by-name figure is two short. `weaver-spu`, out of scope here,
+links `weaver-types` and so carries the group as well.
+
+**`nix` is one build at the union of what its crates name**: `socket`, `fs`, `uio`,
+`user`, `poll`, `process` and `signal` from the four crates read here, `dir` from
+`weaver-spu`, and `memoffset` and `feature` as those imply. The union adds no crate to
+any closure, `memoffset` being in every socket crate already, and it does add code:
+each binary linking `nix` compiles every one of those modules, whatever its own crate
+names.
+
 ## The judgment calls, each the operator's
 
 Each is re-read on the linked basis and against the crate rules the corpus carries,
 and an alternative that neither makes effective is not offered.
 
-1. **`serde_yaml_ng` in `weaver-types`**, behind `config`, for one function:
-   parsing an agent's declaration. It is the rule's own example, one function
-   and a library, and it brings `unsafe-libyaml`. Only admin turns the feature
-   on, so only `weaver-admin` ships it, six linked crates of its twenty-four.
-   The alternative is a declaration format the wire already has, JSON, or a
-   parser of the subset the declaration uses. The call is whether YAML earns
-   `unsafe-libyaml` in the binary that runs as root.
+1. **`serde_yaml_ng` in `weaver-types`**, behind `config`, for one function: parsing an
+   agent's declaration. It is the rule's own example, one function and a library, and it
+   brings `unsafe-libyaml`. Only admin turns the feature on, and alone that would put it
+   in `weaver-admin` only. As the deploy compiles the workspace it rides into every
+   binary that links `weaver-types`, the worker, the gate, state and the SPU with it,
+   six crates each that none of them calls. There are two calls. The first is whether
+   YAML earns `unsafe-libyaml` in the binary that runs as root, the alternative being a
+   declaration format the wire already has, JSON, or a parser of the subset the
+   declaration uses. The second, if it stays, is how to keep it in admin alone: a parse
+   admin carries in its own crate, or admin built on its own with the feature, since a
+   feature on a shared crate cannot be scoped to one member of a single workspace build.
 2. **`pyo3` in `pyworker`.** The Python loop is a documented route, the
    `worker-binary` entry chooses it per box, and the deploy installs `pyworker`
    beside `worker` on every box whether or not the entry names it. The linked
@@ -228,15 +269,20 @@ and an alternative that neither makes effective is not offered.
    all where the entry names the Rust worker, and whether `pyworker` belongs in
    the default deploy or behind an election.
 3. **The `nix` feature sets.** Four named features are not reached by the shipped
-   binary, per the table above: `user` in the harness and in state, `process` in
-   admin and `uio` in state, each compiling code its binary never calls, which is
-   the rule's case at the feature grain. The two `user` reaches are by tests alone,
-   and a test's need is dev-time under the rule, which speaks of what is compiled
-   into a binary that ships, so what a test alone needs is a feature for the test
-   build rather than for the binary. Their removal is the operator's call, since
-   each is a manifest change and this report makes none. The further call is
-   whether an instrument should hold each crate's set to its calls, since nothing
-   today refuses a feature no call needs.
+   binary, per the table above: `user` in the harness and in state, `process` in admin
+   and `uio` in state, each compiling code its binary never calls, which is the rule's
+   case at the feature grain. The two `user` reaches are by tests alone, and a test's
+   need is dev-time under the rule, which speaks of what is compiled into a binary that
+   ships, so what a test alone needs is a feature for the test build rather than for the
+   binary. Their removal is the operator's call, since each is a manifest change and
+   this report makes none, and it is a workspace question rather than a crate one. `nix`
+   is one build at the union of what every member names, so a feature dropped from one
+   crate stays compiled into that crate's binary while another member names it: `user`
+   stays while the gate and admin name it, `process` stays while the harness and the
+   gate name it, and `uio` stays while the harness and admin name it. Per crate, none of
+   the four removals takes anything out of a deployed binary today. The further call is
+   whether an instrument should hold each crate's set to its calls, since nothing today
+   refuses a feature no call needs.
 4. **`sha2` in `weaver-admin`**, for two functions: a file's digest in the
    inventory and a declaration's digest, both sha256 to hex. Two functions and
    a library, and the same library analysis takes for the capture digests. Two
@@ -246,13 +292,13 @@ and an alternative that neither makes effective is not offered.
    binary that links that crate while reducing neither of these two. The call is
    whether two functions in admin are the rule's case, with the hash linked twice
    across the stack whichever way it goes.
-5. **`postgres` in the deployed `weaver-state`.** The store charter elects the
-   engine and the deploy builds it, so this is a documented election and not
-   a stray import, and it is also the async runtime and the network client the
-   hypothesis excluded, fifty linked crates for one engine. The options are the
-   operator's: keep it as elected, stop building the feature in the default
-   deploy so that a deployment elects it, or serve the store on SQLite alone
-   until a deployment elects otherwise.
+5. **`postgres` in the deployed `weaver-state`.** The store charter elects the engine
+   and the deploy builds it, so this is a documented election and not a stray import,
+   and it is also the async runtime and the network client the hypothesis excluded,
+   fifty linked crates for one engine, and the binary that carries them carries the YAML
+   parser's six as well as the deploy compiles it. The options are the operator's: keep
+   it as elected, stop building the feature in the default deploy so that a deployment
+   elects it, or serve the store on SQLite alone until a deployment elects otherwise.
 6. **`rusqlite` bundled.** The `bundled` feature compiles SQLite's amalgamation
    into the binary rather than linking the system library, which fixes the
    version the record is written under at the cost of carrying the C source's
@@ -261,12 +307,13 @@ and an alternative that neither makes effective is not offered.
    tensors and their dtype, which is what the lens is for, so it reads as
    required by operations. Named here so the reading is the operator's and not
    assumed.
-8. **Lock hygiene.** Three `hashbrown` and two `foldhash` at default features, and
-   under `postgres` two `fallible-iterator` minors in one binary and two `sha2`
-   majors with their four companions across the stack. The lock cannot unify the
-   `hashbrown` three, each puller naming its own major, so the call is whether to
-   carry them, to wait on the pullers, or to drop a puller, `safetensors` and
-   `indexmap` being the two this report already weighs under **[7]** and **[1]**.
+8. **Lock hygiene.** Three `hashbrown` and two `foldhash` at default features, and under
+   `postgres` two `fallible-iterator` minors in one binary, joined as the deploy
+   compiles it by a second `hashbrown` in that same binary and two `sha2` majors with
+   their four companions across the stack. The lock cannot unify the `hashbrown` three,
+   each puller naming its own major, so the call is whether to carry them, to wait on
+   the pullers, or to drop a puller, `safetensors` and `indexmap` being the two this
+   report already weighs under **[7]** and **[1]**.
 
 ## What this report does not do
 
