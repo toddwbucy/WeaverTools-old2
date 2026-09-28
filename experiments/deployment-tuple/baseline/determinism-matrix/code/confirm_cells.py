@@ -312,14 +312,20 @@ def declaration_seed(declaration):
 # take it for absent and guess in its place (#716 round eight). A cells run
 # also reads `cells`, checked by `cells_values`.
 CONFIG_KEYS = ("agent", "declaration", "gate_socket", "trace", "admin_bin", "admin_config", "repo")
-OPTIONAL_KEYS = ("spu_bin", "loop_sha256", "build_flags")
+OPTIONAL_KEYS = ("loop_sha256", "build_flags")
+# Keys a config may not carry, each with why. `spu_bin` named an SPU for the
+# harness to hash while the admin launches the one its configuration names,
+# so the two could differ and the run hash the one that did not serve
+# (#716, the pass on 90b9a8a).
+REFUSED_KEYS = {"spu_bin": "the admin launches the SPU its configuration names,"
+                           " admin_config/spu-binary, and the run reads it there"}
 # **A path the stack resolves is absolute** (#716 round ten). The worker and
 # the admin's units resolve a relative path against their own working
 # directory and this harness against its launch directory, so one spelling
 # names two files, and the run records the bytes of the one it opened while
 # the stack serves the other. These keys name what the stack reads or
-# writes: its trace, its gate socket, the admin's configuration and the SPU.
-STACK_PATH_KEYS = ("trace", "gate_socket", "admin_config", "spu_bin")
+# writes: its trace, its gate socket and the admin's configuration.
+STACK_PATH_KEYS = ("trace", "gate_socket", "admin_config")
 
 
 def stack_path(path, what):
@@ -331,8 +337,12 @@ def stack_path(path, what):
 
 
 def config_values(cfg, required=CONFIG_KEYS):
-    """Every required key a non-empty string and every optional key, where
-    present, the same, refused by name at preflight."""
+    """Every required key a non-empty string, every optional key, where
+    present, the same, and no refused key present, refused by name at
+    preflight."""
+    for key, why in REFUSED_KEYS.items():
+        if key in cfg:
+            raise ValueError(f"the config's {key} is refused: {why}")
     for key in required:
         if not isinstance(cfg.get(key), str) or not cfg[key]:
             raise ValueError(f"the config's {key} {cfg.get(key)!r} is not a non-empty string")
@@ -537,9 +547,10 @@ def spu_binary(cfg):
     `admin_bin` would re-introduce the search that rule exists to forbid,
     and the crate's own default is `/usr/libexec/weaver-spu` while the
     deploy material uses `/usr/local/libexec/weaver/`, so the two are not
-    reliably co-located. The config is read first, an explicit `spu_bin`
-    overrides it, and the sibling guess is the last resort rather than the
-    first.
+    reliably co-located. The admin configuration is the one source, the
+    config's own `spu_bin` override being refused (#716, the pass on
+    90b9a8a), and the sibling guess is the last resort, which preflight
+    refuses too.
     """
     return _resolve_spu(cfg)[0]
 
@@ -553,12 +564,6 @@ def _resolve_spu(cfg):
     from an older deploy sitting there would be hashed confidently under the
     field whose whole purpose is to say whether two boxes run one build.
     """
-    # A relative path is refused rather than resolved here, the stack
-    # resolving it against another directory (#716 round ten).
-    if cfg.get("spu_bin") is not None:
-        if not os.path.isabs(cfg["spu_bin"]):
-            return None, f"the config's spu_bin {cfg['spu_bin']!r} is not an absolute path"
-        return cfg["spu_bin"], "config spu_bin"
     # **Skipped rather than joined against nothing.** `os.path.join("", name)`
     # is a bare relative name read against the launch directory, so a file
     # called `spu-binary` sitting there would be taken for the admin config
@@ -570,6 +575,8 @@ def _resolve_spu(cfg):
         try:
             with open(stated) as f:
                 named = f.read().strip()
+            # A relative path is refused rather than resolved here, the stack
+            # resolving it against another directory (#716 round ten).
             if named and not os.path.isabs(named):
                 return None, f"{stated} names a relative path {named!r}"
             if named:
@@ -581,7 +588,7 @@ def _resolve_spu(cfg):
         # `.get`, as `toolchain` uses beside it: a config omitting this raised
         # `KeyError` here, and this reader runs before the `try` that restores
         # the operator's declaration.
-        return None, "the config names neither spu_bin, admin_config, nor admin_bin"
+        return None, "the config names neither admin_config nor admin_bin"
     return (
         os.path.join(os.path.dirname(admin_bin), "weaver-spu"),
         "guessed beside admin_bin, the admin config naming none",
@@ -771,8 +778,9 @@ def weaver_binaries(cfg, spu=None):
     """
     out = {}
     for key in ("worker-binary", "spu-binary", "gate-binary"):
-        # **The SPU goes through its own resolver**, which honours the
-        # documented `spu_bin` override and falls back beside `admin_bin`.
+        # **The SPU goes through its own resolver**, which reads the admin
+        # configuration and falls back beside `admin_bin`, a guess preflight
+        # refuses.
         # Reading it straight from the config here would let one report hash
         # a real SPU under `engine_libraries` while recording `unreadable`
         # for the same binary under this key - two fields disagreeing about

@@ -196,7 +196,7 @@ def test_an_engine_library_line_nobody_can_parse_is_unreadable():
         try:
             base.os.path.exists = lambda p: True
             base.sh = lambda args, **kw: subprocess.CompletedProcess(args, 0, ldd, "")
-            reading = base.engine_libraries({}, ("/spu", "config spu_bin"))
+            reading = base.engine_libraries({}, ("/spu", "admin config spu-binary"))
             assert "libggml.so.0" in reading and not base.is_reading(reading), reading
         finally:
             base.sh, base.os.path.exists = saved_sh, saved_exists

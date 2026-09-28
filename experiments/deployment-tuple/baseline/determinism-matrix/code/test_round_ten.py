@@ -133,7 +133,7 @@ def test_every_stack_path_is_absolute_or_refused():
     for key in base.STACK_PATH_KEYS:
         why = refused(base.config_values, dict(CFG, declaration="/k.yaml", **{key: "relative/" + key}))
         assert why and "is not an absolute path" in why, (key, why)
-    assert base.config_values(dict(CFG, declaration="/k.yaml", spu_bin="/opt/spu")) is not None
+    assert base.config_values(dict(CFG, declaration="/k.yaml", loop_sha256="a" * 64)) is not None
 
 
 def test_both_modes_refuse_a_relative_path_before_writing():
@@ -172,7 +172,6 @@ def test_the_admin_configuration_names_absolute_binaries():
         reading = base.weaver_binaries(cfg)
         assert "relative path" in reading["worker-binary"]["unreadable"], reading
         assert "unreadable" in reading["spu-binary"] and reading["gate-binary"]["sha256"]
-        assert base._resolve_spu(dict(cfg, spu_bin="spu"))[0] is None
         saved = base.engine_libraries, base.toolchain
         base.engine_libraries, base.toolchain = (lambda c, s: FIXED), (lambda c: {"rustc": "stub"})
         try:
@@ -190,7 +189,7 @@ def test_an_ldd_path_that_is_not_absolute_is_unreadable():
     try:
         base.os.path.exists = lambda p: True
         base.sh = lambda args, **kw: subprocess.CompletedProcess(args, 0, ldd, "")
-        reading = base.engine_libraries({}, ("/spu", "config spu_bin"))
+        reading = base.engine_libraries({}, ("/spu", "admin config spu-binary"))
     finally:
         base.sh, base.os.path.exists = saved_sh, saved_exists
     assert "not absolute" in reading["libggml.so.0"]["unreadable"], reading

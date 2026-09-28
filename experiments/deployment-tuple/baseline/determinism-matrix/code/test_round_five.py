@@ -220,7 +220,7 @@ def test_an_ldd_path_holding_a_space_is_read_whole():
         try:
             base.os.path.exists = lambda p: True
             reading = with_sh(lambda args, **kw: subprocess.CompletedProcess(args, 0, ldd, ""),
-                              lambda: base.engine_libraries({}, ("/spu", "config spu_bin")))
+                              lambda: base.engine_libraries({}, ("/spu", "admin config spu-binary")))
         finally:
             base.os.path.exists = saved_exists
         assert reading["libggml.so.0"] == {"path": lib, "sha256": base._sha256(lib)}, reading

@@ -85,10 +85,11 @@ def test_an_empty_optional_argument_is_refused_not_omitted():
 
 
 def test_an_empty_or_missing_config_value_is_refused():
-    # An empty admin_config fell through to guessing the SPU, and an empty
-    # spu_bin read as absent. Perturbation: drop config_values, or test
-    # spu_bin's truth again, and a case here reaches the run.
-    for change in (dict(admin_config=""), dict(spu_bin=""), dict(loop_sha256=""), dict(repo=None)):
+    # An empty admin_config fell through to guessing the SPU. Perturbation:
+    # drop config_values, and a case here reaches the run. The `spu_bin`
+    # case this held is refused whatever its value since the pass on
+    # 90b9a8a, `test_round_seventeen.py`.
+    for change in (dict(admin_config=""), dict(loop_sha256=""), dict(repo=None)):
         def prepare(tmp, decl, change=change):
             path = os.path.join(tmp, "config.json")
             cfg = json.load(open(path))
@@ -101,7 +102,6 @@ def test_an_empty_or_missing_config_value_is_refused():
         agent = Reloading()
         code, records, _ = run_main(agent, prepare=prepare)
         assert code == 2 and records is None and agent.starts == 0, (change, code)
-    assert base._resolve_spu({"spu_bin": "/x"})[0] == "/x"
 
 
 def test_an_empty_outdir_is_refused():

@@ -16,8 +16,9 @@ three from that tree and `test_recorded_seed.py`, `test_absence_and_evidence.py`
 `test_round_five.py`, `test_round_seven.py`, `test_round_eight.py`,
 `test_round_nine.py`, `test_round_ten.py`, `test_round_eleven.py`,
 `test_round_twelve.py`, `test_round_thirteen.py`, `test_round_fourteen.py`,
-`test_round_fifteen.py`, `test_round_sixteen.py` and `test_one_entry_point.py` from
-#716. Each is a plain script and exits non-zero on the first failure:
+`test_round_fifteen.py`, `test_round_sixteen.py`, `test_round_seventeen.py` and
+`test_one_entry_point.py` from #716. Each is a plain script and exits non-zero on the
+first failure:
 
 ```
 python3 test_seed_schedule.py
@@ -36,6 +37,7 @@ python3 test_round_thirteen.py
 python3 test_round_fourteen.py
 python3 test_round_fifteen.py
 python3 test_round_sixteen.py
+python3 test_round_seventeen.py
 python3 test_one_entry_point.py
 ```
 
@@ -55,7 +57,6 @@ One JSON file per box. The matrix reads these fields:
 | `admin_bin` | yes | the installed `weaver-admin` |
 | `admin_config` | yes | the admin's configuration directory, passed as `WEAVER_ADMIN_CONFIG` |
 | `repo` | yes | the checkout the stack was built from, for the toolchain reading |
-| `spu_bin` | optional | overrides the `spu-binary` the admin configuration names |
 | `loop_sha256` | optional | the sha256 of the loop the agent composes with, 64 lowercase hex digits or refused at preflight, which every load is held to, a load composed by another being a fault. Absent, the loop is unchecked |
 
 **`cells` is read only by `--cells`.** It lists the cross-precision protocol's cells,
@@ -76,9 +77,10 @@ must be readable, the declaration writable where the run rewrites it, `admin_bin
 executable file and `repo` a directory, and the stack's opening readings, the admin
 configuration's entries and the binaries and libraries they name, must be readings and
 not guesses. Every path the stack resolves, the artifacts, `trace`, `gate_socket`,
-`admin_config`, `spu_bin` and the binaries the admin configuration names, must be
-absolute, and cell names must not repeat. A run refused there exits 2 and names what it
-refused.
+`admin_config` and the binaries the admin configuration names, must be absolute, and
+cell names must not repeat. A config carrying `spu_bin` is refused: the admin launches
+the SPU its configuration names, and the run reads it there. A run refused there exits 2
+and names what it refused.
 
 ## Before a run
 

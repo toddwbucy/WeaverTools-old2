@@ -386,10 +386,13 @@ its digest against each load event.
 a relative path against their own working directory and the harness against its launch
 directory, so one spelling would name two files and the run would record the bytes of
 one while the stack served the other. The declaration's artifact, `--artifact`, each
-cell's artifact, the config's `trace`, `gate_socket`, `admin_config` and `spu_bin`, and
-every binary the admin configuration names are refused at preflight unless absolute,
-and a library `ldd` names by any other path is unreadable. The paths only the harness
-opens, the declaration file, `admin_bin`, `repo` and the outdir, are its own.
+cell's artifact, the config's `trace`, `gate_socket` and `admin_config`, and every
+binary the admin configuration names are refused at preflight unless absolute, and a
+library `ldd` names by any other path is unreadable. The paths only the harness opens,
+the declaration file, `admin_bin`, `repo` and the outdir, are its own. A config may not
+name an SPU of its own: the admin launches the one its configuration names,
+`admin_config/spu-binary`, and the run reads it there, so a config carrying `spu_bin` is
+refused.
 
 **Every file a run writes is its own.** A run in either mode writes three fixed names
 into its outdir, and its declaration backup beside the declaration.
