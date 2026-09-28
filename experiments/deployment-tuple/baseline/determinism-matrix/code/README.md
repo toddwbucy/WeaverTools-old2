@@ -15,8 +15,9 @@ seed and the device each load logged. The `test_*.py` files are the tests of the
 three from that tree and `test_recorded_seed.py`, `test_absence_and_evidence.py`,
 `test_round_five.py`, `test_round_seven.py`, `test_round_eight.py`,
 `test_round_nine.py`, `test_round_ten.py`, `test_round_eleven.py`,
-`test_round_twelve.py`, `test_round_thirteen.py` and `test_one_entry_point.py` from
-#716. Each is a plain script and exits non-zero on the first failure:
+`test_round_twelve.py`, `test_round_thirteen.py`, `test_round_fourteen.py` and
+`test_one_entry_point.py` from #716. Each is a plain script and exits non-zero on the
+first failure:
 
 ```
 python3 test_seed_schedule.py
@@ -32,6 +33,7 @@ python3 test_round_ten.py
 python3 test_round_eleven.py
 python3 test_round_twelve.py
 python3 test_round_thirteen.py
+python3 test_round_fourteen.py
 python3 test_one_entry_point.py
 ```
 
@@ -58,9 +60,10 @@ One JSON file per box. The matrix reads these fields:
 each an object with a `name`, a `precision` and an absolute `artifact`, the names plain
 and none repeated. With `--cells` the run serves each cell once, the protocol's two
 turns under the declaration with that cell's artifact, in place of the prompt-by-depth
-matrix, and takes neither `--artifact` nor `--seed-schedule`. Without it the run takes
-its artifact from the declaration or from `--artifact`. Other keys, such as a `box` or
-`build_flags` an older config carries, are not read.
+matrix, and takes none of `--artifact`, `--seed-schedule` or `--hours`: a cells run
+serves every cell, whatever the clock. Without it the run takes its artifact from the
+declaration or from `--artifact`. Other keys, such as a `box` or `build_flags` an older
+config carries, are not read.
 
 ```
 python3 determinism_matrix.py --config <deposit>/config.json --outdir <deposit> --cells
@@ -106,13 +109,14 @@ and on a box keeping minutes that is the tail of a run.
 weights, every cell's artifact in a cells run, the engine libraries, the binaries and
 the toolchain must read the same at the start and the end, the serving device must be
 one binding for the whole run, and every session must bear out its declared seed and
-serve its declared declaration. Anything less exits 1, and the log names the fields
-that did not hold. Both modes exit on the one verdict, `run_verdict`. A session that
-raises is recorded as `error: <type>: <message>`, and an interrupt records the session
-it cut short as `interrupted`, closes the run and exits 1. Batch composition is
-recorded rather than held: one caller and one turn at a time by construction, which the
-record cannot show. What an exit 0 certifies, and what it does not guard against, is
-the Spec's section 5, with the table.
+serve its declared declaration. Anything less exits 1, and the log names the fields that
+did not hold. Both modes exit on the one verdict, `run_verdict`, and a cells run short
+of its cells exits 1 naming the cells it did not serve. A session that raises is
+recorded as `error: <type>: <message>`, and an interrupt records the session it cut
+short as `interrupted`, closes the run and exits 1. Batch composition is recorded rather
+than held: one caller and one turn at a time by construction, which the record cannot
+show. What an exit 0 certifies, and what it does not guard against, is the Spec's
+section 5, with the table.
 
 ## The sudo requirement
 

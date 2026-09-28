@@ -107,9 +107,11 @@ the config's cells, each once: the cross-precision protocol, one artifact at one
 precision per cell, the protocol's two pinned turns, one short and one longer, under the
 declaration with that cell's artifact and everything else as the operator wrote it. The
 schedule is data, the sessions it yields, and nothing else differs: one main, one
-session loop and one exit, per the operator's ruling of 2026-09-27. A cell's record is
-labelled by its name, precision and artifact, and the summary counts cells as
-`by_cell`. `confirm_cells.py` has no entry point of its own.
+session loop and one exit, per the operator's ruling of 2026-09-27. A cells run is
+finite and takes no deadline, so it takes no `--hours`, and a run short of its cells is
+not a reproduction result, the log naming the cells it did not serve. A cell's record is
+labelled by its name, precision and artifact, and the summary counts cells as `by_cell`.
+`confirm_cells.py` has no entry point of its own.
 
 ## 3. The session
 
@@ -123,7 +125,9 @@ labelled by its name, precision and artifact, and the summary counts cells as
 3. Unload fully, reload, wait for the socket again, and hold the reload the same way.
 4. Reissue every served turn byte-exact, the texts read back from the record's own
    user messages and not from the script's copy, and read the replayed turns back.
-   They must land in one fresh run named by the gate's closes.
+   They must land in one fresh run named by the gate's closes. Before the reissue the
+   record's requests, in order, must be the texts the session served, byte-exact, and
+   the replay's must be the source's, or the record is of another session.
 5. Compare every turn.
 
 **Every answer the admin gives is read.** The admin prints its answer and exits 0, or
@@ -296,12 +300,13 @@ unchanged.
 writes it, in either mode: the session it cut short is recorded as `interrupted`, the
 window is read at the close, and the run exits 1, since a session it began did not
 complete. Every step between the session loop and the summary, the declaration's
-restore, the run's last unload and the summary's write, is guarded: an interrupt there
-marks the run interrupted and the step is tried once more, and any other failure is
-logged, a restore that failed leaving the backup standing. A hangup, which is what
-closing the operator's terminal sends, ends the process before it does, and the
-per-session record written as each session closes is then the whole of what the run
-left.
+restore, the run's last unload, the closing readings of the stack and the weights, the
+SPU's closing resolution, the journal's device read and the summary's write, is guarded:
+an interrupt there marks the run interrupted and the step is tried once more, and any
+other failure is logged, a restore that failed leaving the backup standing. A hangup,
+which is what closing the operator's terminal sends, ends the process before it does,
+and the per-session record written as each session closes is then the whole of what the
+run left.
 
 ## 6. The shared declarations
 

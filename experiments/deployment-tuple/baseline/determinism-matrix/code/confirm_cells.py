@@ -658,11 +658,13 @@ def closing_resolution(cfg):
     failure - lost the entire close, and in the matrix the summary with
     it. Resolved once so the two collectors cannot disagree about which
     SPU they measured, and a failure becomes the reading both collectors
-    return, closing as `at_close_unreadable` instead of as a lost run.
+    return, closing as `at_close_unreadable` instead of as a lost run. An
+    interrupt is not caught here: it reaches the caller's guarded close,
+    which marks the run interrupted (#716, after the fold).
     """
     try:
         return _resolve_spu(cfg), None
-    except (Exception, KeyboardInterrupt) as e:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001
         return None, {"unreadable": f"the SPU resolution raised: {_why(e)}"}
 
 
@@ -685,9 +687,12 @@ def provenance_close(cfg, reader, at_start, what, essence=None):
     claimed only where both readings looked at the same places.
     """
     essence = close_hashes if essence is None else essence
+    # An ordinary failure degrades to a note. An interrupt is not caught
+    # here: it reaches the caller's guarded close, which marks the run
+    # interrupted (#716, after the fold).
     try:
         at_close = reader(cfg)
-    except (Exception, KeyboardInterrupt) as e:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001
         at_close = {"unreadable": f"{what}: {_why(e)}"}
     if not is_reading(at_close):
         return {"status": "at_close_unreadable",
@@ -1339,6 +1344,14 @@ def verify_session(cfg, texts, rec, declared_seed, declaration_sha,
         broken = next((st for st in source_turns if st["incomplete"]), None)
         if broken:
             return fault(f"source {broken['turn']} is incomplete: {', '.join(broken['incomplete'])}")
+        # **The texts served are the texts the record carries** (#716, after
+        # the fold): the source's requests, in order and byte-exact, are the
+        # session's texts, or the record is of another session, and a replay
+        # reissued from it would measure that one under this one's labels.
+        for i, (st, text) in enumerate(zip(source_turns, texts), start=1):
+            if st["text"] != text:
+                return fault(f"source {st['turn']} carries a request other than turn {i} of the"
+                             " texts served")
         # **The seed the record carries is read back, never assumed**: one
         # seed, present, and the one the session was declared under.
         recorded, why = seed_of(source_turns, "source")
@@ -1393,6 +1406,11 @@ def verify_session(cfg, texts, rec, declared_seed, declaration_sha,
         broken = next((rt for rt in replay_all if rt["incomplete"]), None)
         if broken:
             return fault(f"replay {broken['turn']} is incomplete: {', '.join(broken['incomplete'])}")
+        # The replay's requests are the source's, in the source's order, as
+        # the record carries them.
+        for st, rt in zip(source_turns, replay_all):
+            if rt["text"] != st["text"]:
+                return fault(f"replay {rt['turn']} carries a request other than source {st['turn']}'s")
         # Both halves load one declaration, so a replay under another seed is
         # the apparatus, which the knobs check would otherwise read DIVERGED.
         rec["replay_recorded_seed"], why = seed_of(replay_all, "replay")
@@ -1667,13 +1685,16 @@ def release(cfg):
     return f"the run's closing unload was refused, the agent may still be loaded: {canonical(answer)}"
 
 
-def run_verdict(records, windows, interrupted=False):
+def run_verdict(records, windows, interrupted=False, expected=None):
     """**The run-wide verdict**, which the matrix exits on and only formats
     (#716 round nine), as `verify_session` is the one session verification.
     `records` are the run's session records, and `windows` the closing
-    envelopes it read, the weights, the stack's and any more. Answers whether every session reproduced, one at
-    least having run and no interrupt having cut the run short, and the held
-    fields the run cannot show held:
+    envelopes it read, the weights, the stack's and any more. `expected` is
+    a finite schedule's session count, and a run short of it did not
+    reproduce (#716, after the fold). Answers whether every session
+    reproduced, one at least having run, every expected one run, and no
+    interrupt having cut the run short, and the held fields the run cannot
+    show held:
 
     - every window field, the weights and each of the stack's among them,
       reads `unchanged`;
@@ -1682,6 +1703,7 @@ def run_verdict(records, windows, interrupted=False):
       least one did.
     """
     reproduced = (not interrupted and bool(records)
+                  and (expected is None or len(records) >= expected)
                   and all(r.get("verdict") == "REPRODUCED" for r in records))
     fields = list(REQUIRED_WINDOWS) + [k for k in windows if k not in REQUIRED_WINDOWS]
     unheld = [k for k in fields

@@ -430,7 +430,7 @@ def cells_main(tmp, change=None, declared=None, prepare=None, fakes=None, outdir
     try:
         for k, v in (dm_fakes or {}).items():
             setattr(dm, k, v)
-        sys.argv = ["determinism_matrix.py", "--config", path, "--outdir", outdir, "--cells", "--hours", "1"]
+        sys.argv = ["determinism_matrix.py", "--config", path, "--outdir", outdir, "--cells"]
         with patched(every), contextlib.redirect_stdout(out):
             try:
                 dm.main()

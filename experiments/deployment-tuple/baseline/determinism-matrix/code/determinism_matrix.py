@@ -327,7 +327,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", required=True)
     ap.add_argument("--outdir", required=True)
-    ap.add_argument("--hours", type=float, default=7.0)
+    ap.add_argument("--hours", type=float, default=None,
+                    help="the matrix's wall-clock bound, 7 by default; a cells run takes none")
     ap.add_argument("--artifact", default=None,
                     help="override the declaration's artifact for every cell")
     ap.add_argument("--seed-schedule", default=None,
@@ -349,14 +350,18 @@ def main():
     # refused by the parser, an omitted one is no schedule.
     schedule = None
     try:
-        hours_value(args.hours)
         if args.seed_schedule is not None:
             schedule = parse_seed_schedule(args.seed_schedule)
         # A cell names its own artifact and runs under the declaration's
-        # seed, so neither override has a meaning for a cells run.
-        if args.cells and (args.artifact is not None or schedule is not None):
-            raise ValueError("--cells takes neither --artifact nor --seed-schedule:"
-                             " each cell names its artifact and runs under the declaration's seed")
+        # seed, and a cells run serves every cell, so no deadline stops it
+        # short (#716, after the fold): none of the three overrides has a
+        # meaning for one.
+        if args.cells and (args.artifact is not None or schedule is not None or args.hours is not None):
+            raise ValueError("--cells takes neither --artifact, --seed-schedule nor --hours:"
+                             " each cell names its artifact, runs under the declaration's seed,"
+                             " and is served whatever the clock")
+        if not args.cells:
+            args.hours = hours_value(7.0 if args.hours is None else args.hours)
     except ValueError as e:
         refuse(str(e))
 
@@ -456,7 +461,7 @@ def main():
         refuse(str(e))
     libraries, binaries, tools = (opening[k] for k in base.STACK_WINDOW)
 
-    deadline = time.time() + args.hours * 3600.0
+    deadline = math.inf if args.cells else time.time() + args.hours * 3600.0
     # Opened before the first load so the journal read at the summary
     # cannot reach back past this run.
     run_started = time.strftime(
@@ -489,7 +494,7 @@ def main():
 
     if args.cells:
         sessions = cell_sessions(standing, cfg["cells"])
-        log(f"matrix start, deadline in {args.hours}h, {len(cfg['cells'])} cells")
+        log(f"matrix start, {len(cfg['cells'])} cells, each served once, no deadline")
     else:
         sessions = matrix_sessions(standing, seed, schedule)
         log(f"matrix start, deadline in {args.hours}h, "
@@ -613,18 +618,18 @@ def main():
     # assumed. The libraries carry the same exposure and are read with them.
     # Guarded like the device read below, and for the same reason: a closing
     # read that raised would lose the run it was added to describe.
-    # **`KeyboardInterrupt` is caught by name**, because it is not an
-    # `Exception` and `except Exception` let it past. The main loop has
-    # already absorbed one Ctrl-C by this point and these reads hash 142 MiB,
-    # so a second one landed in the window would have killed `main` before
-    # `summary.json` was written - losing every session the run recorded.
+    # **An interrupt in a closing read is `closing`'s**, below: the main
+    # loop has already absorbed one Ctrl-C by this point and these reads
+    # hash 142 MiB, so a second one landed in the window would otherwise
+    # have killed `main` before `summary.json` was written, or been caught
+    # into a note without marking the run interrupted.
     #
     # **The two reads are wrapped apart.** Together, a library failure
     # discarded a good binary reading and was then recorded under the binary
     # field, so the summary said the binaries could not be re-read when they
     # could, and the library failure was recorded nowhere.
-    # The catch, `KeyboardInterrupt` included, now lives inside
-    # `base.provenance_close`, where the lift carried it.
+    # The catch of an ordinary failure lives inside `base.provenance_close`,
+    # where the lift carried it.
     # **`varied` is claimed only where both sides are readings.** These
     # readers report failure by returning a note rather than by raising, so
     # the `except` below catches almost nothing and a failed closing read
@@ -635,16 +640,24 @@ def main():
     # **Lifted to `confirm_cells` per #379** - these helpers were local here
     # while the confirm driver compared with a raw `!=`, two answers to one
     # question. The matrix now calls the shared implementation it donated.
+    # **Every closing read goes through `closing`** (#716, after the fold):
+    # an interrupt in one marks the run interrupted and the read is tried
+    # once more, and a read interrupted twice closes unreadable.
     def close(reader, at_start, what, essence=None):
-        return base.provenance_close(cfg, reader, at_start, what,
-                                     essence=essence)
+        envelope = closing(f"the closing {what} reading", lambda: base.provenance_close(
+            cfg, reader, at_start, what, essence=essence))
+        if envelope is None:
+            envelope = {"status": "at_close_unreadable", "at_start": at_start,
+                        "note": {"unreadable": f"{what}: the closing read was interrupted"}}
+        return envelope
 
     whole = base.close_whole
 
     # **One resolution for both collectors at each end**, so the two fields
     # cannot disagree about which SPU they measured - the same sharing the
     # opening readings do at preflight.
-    closing_spu, spu_note = base.closing_resolution(cfg)
+    closing_spu, spu_note = (closing("the SPU's closing resolution", lambda: base.closing_resolution(cfg))
+                             or (None, {"unreadable": "the SPU's closing resolution was interrupted"}))
     binaries_at_close = close(
         lambda c: spu_note or base.weaver_binaries(c, closing_spu), binaries, "weaver_binaries"
     )
@@ -662,13 +675,12 @@ def main():
     # ends (#716 round two).
     weights_at_close = close(base.weights(artifacts), weights_open, "weights")
 
-    try:
-        bindings = base.device_bindings(cfg, run_started)
-    except (Exception, KeyboardInterrupt) as e:  # noqa: BLE001 - degrades to a note
-        # `_why` here too: widening this catch to include `KeyboardInterrupt`
-        # opened the empty-reason path, `journalctl` over a seven-hour window
-        # being a call a Ctrl-C can land in.
-        bindings = [{"unreadable": f"the device read failed: {base._why(e)}"}]
+    # Through `closing` too: `journalctl` over a seven-hour window is a call
+    # a Ctrl-C can land in, and an interrupt caught here into an unreadable
+    # window left the run unmarked, the window not being gated (#716, after
+    # the fold).
+    bindings = (closing("the journal's device read", lambda: base.device_bindings(cfg, run_started))
+                or [{"unreadable": "the journal's device read did not complete"}])
     summary = {
         # Held from every session's own per-load read (#716 round three).
         # The journal window over the whole run is kept as a record and not
@@ -708,9 +720,17 @@ def main():
     # it claims held moved, or was never read, is not a reproduction result.
     # The verdict is `run_verdict`, the one run-wide verdict (#716 round
     # nine).
+    # A cells run is finite and serves every cell, so a run short of its
+    # cells is not a reproduction result, and the log names what it missed.
+    expected = len(cfg["cells"]) if args.cells else None
     reproduced, failing = base.run_verdict(results, {
         "weights": weights_at_close, "engine_libraries": libraries,
-        "weaver_binaries": binaries_at_close, "toolchain": tools}, interrupted)
+        "weaver_binaries": binaries_at_close, "toolchain": tools}, interrupted, expected)
+    if args.cells:
+        served = {r.get("cell") for r in results}
+        missed = [c["name"] for c in cfg["cells"] if c["name"] not in served]
+        if missed:
+            log(f"cells not served: {', '.join(missed)} - not a reproduction result")
     if interrupted:
         log("interrupted - not a reproduction result")
     if reproduced and failing:
