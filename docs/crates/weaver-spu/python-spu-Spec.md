@@ -109,6 +109,36 @@ Working Process section 1 keeps out of the tree.
 precedent for Python in this tree and not the model for this one: that is Python behind
 a feature of a crate, and this is a separate program behind the organ's seams.
 
+
+### 2.1 What the tree holds: a prototype, and where it falls short
+
+**`python-spu/` holds the prototype built on thinkpad on 2026-09-28, carried as it
+stood**, per Working Process section 6's rule that a carry is not a hardening. It is a
+lab instrument until the acts that close the gaps below have landed, and no verdict
+rests on it. The carry changed what landing needed and nothing more: the oracle's
+manifest names the workspace crates by the repository and a commit instead of a copied
+tree, the smoke report reads that commit from the manifest, and the README lost a home
+path and a device identifier. Its suite passes on the CPU against the crates at the
+pinned commit.
+
+**Where it falls short of this document**, each gap named with the section it falls
+short of:
+
+- Section 2: it installs as a package with entry-point scripts, not as one zipapp, so a
+  `spu-binary` hash would name a launcher. It also carries an experimental ModernBERT
+  classifier and its entry point, which section 1 scopes out of this implementation.
+- Section 3.1: its oracle answers five operations, `session`, `seed`, `measure`,
+  `render` and `round`, and a transport test over the oracle's descriptor. Every other
+  operation the walk names is unbuilt.
+- Section 4: the engine loads at FP32, not BF16.
+- Section 5: temperature applies first, as candle's chain does, but the draw comes from
+  Python's `random.Random` seeded with the whole 64-bit value over a list, not from
+  `StdRng` and `WeightedIndex`, and it is not proven against the oracle.
+- Section 8: its manifest carries version ranges and no hashes, the interpreter is a
+  floor rather than a pin, `pydantic` is in the core, the Python `tokenizers` it has run
+  under is 0.23.2 rather than the release built on the 0.21.4 crate, nothing digests the
+  installed tree, and there is no import-set test.
+
 ## 3. What it carries identically
 
 Every row names the `weaver-spu-Spec` section that states the behaviour, and the
