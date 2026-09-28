@@ -22,13 +22,14 @@ the surface small and mostly justified. This report measures that.
 every one of the ten crates: the ten share one serialization family, four take `nix` for
 the socket and process calls, two take a hash, one takes SQLite, one takes a YAML
 parser, one takes a tensor reader, and the pure member takes nothing. Forty-one external
-crates in all, five of them the proc-macro toolchain that compiles on the host and never
-links into a shipped binary. **At the features the deploy builds, the hypothesis does
-not hold for one crate.** `weaver-state`'s `postgres` feature, which
-`deploy/update-stack.sh` carries, brings an async runtime and a network client,
-seventy-five crates in place of twenty-four, and `weaver-harness`'s `pyworker` feature
-links the Python interpreter. Both are elections the documents made and neither is
-hidden, and what the operator decides about them is the report's largest call.
+crates in all, counted by name and version, thirty-eight by name, five of them the
+proc-macro toolchain that compiles on the host and never links into a shipped binary.
+**At the features the deploy builds, the hypothesis does not hold for one crate.**
+`weaver-state`'s `postgres` feature, which `deploy/update-stack.sh` carries, brings an
+async runtime and a network client, seventy-five crates in place of twenty-four by name
+and version, seventy-four by name, and `weaver-harness`'s `pyworker` feature links the
+Python interpreter. Both are elections the documents made and neither is hidden, and
+what the operator decides about them is the report's largest call.
 
 ## Out of scope, by name
 
@@ -59,10 +60,15 @@ linked and not counted as external.
 feature named in a manifest is code compiled whether or not the crate calls it, so the
 reading below is per crate and per feature: the calls the crate makes that the feature
 gates in `nix` 0.31.3, or **not reached** where the feature is named and no call the
-crate makes needs it, or a dash where the crate does not name it. It was checked by the
-grep and then by the compiler, in a throwaway checkout: with each not-reached feature
-dropped from its manifest the crate still builds, and with a reached one dropped, `fs`
-from state and `uio` from admin as the controls, it does not. The reading counts only
+crate makes needs it, **tests only** where the only call is in a test, or a dash where
+the crate does not name it. It was checked by the grep and then by the compiler, in a
+throwaway checkout, for every named feature of every crate, two ways: `cargo check` for
+the shipped code and `cargo check --tests` for the tests. A feature reads reached in the
+shipped binary where the first check fails without it, tests only where the first builds
+and the second fails, and not reached where both build. Two of the forty-six checks are
+uninformative rather than clean: `signal` implies `process` in `nix`'s own manifest, so
+dropping `process` from the harness or the gate, which both name `signal`, removes
+nothing, and their `process` reading rests on the calls alone. The reading counts only
 what the features gate, so `errno`, the `Signal` and `OFlag` types, and the raw `libc`
 calls the harness and admin make through the re-export, which no feature gates, are not
 in it. Note that `sendmsg`, `recvmsg` and the control-message types sit in the socket
@@ -71,45 +77,54 @@ does not.
 
 | Crate | `socket` | `fs` | `uio` | `user` | `poll` | `process` | `signal` |
 |---|---|---|---|---|---|---|---|
-| `weaver-harness` | `socket`, `socketpair`, `bind`, `listen`, `accept4`, `send`, `recv`, `getsockopt` | `fcntl`, `umask`, `pipe2` | `sendmsg`, `recvmsg`, `ControlMessage` | **not reached** | `poll` | `fork`, `Pid`, `waitpid` | `kill` |
+| `weaver-harness` | `socket`, `socketpair`, `bind`, `listen`, `accept4`, `send`, `recv`, `getsockopt` | `fcntl`, `umask`, `pipe2` | `sendmsg`, `recvmsg`, `ControlMessage` | **tests only**, `getuid` in `tests/service.rs` | `poll` | `fork`, `Pid`, `waitpid` | `kill` |
 | `weaver-gate` | `socketpair`, `send`, `recv`, `getsockopt` | `fcntl`, `umask` | - | `getuid`, `User` | `poll` | `set_dumpable`, `set_pdeathsig`, `waitid`, `Pid` | `kill`, `killpg` |
 | `weaver-admin` | `socket`, `socketpair`, `bind`, `listen`, `connect`, `accept4` | `fcntl` | `sendmsg`, `recvmsg`, `ControlMessage`, `cmsg_space` | `getuid`, `geteuid`, `getgid`, `Uid`, `User`, `Group`, `getgrouplist` | - | **not reached** | - |
-| `weaver-state` | `getsockopt` | `fcntl`, `umask` | **not reached** | `getuid` | `poll` | - | - |
+| `weaver-state` | `getsockopt` | `fcntl`, `umask` | **not reached** | **tests only**, `getuid` under `cfg(test)` | `poll` | - | - |
 
-Three of the twenty-three named features are not reached. The harness names `user` and
-reads its peer's credentials through `getsockopt`, which `socket` gates, and never asks
-for a uid or a user by name. Admin names `process` and launches nothing through `nix`,
-its agents starting under `std::process::Command` and `systemd-run`, so no fork, wait or
-prctl call needs it. State names `uio` and moves no descriptor over its socket, so none
-of the message calls that need it are made. Each is a feature the manifest names and no
-line of the crate needs, and each is **[3]**.
+Four of the twenty-three named features are not reached by the shipped binary, and two
+of the four are reached by tests alone. The harness names `user`, reads its peer's
+credentials through `getsockopt`, which `socket` gates, and asks for its own uid only in
+an integration test. State names `user` and asks for its uid only under `cfg(test)`, in
+`main.rs` and in the comparison module that `postgres` compiles for tests. Admin names
+`process` and launches nothing through `nix`, its agents starting under
+`std::process::Command` and `systemd-run`, so no fork, wait or prctl call needs it.
+State names `uio` and moves no descriptor over its socket, so none of the message calls
+that need it are made. Each is a feature the manifest names and no line of the shipped
+crate needs, and each is **[3]**.
 
 ## The closure at default features, forty-one crates
 
-Grouped by what pulls them, so the operator can see what one election costs.
+Grouped by what pulls them, so the operator can see what one election costs. The
+counting basis: every crate `cargo tree` lists for a package, by name and version,
+counted once however many groups pull it, and a package's count in the table above is
+the sum of the groups it takes, `cfg-if` and `equivalent` being the two pulled by more
+than one group.
 
 - **The serialization family**, in every crate: `serde`, `serde_core`,
-  `serde_json`, `itoa`, `ryu`, `zmij`, `memchr`. Beside them the proc-macro
+  `serde_json`, `itoa`, `zmij`, `memchr`. Beside them the proc-macro
   toolchain, `serde_derive`, `syn`, `quote`, `proc-macro2`, `unicode-ident`,
   which compiles on the host and is not linked into a binary.
-- **The socket layer**, in the four socket crates: `nix`, `libc`, `bitflags`,
-  `cfg-if`, `memoffset`.
+- **The socket layer**, in the four socket crates: `nix`, `libc`, `bitflags`, `cfg-if`,
+  `memoffset`, the last brought by `nix`'s `socket` feature.
 - **The hash**, in admin and analysis: `sha2`, `digest`, `block-buffer`,
-  `crypto-common`, `generic-array`, `typenum`, `cpufeatures`.
+  `crypto-common`, `generic-array`, `typenum`, `cpufeatures`, and `cfg-if` again under
+  `cpufeatures`.
 - **The YAML parser**, in types under `config` and so in admin: `serde_yaml_ng`,
-  `unsafe-libyaml`, `indexmap`, `hashbrown` 0.17, `equivalent`. `unsafe-libyaml`
-  is the C library's logic carried into Rust under `unsafe`, which is what
-  **[1]** weighs.
+  `unsafe-libyaml`, `indexmap`, `hashbrown` 0.17, `equivalent`, `ryu`. `unsafe-libyaml`
+  is the C library's logic carried into Rust under `unsafe`, which is what **[1]**
+  weighs.
 - **SQLite**, in state under `sqlite`: `rusqlite`, `libsqlite3-sys`, `hashlink`,
   `hashbrown` 0.15, `foldhash` 0.1, `fallible-iterator`,
   `fallible-streaming-iterator`, `smallvec`. The `bundled` feature compiles the
   SQLite amalgamation into the binary, which is **[6]**.
-- **The tensor reader**, in analysis: `safetensors`, `hashbrown` 0.16,
-  `foldhash` 0.2, `allocator-api2`.
+- **The tensor reader**, in analysis: `safetensors`, `hashbrown` 0.16, `foldhash` 0.2,
+  `allocator-api2`, and `equivalent` again under `hashbrown`.
 
-Three versions of `hashbrown` and two of `foldhash` stand in one lock. No one
-binary links more than one of each, since each comes with its own puller, so
-this is lock hygiene rather than shipped surface, noted as **[8]**.
+Three versions of `hashbrown` and two of `foldhash` stand in one lock, which is the
+three between forty-one and thirty-eight. No one binary links more than one of each at
+default features, since each comes with its own puller, so this is lock hygiene rather
+than shipped surface, noted as **[8]**.
 
 ## The closure at the features the deploy builds
 
@@ -126,12 +141,13 @@ protocol, `postgres-protocol` and `postgres-types` with `byteorder`, `bytes`, `b
 `percent-encoding` and `phf`, the authentication stack, `md-5`, `hmac`, `sha2` 0.11,
 `chacha20`, `rand` 0.10, `getrandom`, `stringprep` with `unicode-bidi`,
 `unicode-normalization` and `unicode-properties`, and `whoami`, `log`, `async-trait`,
-`parking_lot` and `lock_api`. The member speaks to a local server over a socket, and the
-crate that speaks for it is a network client with a network client's dependencies. The
-`sha2` here is 0.11, a second major beside admin's and analysis's 0.10, with `digest`,
-`block-buffer`, `crypto-common` and `cpufeatures` at a second major beside it, so the
-deployed stack carries both lines across its binaries though no one binary links both.
-This is **[5]**.
+`parking_lot` and `lock_api`. It also brings `fallible-iterator` 0.2 beside the 0.3 that
+`rusqlite` holds, the one name this binary links at two versions. The member speaks to a
+local server over a socket, and the crate that speaks for it is a network client with a
+network client's dependencies. The `sha2` here is 0.11, a second major beside admin's
+and analysis's 0.10, with `digest`, `block-buffer`, `crypto-common` and `cpufeatures` at
+a second major beside it, so the deployed stack carries both lines across its binaries
+though no one binary links both. This is **[5]**.
 
 **`weaver-harness` with `pyworker`: `pyo3` 0.27 and the interpreter.** The
 closure gains `pyo3`, `pyo3-ffi`, `once_cell`, a second `syn` at 2.0 for the
@@ -155,12 +171,16 @@ in the same crate, carries none of it. Which of the two a box runs is its
    whether the deployed stack should carry the interpreter's binary at all
    where the entry names the Rust worker, and whether `pyworker` belongs in the
    default deploy or behind an election.
-3. **The `nix` feature sets.** Three named features are not reached, per the table
-   above: `user` in the harness, `process` in admin and `uio` in state, each compiling
-   code its crate never calls, which is the rule's case at the feature grain. Their
-   removal is the operator's call, since each is a manifest change and this report
-   makes none. The further call is whether an instrument should hold each crate's set
-   to its calls, since nothing today refuses a feature no call needs.
+3. **The `nix` feature sets.** Four named features are not reached by the shipped
+   binary, per the table above: `user` in the harness and in state, `process` in
+   admin and `uio` in state, each compiling code its binary never calls, which is
+   the rule's case at the feature grain. The two `user` reaches are by tests alone,
+   and a test's need is dev-time under the rule, which speaks of what is compiled
+   into a binary that ships, so what a test alone needs is a feature for the test
+   build rather than for the binary. Their removal is the operator's call, since
+   each is a manifest change and this report makes none. The further call is
+   whether an instrument should hold each crate's set to its calls, since nothing
+   today refuses a feature no call needs.
 4. **`sha2` in `weaver-admin`**, for two functions: a file's digest in the
    inventory and a declaration's digest, both sha256 to hex. Two functions and
    a library, and the same library analysis takes for the capture digests. The
@@ -183,10 +203,12 @@ in the same crate, carries none of it. Which of the two a box runs is its
    required by operations. Named here so the reading is the operator's and not
    assumed.
 8. **Lock hygiene.** Three `hashbrown`, two `foldhash`, two `syn`, and under `postgres`
-   two `sha2` majors with their four companions each at two majors. No single binary
-   links two of a kind, at default features or the deploy's, and the deployed stack as a
-   whole carries two of each across its binaries. The call is whether the lock should be
-   held to one version per crate where the pullers allow it.
+   two `sha2` majors with their four companions each at two majors, and two
+   `fallible-iterator` minors. No single binary links two of a kind at default features.
+   Under `postgres` one does, `weaver-state` linking `fallible-iterator` at 0.2 and 0.3,
+   and the deployed stack as a whole carries two of each of the rest across its
+   binaries. The call is whether the lock should be held to one version per crate where
+   the pullers allow it.
 
 ## What this report does not do
 
