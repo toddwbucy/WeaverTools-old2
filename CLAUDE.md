@@ -432,8 +432,10 @@ carries only the result note**, on the operator's word of 2026-09-28. Deposits s
 thinkpad mounts, so each seat reads the other's runs where they were written. The
 record, the log, the summary, the box facts, the raw trace and the captured journal
 evidence all stay there, in the deposit and its `evidence/` directory. A trace runs to
-hundreds of megabytes, and committing one would make every clone carry it. A result
-note in `experiments/` names its deposits and never copies their contents.
+hundreds of megabytes, and committing one would make every clone carry it. **Every
+experiment's results go there by default**, and the result report goes in two places, a
+copy in the deposit and the same report under `experiments/` in the repository, which
+names its deposits and never copies their contents.
 
 ## Police call
 
