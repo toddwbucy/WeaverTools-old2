@@ -460,6 +460,61 @@ def admin_answer_definition(script):
     return "\n".join(lines[start:end + 1]) + "\n"
 
 
+def declared_definition(script):
+    """The `declared` reader exactly as the deploy script defines it, read out
+    of the script's own text so the test runs the code that ships."""
+    lines = script.splitlines()
+    start = lines.index("declared() {")
+    end = next(i for i in range(start, len(lines)) if lines[i] == "}")
+    return "\n".join(lines[start:end + 1]) + "\n"
+
+
+class DeclaredTests(unittest.TestCase):
+    """The one reader update-stack.sh takes a declaration's values through.
+    Perturbation: put back the line-matching sed readers and the literal and
+    escaped sink paths, the dotted engine and the inline store fail here."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.script = (Path(__file__).resolve().parent / "update-stack.sh").read_text()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def read(self, text, key, want):
+        decl = Path(self.tmp.name) / "a.toml"
+        decl.write_text(text)
+        run = subprocess.run(["bash", "-c", declared_definition(self.script) + 'declared "$@"', "x",
+                              str(decl), key, want], text=True, capture_output=True)
+        return run.returncode, run.stdout.rstrip("\n"), run.stderr
+
+    def test_the_sink_path_is_the_decoded_string(self):
+        for text, path in (('[trace-sink]\npath = \'/srv/a\\b "c".ndjson\'\n', '/srv/a\\b "c".ndjson'),
+                           ('[trace-sink]\npath = "/srv/x\\u0041y.ndjson"\n', "/srv/xAy.ndjson"),
+                           ('[trace-sink]\npath = "/srv/t.ndjson" # the sink\n', "/srv/t.ndjson"),
+                           ('trace-sink = { kind = "file", path = "/srv/i.ndjson", create = true }\n',
+                            "/srv/i.ndjson")):
+            with self.subTest(text=text):
+                self.assertEqual(self.read(text, "trace-sink.path", "string")[:2], (0, path))
+
+    def test_the_store_election_reads_in_every_spelling(self):
+        for text in ('[state-store]\nengine = "postgres"\n', "[state-store]\nengine = 'postgres'\n",
+                     'state-store.engine = "postgres"\n', 'state-store = { engine = "postgres" }\n'):
+            with self.subTest(text=text):
+                self.assertEqual(self.read(text, "state-store.engine", "string")[:2], (0, "postgres"))
+                self.assertEqual(self.read(text, "state-store", "table")[0], 0)
+
+    def test_absence_and_a_bad_file_answer_apart(self):
+        self.assertEqual(self.read('session = "s"\n', "state-store.engine", "string")[0], 3)
+        self.assertEqual(self.read('session = "s"\n', "state-store", "table")[0], 3)
+        code, _, err = self.read('session = "s\n', "state-store", "table")
+        self.assertEqual(code, 1)
+        self.assertIn("does not read as TOML", err)
+        code, _, err = self.read('[state-store]\nengine = 3\n', "state-store.engine", "string")
+        self.assertEqual(code, 1)
+        self.assertIn("is not a string", err)
+
+
 class AdminAnswerTests(unittest.TestCase):
     """**Admin's refusal cause survives the deploy script** (#673, was #676).
 

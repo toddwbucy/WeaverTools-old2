@@ -26,6 +26,33 @@ die() { printf '\nREFUSED: %s\n' "$*" >&2; exit 1; }
 
 read_key() { cat "$ADMIN_CONFIG/$1" 2>/dev/null || true; }
 
+# **One reader for every value this script takes from a declaration**, through
+# python3's tomllib, so the script decodes exactly what admin decodes: a
+# literal string, an escape, a dotted key and an inline table each read as the
+# value they are, where a line-matching reader saw one spelling and missed or
+# mangled the rest. It prints the string at a dotted path, or checks that a
+# table stands there, and answers 3 where the path is absent. A file that does
+# not parse, or a value of another kind than asked, refuses by name.
+declared() {
+  python3 -c '
+import sys, tomllib
+path, key, want = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    with open(path, "rb") as fh:
+        value = tomllib.load(fh)
+except (OSError, tomllib.TOMLDecodeError) as e:
+    sys.exit(f"{path} does not read as TOML: {e}")
+for part in key.split("."):
+    if not isinstance(value, dict) or part not in value:
+        sys.exit(3)
+    value = value[part]
+if want == "string" and isinstance(value, str):
+    print(value)
+elif not (want == "table" and isinstance(value, dict)):
+    sys.exit(f"{path}: {key} is not a {want}")
+' "$@"
+}
+
 # Reads a run's new trace lines on stdin and prints what the load event says
 # about the two facts #419 put there. Non-zero where no load event names a
 # composer, which is how the verify step knows the install took.
@@ -206,24 +233,16 @@ fi
 for agent in $ALLOW_LIST; do
   decl="$AGENT_DIR/$agent.toml"
   [ -f "$decl" ] || continue
-  # The engine under the `[state-store]` table, not the first `engine =` in
-  # the file, and an absent election means the crate's own default rather
-  # than none.
-  elected=$(sed -n '/^\[state-store\]/,/^\[/p' "$decl" \
-    | sed -n 's/^[[:space:]]*engine[[:space:]]*=[[:space:]]*//p' | head -1)
-  # **The value is what TOML means by it, not the characters after the equals
-  # sign.** `engine = "postgres"` names the election `postgres`, and taking the
-  # raw run of characters compared `weaver-state/"postgres"` against the
-  # feature list and refused a build that carried it. A trailing comment goes,
-  # then surrounding quotes of either kind, then the space between. This is not
-  # a TOML parser and does not pretend to be one: the field is one string on
-  # one line of the `[state-store]` table, the form every declaration here is
-  # written in, and a declaration spelling it as a dotted key or an inline
-  # table reads as absent.
-  elected=${elected%%#*}
-  elected=$(printf '%s' "$elected" \
-    | sed -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/")
-  [ -n "$elected" ] || elected=sqlite
+  # The engine at `state-store.engine`, read by `declared` as the string
+  # admin decodes, and an absent election means the crate's own default
+  # rather than none.
+  rc=0
+  elected=$(declared "$decl" state-store.engine string) || rc=$?
+  case $rc in
+    0) ;;
+    3) elected=sqlite ;;
+    *) die "$agent: the declaration's store election does not read, see above" ;;
+  esac
   # **`none` is an election and not an absence.** It is a lawful `StoreEngine`
   # and admin starts no member for it, per `inventory.rs`, which does not even
   # ask for the member binary in that case. There is no `weaver-state/none`
@@ -537,7 +556,9 @@ for agent in $ALLOW_LIST; do
   fi
   # The one reconciliation this script knows how to make, and only where the
   # box cannot stand a leg at all. Anything else is the operator's.
-  if [ ! -f "$STATE_BINARY" ] && ! grep -q '^\[state-store\]' "$decl"; then
+  rc=0
+  declared "$decl" state-store table || rc=$?
+  if [ ! -f "$STATE_BINARY" ] && [ "$rc" -eq 3 ]; then
     printf '  %-12s %s\n' "$agent" "$verdict"
     cp -a "$decl" "$decl.pre-$AFTER-bak"
     PATCHED+=("$decl|$decl.pre-$AFTER-bak")
@@ -588,9 +609,9 @@ for AGENT in $ALLOW_LIST; do
     printf '  %-12s no declaration, not verified\n' "$AGENT"
     continue
   fi
-  SINK=$(sed -n '/^\[trace-sink\]/,/^\[/p' "$decl" \
-    | sed -n 's/^[[:space:]]*path[[:space:]]*=[[:space:]]*"\(.*\)"[[:space:]]*$/\1/p' | head -1)
-  [ -n "$SINK" ] || rollback "cannot find the trace sink for $AGENT"
+  rc=0
+  SINK=$(declared "$decl" trace-sink.path string) || rc=$?
+  [ "$rc" -eq 0 ] && [ -n "$SINK" ] || rollback "cannot find the trace sink for $AGENT"
   printf '  %s\n' "$AGENT"
   LINES=$(sink_lines "$SINK") || rollback "$AGENT: $SINK is not a regular file, and this step reads the load event back out of one"
   sudo -n WEAVER_ADMIN_CONFIG="$ADMIN_CONFIG" "$BIN_DIR/weaver-admin" unload "$AGENT" >/dev/null 2>&1 || true

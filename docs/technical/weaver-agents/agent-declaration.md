@@ -1,6 +1,11 @@
---- title: the agent declaration summary: agent.toml, field by field - what the operator
-declares, what refuses, and what this build leaves tunable version: v0.1 date:
-2026-08-25 commit: unreleased parent: WeaverTools Technical Documentation ---
+---
+title: the agent declaration
+summary: agent.toml, field by field - what the operator declares, what refuses, and what this build leaves tunable
+version: v0.1
+date: 2026-08-25
+commit: unreleased
+parent: WeaverTools Technical Documentation
+---
 
 # The agent declaration
 
