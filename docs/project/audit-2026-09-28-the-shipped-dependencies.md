@@ -29,12 +29,20 @@ their closure, and every figure moved by that set's size when the basis was corr
 so every figure here is re-derived on the linked basis rather than adjusted. Counts are
 by name and version, with the by-name figure beside them where the two differ.
 
-**The host-side set, named once and in no count below.** Every crate that derives
-`serde` compiles `serde_derive` with `syn` 3.0, `quote`, `proc-macro2` and
-`unicode-ident`, five crates. The `pyworker` feature adds `pyo3-macros`,
-`pyo3-macros-backend`, `pyo3-build-config`, `heck`, `indoc`, `target-lexicon` and a
-second `syn` at 2.0, seven more, and `postgres` adds `async-trait`, one more. None of
-the thirteen links into a shipped binary.
+**The host-side set, named once and in no count below.** It is derived per crate at
+the features the deploy builds as `cargo tree -e normal,build` less `cargo tree -e
+normal,no-proc-macro`, unioned across the ten crates: twenty-two crates by name and
+version, twenty-one by name, in two parts. None of them links into a shipped binary.
+
+- **The proc-macro closure, thirteen, twelve by name.** Every crate that derives
+  `serde` compiles `serde_derive` with `syn` 3.0, `quote`, `proc-macro2` and
+  `unicode-ident`. The `pyworker` feature adds `pyo3-macros`, `pyo3-macros-backend`,
+  `pyo3-build-config`, `heck`, `indoc`, `target-lexicon` and a second `syn` at 2.0,
+  and `postgres` adds `async-trait`.
+- **The build-dependency set, nine, nine by name**, the crates a build script runs on:
+  `cc`, `pkg-config`, `vcpkg`, `shlex` and `find-msvc-tools` for `libsqlite3-sys`,
+  the last two through `cc`, `cfg_aliases` for `nix`, `autocfg` for `memoffset`,
+  `version_check` for `generic-array`, and `rustversion` for `indoc`.
 
 **The measure, up front.** At the manifests' default features the hypothesis holds for
 every one of the ten crates: the ten share one serialization family, four take `nix` for
@@ -157,9 +165,9 @@ of those features change the picture.
 **Each closure below is complete, read as `cargo tree -p <crate> -e normal,no-proc-macro
 --locked --offline --features <feature>` diffed against the same command without the
 feature**, by name and version, so a count re-derives from the list beside it. Two
-crates a reader of the lock will look for are absent because they never link:
-`rustversion`, a build dependency of `indoc`, and `portable-atomic`, which `pyo3` takes
-only on a target without 64-bit atomics, which this one is not.
+crates a reader of the lock will look for are absent: `rustversion`, which is in the
+build-dependency set above, and `portable-atomic`, which `pyo3` takes only on a target
+without 64-bit atomics, which this one is not.
 
 **`weaver-state` with `postgres`: nineteen linked crates become sixty-nine, fifty
 added, sixty-eight by name.** The `postgres` crate is the synchronous face of
