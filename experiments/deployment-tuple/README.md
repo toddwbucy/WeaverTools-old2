@@ -5,7 +5,7 @@
 **Date filed:** 2026-09-25
 **Document ID:** `deployment-tuple-PRD`
 **Editorial:** Per the Working Rules.
-**Landing PR:** #685
+**Landing PR:** #716
 
 ---
 
@@ -38,7 +38,9 @@ say which is which, and a marker moves only when a probe's result lands in this 
 ## 1. Words
 
 A **field** is one member of the tuple. An **arm** is one field's experiment, the
-weights arm or the batch arm, and each arm is a directory beneath this charter. A
+weights arm or the batch arm, and each arm is a directory beneath this charter. The
+**baseline** arm is the one arm no field owns: it holds all six fields and asks
+whether the replay instrument every other arm reads by reproduces what it served. A
 **probe** is one measurement within an arm, a directory holding its Spec, its `code/`
 and its `results/`. A **cell** is one card family a device probe runs on. A probe's
 own internal measurements, where it has several, are its **legs**, and a probe's Spec
@@ -129,11 +131,16 @@ probe-set envelope, the arm having run on one stimulus. Marker: shown, olympus
 | kernel stack | first claim shown | `kernel-stack/` | none yet |
 | batch composition | declared | `batch/` | none yet, a build |
 | sampler and seed | shown | `seed/` | none yet, the olympus run predates this tree |
+| none, the instrument | held on olympus and thinkpad | `baseline/` | `determinism-matrix/` |
 
 A probe joins this table when its directory lands with its Spec, and a marker moves
 when a result lands in that probe's `results/`. The runs cited above that predate
 this tree are held in the `weaver-experiments` tree per Working Process section 5,
-and a rerun under a probe here is what brings each into this table.
+and a rerun under a probe here is what brings each into this table. The determinism
+matrix deposits in that tree, olympus's from 2026-08-27 to 2026-09-08 and thinkpad's of
+2026-08-27 and 2026-08-29, are the baseline probe's pre-tree runs, made by earlier
+revisions of the code `baseline/determinism-matrix/code/` now holds, and each deposit
+names its revision by sha256 where its box facts record one.
 
 ## 4. What this document does not carry
 

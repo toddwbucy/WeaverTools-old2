@@ -6,7 +6,7 @@
 **Document ID:** `blackwell-probe-Spec`
 **Parent:** `deployment-tuple-PRD`
 **Editorial:** Per the Working Rules.
-**Landing PR:** #713
+**Landing PR:** #716
 
 ---
 
@@ -98,7 +98,9 @@ is a ruling on #679 and not this document's.
 ## 2. The tuple, held
 
 The tuple is fixed in the plan and the coordinator refuses a plan whose tuple is not
-exactly this one, field for field, under the `tuple` refusal of `validate_plan`:
+exactly this one, field for field, under the `tuple` refusal of `validate_plan`. What
+each field is and what a run records of it are declared once for the experiment, in
+`determinism-matrix-Spec` section 6.1, and the values below are this probe's:
 
 | Field | Value |
 | --- | --- |
