@@ -1373,11 +1373,13 @@ does not hold.
 
 **Everything a model family defines is defined once, in that family's module, and
 nowhere else.** A family is a template lineage, on the operator's ruling of 2026-09-28:
-the models that render one format family whatever their vendor, Qwen or Gemma or the
+the models that share one format family whatever their vendor, Qwen or Gemma or the
 Harmony speakers, held in one module with the orchestration quirks the shared kernels
-are driven by. The prior program proved the premise concretely: its encoder's text tower
-was a decoder-family member, sharing architecture and tokenizer with the decoder path
-that never knew it. The module discipline is the boundary: one module per family, with
+are driven by, a decode lineage rendering that format through one or two renderers and a
+classify lineage rendering nothing and serving its entries from the classify table. The
+prior program proved the premise concretely: its encoder's text tower was a
+decoder-family member, sharing architecture and tokenizer with the decoder path that
+never knew it. The module discipline is the boundary: one module per family, with
 nothing family-specific living outside its module and the kernels shared beneath, which
 is the prior program's own share-kernels-own-orchestration rule promoted to a charter
 line.

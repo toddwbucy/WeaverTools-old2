@@ -1409,12 +1409,14 @@ to: spu-refeed-recomputes-the-recorded-draws
 ## 5. The family libraries
 
 **One module per family, holding everything that family defines.** Per charter section
-14, a family is a template lineage, the models that render one format family whatever
+14, a family is a template lineage, the models that share one format family whatever
 their vendor, held in one module with the orchestration quirks the shared kernels are
-driven by. Nothing family-specific lives outside its module, and the kernels beneath are
-shared, which is the archived tree's share-kernels-own-orchestration rule promoted to
-structure. Review's by non-purchase, the placement of a family's code being as readable
-to a module-boundary test as to a reader and neither being bought here. The registry in
+driven by, a decode lineage rendering that format through one or two renderers and a
+classify lineage rendering nothing and serving its entries from the classify table.
+Nothing family-specific lives outside its module, and the kernels beneath are shared,
+which is the archived tree's share-kernels-own-orchestration rule promoted to structure.
+Review's by non-purchase, the placement of a family's code being as readable to a
+module-boundary test as to a reader and neither being bought here. The registry in
 `family/mod.rs` is where entries are declared, `qwen2::renderer` serves seven entries
 across vendors, SmolLM2's `llama` and NVIDIA's `nemotron_h_moe` among them, and where
 one architecture string carries two formats the module holds both entries and the
