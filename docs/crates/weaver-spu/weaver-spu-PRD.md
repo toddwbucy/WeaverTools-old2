@@ -1404,10 +1404,11 @@ module discipline is the boundary: one module per family holding the template, t
 types, the parsing and rendering, and the forward orchestration, with nothing
 family-specific living outside its module and the kernels shared beneath, which is the
 prior program's own share-kernels-own-orchestration rule promoted to a charter line. **A
-family here is a lineage, a vendor's line of models**, on the operator's ruling of
-2026-09-28: one module holds every architecture entry of the lineage, and an
-architecture is an entry in its lineage's module rather than a module of its own.
-Entries in one module may carry different templates, where the artifact's own template
+family here is a template lineage, the models that render one format family whatever
+their vendor**, on the operator's ruling of 2026-09-28: one module holds every
+architecture entry of the lineage with its orchestration, and an architecture is an
+entry in its lineage's module rather than a module of its own. Where one architecture
+string carries two formats, the module holds both and the artifact's own template
 selects between them.
 
 **Both directions of the end-to-end template requirement live here and are
@@ -1427,14 +1428,14 @@ act that charters the encoder, which is the reversibility test applied
 to this crate's own future, and the destination is recorded where
 destinations live rather than here.
 
-**A family declares its capabilities and the declaration is consulted at
-admit.** What operations a family's models serve, what template identity
-it renders, whether its engine can tap for readout, **whether its tap holds a
-column to answer the diagnostic ask** per 13.7 as amended, and **how many
-devices its backend can shard a model across** are facts the
-family module states, and admission judges a binding against them, which
-is how 13.7's refusal knows to fire and how section 4.1 step 3 knows whether an
-assigned set is servable. The declaration's shape is the Spec's.
+**A family declares its capabilities, one declaration per architecture entry, and the
+entry the artifact resolves to is consulted at admit.** What operations an entry's
+models serve, what template identity it renders, whether its engine can tap for readout,
+**whether its tap holds a column to answer the diagnostic ask** per 13.7 as amended, and
+**how many devices its backend can shard a model across** are facts the family module
+states for each of its entries, and admission judges a binding against the resolved
+entry's, which is how 13.7's refusal knows to fire and how section 4.1 step 3 knows
+whether an assigned set is servable. The declaration's shape is the Spec's.
 
 ## 15. Classifying content: the classify submodule and the label seam
 
