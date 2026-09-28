@@ -485,7 +485,8 @@ def main():
     # cannot reach back past this run.
     run_started = time.strftime(
         "%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 1))
-    results, invocations, interrupted = [], set(), False
+    # The closing steps a run's result rests on, where one failed.
+    results, invocations, interrupted, unclosed = [], set(), False, []
     logpath = os.path.join(args.outdir, "matrix.log")
 
     def log(msg):
@@ -498,18 +499,21 @@ def main():
         """One step between the session loop and the summary, guarded
         (#716, after round twelve). An interrupt marks the run interrupted
         and the step is tried once more, since each is safe to repeat, and
-        any other raise is logged, so the summary is still written."""
+        any other raise is logged, so the summary is still written. Answers
+        whether the step completed and its value, apart, so a step whose
+        value is None is not taken for one that failed (#716, the pass on
+        7ba83d5)."""
         nonlocal interrupted
         for attempt in (1, 2):
             try:
-                return step()
+                return True, step()
             except KeyboardInterrupt:
                 interrupted = True
                 log(f"interrupted during {what}" + ("" if attempt == 2 else ", trying it once more"))
             except Exception as e:  # noqa: BLE001 - the summary is still owed
                 log(f"{what} failed: {base._why(e)}")
-                return None
-        return None
+                return False, None
+        return False, None
 
     if args.cells:
         sessions = cell_sessions(standing, cfg["cells"])
@@ -579,10 +583,13 @@ def main():
             with open(cfg["declaration"], "wb") as fh:
                 fh.write(held)
             os.unlink(pending)
-        if rewrites:
-            closing("the declaration's restore", restore)
-        # The run's own last unload, its answer read (#716 round twelve).
-        released = closing("the run's last unload", lambda: base.release(cfg))
+        # A restore that did not land leaves the operator's declaration
+        # unrestored, and the run's result with it.
+        if rewrites and not closing("the declaration's restore", restore)[0]:
+            unclosed.append("the declaration's restore")
+        # The run's own last unload, its answer read (#716 round twelve). A
+        # note, not a verdict: no session rests on it.
+        released = closing("the run's last unload", lambda: base.release(cfg))[1]
         if released:
             log(released)
 
@@ -663,11 +670,11 @@ def main():
     # an interrupt in one marks the run interrupted and the read is tried
     # once more, and a read interrupted twice closes unreadable.
     def close(reader, at_start, what, essence=None):
-        envelope = closing(f"the closing {what} reading", lambda: base.provenance_close(
+        done, envelope = closing(f"the closing {what} reading", lambda: base.provenance_close(
             cfg, reader, at_start, what, essence=essence))
-        if envelope is None:
+        if not done:
             envelope = {"status": "at_close_unreadable", "at_start": at_start,
-                        "note": {"unreadable": f"{what}: the closing read was interrupted"}}
+                        "note": {"unreadable": f"{what}: the closing read did not complete"}}
         return envelope
 
     whole = base.close_whole
@@ -675,8 +682,12 @@ def main():
     # **One resolution for both collectors at each end**, so the two fields
     # cannot disagree about which SPU they measured - the same sharing the
     # opening readings do at preflight.
-    closing_spu, spu_note = (closing("the SPU's closing resolution", lambda: base.closing_resolution(cfg))
-                             or (None, {"unreadable": "the SPU's closing resolution was interrupted"}))
+    # A resolution that did not complete is the note both collectors
+    # return, so the binaries and the libraries close unreadable, never
+    # `unchanged`.
+    done, resolution = closing("the SPU's closing resolution", lambda: base.closing_resolution(cfg))
+    closing_spu, spu_note = (resolution if done else
+                             (None, {"unreadable": "the SPU's closing resolution did not complete"}))
     binaries_at_close = close(
         lambda c: spu_note or base.weaver_binaries(c, closing_spu), binaries, "weaver_binaries"
     )
@@ -698,8 +709,9 @@ def main():
     # a Ctrl-C can land in, and an interrupt caught here into an unreadable
     # window left the run unmarked, the window not being gated (#716, after
     # the fold).
-    bindings = (closing("the journal's device read", lambda: base.device_bindings(cfg, run_started))
-                or [{"unreadable": "the journal's device read did not complete"}])
+    done, bindings = closing("the journal's device read", lambda: base.device_bindings(cfg, run_started))
+    if not done:
+        bindings = [{"unreadable": "the journal's device read did not complete"}]
     summary = {
         # Held from every session's own per-load read (#716 round three).
         # The journal window over the whole run is kept as a record and not
@@ -726,7 +738,9 @@ def main():
     def write_summary():
         with open(os.path.join(args.outdir, "summary.json"), "w") as fh:
             json.dump(summary, fh, indent=1)
-    closing("the summary's write", write_summary)
+    # A run whose summary was not written is not a result.
+    if not closing("the summary's write", write_summary)[0]:
+        unclosed.append("the summary's write")
 
     log(f"done: {good}/{total} reproduced, {len(diverged)} diverged, "
         f"{len(errors)} errors")
@@ -755,7 +769,11 @@ def main():
     if reproduced and failing:
         log("sessions reproduced but these held fields did not hold:"
             f" {', '.join(failing)} - not a reproduction result")
-    sys.exit(0 if reproduced and not failing else 1)
+    # The closing steps the result rests on, the summary's write and the
+    # declaration's restore, join the exit (#716, the pass on 7ba83d5).
+    if unclosed:
+        log(f"these closing steps did not complete: {', '.join(unclosed)} - not a reproduction result")
+    sys.exit(0 if reproduced and not failing and not unclosed else 1)
 
 
 if __name__ == "__main__":

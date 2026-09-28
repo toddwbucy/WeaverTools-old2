@@ -16,8 +16,8 @@ three from that tree and `test_recorded_seed.py`, `test_absence_and_evidence.py`
 `test_round_five.py`, `test_round_seven.py`, `test_round_eight.py`,
 `test_round_nine.py`, `test_round_ten.py`, `test_round_eleven.py`,
 `test_round_twelve.py`, `test_round_thirteen.py`, `test_round_fourteen.py`,
-`test_round_fifteen.py` and `test_one_entry_point.py` from #716. Each is a plain script
-and exits non-zero on the first failure:
+`test_round_fifteen.py`, `test_round_sixteen.py` and `test_one_entry_point.py` from
+#716. Each is a plain script and exits non-zero on the first failure:
 
 ```
 python3 test_seed_schedule.py
@@ -35,6 +35,7 @@ python3 test_round_twelve.py
 python3 test_round_thirteen.py
 python3 test_round_fourteen.py
 python3 test_round_fifteen.py
+python3 test_round_sixteen.py
 python3 test_one_entry_point.py
 ```
 
@@ -114,10 +115,11 @@ serve its declared declaration. Anything less exits 1, and the log names the fie
 did not hold. Both modes exit on the one verdict, `run_verdict`, and a cells run short
 of its cells exits 1 naming the cells it did not serve. A session that raises is
 recorded as `error: <type>: <message>`, and an interrupt records the session it cut
-short as `interrupted`, closes the run and exits 1. Batch composition is recorded rather
-than held: one caller and one turn at a time by construction, which the record cannot
-show. What an exit 0 certifies, and what it does not guard against, is the Spec's
-section 5, with the table.
+short as `interrupted`, closes the run and exits 1. A run whose `summary.json` could not
+be written, or whose declaration could not be restored, exits 1 and names the step.
+Batch composition is recorded rather than held: one caller and one turn at a time by
+construction, which the record cannot show. What an exit 0 certifies, and what it does
+not guard against, is the Spec's section 5, with the table.
 
 ## The sudo requirement
 
