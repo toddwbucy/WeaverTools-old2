@@ -746,19 +746,18 @@ from: weaver-spu
 to: spu-devices-from-the-binding
 ```
 
-**A set larger than one is judged on three things rather than one.** Each
-assigned device must have room for its shard plus the residency's headroom,
-which is the one inequality read per device. The devices must be able to reach
-each other, checked by asking the driver whether peer access holds between each
-pair in the set, because a sharded forward exchanges activations across them
-and a set without peer access is a set that cannot serve, discovered at admit
-rather than at the first turn. And the family's declaration must say the
-backend can shard across that many, per section 5. **Today that number is two
-where it is greater than one,** because the salvaged tensor-parallel path is a
-two-device implementation, `forward_tp2` with an all-reduce kernel written for
-a pair, per the survey. A wider set refuses against the declaration rather than
-against a hidden limit, so the day an N-way path lands the declaration changes
-and nothing else does.
+**A set larger than one is judged on three things rather than one.** Each assigned
+device must have room for its shard plus the residency's headroom, which is the one
+inequality read per device. The devices must be able to reach each other, checked by
+asking the driver whether peer access holds between each pair in the set, because a
+sharded forward exchanges activations across them and a set without peer access is a set
+that cannot serve, discovered at admit rather than at the first turn. And the registry
+entry the artifact resolves to must declare that the backend can shard across that many,
+per section 5. **Today that number is two where it is greater than one,** because the
+salvaged tensor-parallel path is a two-device implementation, `forward_tp2` with an
+all-reduce kernel written for a pair, per the survey. A wider set refuses against the
+declaration rather than against a hidden limit, so the day an N-way path lands the
+declaration changes and nothing else does.
 
 **The room refusal carries the device's capacity beside what was free.** The
 driver answers both when asked, and reporting only the free figure discards the
@@ -794,21 +793,21 @@ from: weaver-spu
 to: spu-room-refusal-carries-capacity
 ```
 
-**The three are judged cheapest first, and the ordering is this document's to
-elect.** Charter section 4.1 step 3 enumerates the three conditions and sequences
-none of them, so the order is a representation question, and it takes the
-charter's own before-the-fourth-step rule one level inward: the width condition
-is a comparison between the binding's count and the family's declaration and
-reads nothing, while the room and reach conditions each cost a driver query, so
-the width is judged first and a set failing more than one condition is refused on
-the cheapest. That ordering is what puts the width refusal inside a test on a
-machine with no device, which is why it is elected here rather than left to a
-builder. **This record stays review's and the ground is the seam rather than the
-purchase.** Two of its three conditions read a driver, a suite could reach them
-through a double, and this Spec introduces no such seam, so the judgment taken
-whole has no instrument here yet. The width condition alone is watched, at the
-section 5 clause that declares the set, and dividing it out here would mint a
-second record for a property that clause already carries with the same test.
+**The three are judged cheapest first, and the ordering is this document's to elect.**
+Charter section 4.1 step 3 enumerates the three conditions and sequences none of them,
+so the order is a representation question, and it takes the charter's own
+before-the-fourth-step rule one level inward: the width condition is a comparison
+between the binding's count and the resolved entry's declaration and reads nothing,
+while the room and reach conditions each cost a driver query, so the width is judged
+first and a set failing more than one condition is refused on the cheapest. That
+ordering is what puts the width refusal inside a test on a machine with no device, which
+is why it is elected here rather than left to a builder. **This record stays review's
+and the ground is the seam rather than the purchase.** Two of its three conditions read
+a driver, a suite could reach them through a double, and this Spec introduces no such
+seam, so the judgment taken whole has no instrument here yet. The width condition alone
+is watched, at the section 5 clause that declares the set, and dividing it out here
+would mint a second record for a property that clause already carries with the same
+test.
 
 ```graph
 node: spu-admission-judges-room-reach-and-width
@@ -1227,24 +1226,22 @@ said before it was stopped.
 
 ### 4.4 The flush
 
-**The outcome is the ask's kept length and the mechanism is per family.**
-After a flush the session's first kept tokens are resident and everything
-beyond them is gone, per charter section 13.9 as amended 2026-08-19: the
-ask names the cut, bounded below by the identity prefix's recorded length
-and above by the resident count, the bound applied as arithmetic and the
-confirmation's counts carrying what held. Where a family's state permits
-truncation to a position the outcome is reached by truncating to the kept
-length. Where it cannot roll back, the outcome is reached by
-re-establishing the session and decoding the kept slice again, which is
-expensive and correct where the cheap path is silently wrong. **The
-session retains its resident token sequence** for exactly this reach: the
-re-establishing mechanism needs the tokens it re-decodes, the identity
-prefix alone stopped sufficing when the cut became the ask's, and the
-retention is bounded by the capacity the load resolved. **The family
-declares which it is** and the decode path reads the declaration rather
-than inferring it from a version string. Review's by non-purchase, a
-family declaring each way being two fixtures and one assertion about the
-resident length after the flush.
+**The outcome is the ask's kept length and the mechanism is per family.** After a flush
+the session's first kept tokens are resident and everything beyond them is gone, per
+charter section 13.9 as amended 2026-08-19: the ask names the cut, bounded below by the
+identity prefix's recorded length and above by the resident count, the bound applied as
+arithmetic and the confirmation's counts carrying what held. Where a family's state
+permits truncation to a position the outcome is reached by truncating to the kept
+length. Where it cannot roll back, the outcome is reached by re-establishing the session
+and decoding the kept slice again, which is expensive and correct where the cheap path
+is silently wrong. **The session retains its resident token sequence** for exactly this
+reach: the re-establishing mechanism needs the tokens it re-decodes, the identity prefix
+alone stopped sufficing when the cut became the ask's, and the retention is bounded by
+the capacity the load resolved. **The registry entry the artifact resolves to declares
+which it is** and the decode path reads that entry's declaration rather than inferring
+it from a version string, so two architectures in one lineage can flush differently, as
+qwen2 and qwen35 do. Review's by non-purchase, an entry declaring each way being two
+fixtures and one assertion about the resident length after the flush.
 
 ```graph
 node: spu-flush-mechanism-from-declaration
@@ -1426,17 +1423,19 @@ to: spu-refeed-recomputes-the-recorded-draws
 
 ## 5. The family libraries
 
-**One module per family, holding everything that family defines.** Per charter
-section 14: the template and its rendering, the marker vocabulary, the
-tokenizer conventions, the parsing of the family's own output, and the forward
-orchestration quirks the shared kernels are driven by. Nothing family-specific
-lives outside its module, and the kernels beneath are shared, which is the
-archived tree's share-kernels-own-orchestration rule promoted to structure.
-Review's by non-purchase, the placement of a family's code being as readable to
-a module-boundary test as to a reader and neither being bought here. **A family is
-a template lineage**, per charter section 14 as ruled 2026-09-28, so one module
-carries every architecture entry that shares its template and orchestration, and the
-registry in `family/mod.rs` is where those entries are declared.
+**One module per family, holding everything that family defines.** Per charter section
+14: the template and its rendering, the marker vocabulary, the tokenizer conventions,
+the parsing of the family's own output, and the forward orchestration quirks the shared
+kernels are driven by. Nothing family-specific lives outside its module, and the kernels
+beneath are shared, which is the archived tree's share-kernels-own-orchestration rule
+promoted to structure. Review's by non-purchase, the placement of a family's code being
+as readable to a module-boundary test as to a reader and neither being bought here. **A
+family is a lineage, a vendor's line of models**, per charter section 14 as ruled
+2026-09-28, so one module holds every architecture entry of the lineage, and the
+registry in `family/mod.rs` is where those entries are declared. Entries in one module
+may carry different templates where the artifact's own template selects between them,
+which is the contested-architecture mechanism below: phi holds two `phi3` entries with
+disjoint templates and renderers.
 
 **A seated `System` prefix folds where the family's template names no system
 turn, within the render call it arrives in.** The canonical role of an
@@ -1499,32 +1498,33 @@ from: weaver-spu
 to: spu-share-kernels-own-orchestration
 ```
 
-**The surface a family implements is small and named.** Render an identity
-prefix from canonical messages, render a turn's delta, fold messages for a
-template that names no system turn, parse an emission into canonical content
-with the family's markers recognized, declare the stop conditions, and hand
-over the family's declaration. The declaration carries the capabilities
-admission judges against, per charter section 14, which are the readout tap and
-**the device counts the backend can shard a model across**. That last is a set
-of widths rather than a maximum, because a backend that serves one device and a
-pair is not thereby serving three, and a maximum would imply it does. **The
-declaration also names the family's flush mechanism, per section 4.4, and
-whether the session's state permits truncation is derived from it rather than
-declared beside it.** Truncation is permitted exactly where the flush truncates,
-so a second declaration of it on the trait was one fact in two places, and it
-left the trait on 2026-08-17. The surface's membership is the `Family` trait's
-and takes no record. The declaration's shape does, being this
-document's own and what section 3 judges against, and section 10 buys the test:
-a declared set with a pair in it and a binding naming three devices is arithmetic
-that runs with no device present. **The fixture the test uses declares a
-non-contiguous set on purpose,** because the set reading and the maximum reading
-answer alike on every contiguous declaration, so a fixture declaring one and two
-would leave the perturbation that matters unwatchable while the test went on
-passing. **The declaration's field is a set type and that half is pinned, per
-the operator's election of 2026-08-04:** a doctest reads a declaration carrying
-a non-contiguous set literal, so a maximum can no longer be declared, only read
-wrongly, and the perturbation keeps the judgment honest where the type cannot
-reach. The two are two records for that reason, per the division rule of
+**The surface a family implements is small and named.** Render an identity prefix from
+canonical messages, render a turn's delta, fold messages for a template that names no
+system turn, parse an emission into canonical content with the family's markers
+recognized, declare the stop conditions, and hand over a declaration. **The facts
+admission and the decode path read are per architecture, not per module:** each is read
+from the registry entry the admitted artifact resolves to, by `lookup` against its
+header's family, and never from the trait's `declaration()`, which answers for the entry
+its module is named after. The entry's declaration carries the capabilities admission
+judges against, per charter section 14, which are the readout tap and **the device
+counts the backend can shard a model across**. That last is a set of widths rather than
+a maximum, because a backend that serves one device and a pair is not thereby serving
+three, and a maximum would imply it does. **The entry's declaration also names its flush
+mechanism, per section 4.4, and whether the session's state permits truncation is
+derived from that entry rather than declared beside it.** Truncation is permitted
+exactly where the flush truncates, so a second declaration of it on the trait was one
+fact in two places, and it left the trait on 2026-08-17. The surface's membership is the
+`Family` trait's and takes no record. The declaration's shape does, being this
+document's own and what section 3 judges against, and section 10 buys the test: a
+declared set with a pair in it and a binding naming three devices is arithmetic that
+runs with no device present. **The fixture the test uses declares a non-contiguous set
+on purpose,** because the set reading and the maximum reading answer alike on every
+contiguous declaration, so a fixture declaring one and two would leave the perturbation
+that matters unwatchable while the test went on passing. **The declaration's field is a
+set type and that half is pinned, per the operator's election of 2026-08-04:** a doctest
+reads a declaration carrying a non-contiguous set literal, so a maximum can no longer be
+declared, only read wrongly, and the perturbation keeps the judgment honest where the
+type cannot reach. The two are two records for that reason, per the division rule of
 Document Format section 3.
 
 ```graph
@@ -2084,12 +2084,11 @@ column alone, `n_embd` values contiguous at `f32` - the figure the artifact's
 own width sets, kibibytes a layer against the gigabytes per prefill that
 copying whole tensors at a full batch would move.
 
-**The refusal narrows to the flag.** `readout::judge` refused an elected
-GGUF load on the container, because the tap did not exist. With the tap
-standing the container is no longer a ground and the family's declaration
-is: a family that does not declare its native tap still refuses, at admit,
-per charter section 13.7's rule that a load granting an election it cannot
-honor fails at its cheapest moment.
+**The refusal narrows to the flag.** `readout::judge` refused an elected GGUF load on
+the container, because the tap did not exist. With the tap standing the container is no
+longer a ground and the resolved entry's declaration is: an entry that does not declare
+its native tap still refuses, at admit, per charter section 13.7's rule that a load
+granting an election it cannot honor fails at its cheapest moment.
 
 **The deployed artifact serves the election as of 2026-08-23, and the run
 that bought it is named.** The registry's `qwen35moe` declared
@@ -2105,7 +2104,7 @@ comparison has to be known to discriminate**: an equality that held for
 every input would pass whatever the tap did, and the two sequences differing
 is what says it would not. The flag stands on that measurement.
 
-**The qwen3 family declares both taps as of 2026-09-02, and the run that
+**The qwen3 entry declares both taps as of 2026-09-02, and the run that
 bought them is named.** The registry's `qwen3` declared `taps_readout:
 false` while the claim was unmeasured, which is the same posture
 `qwen35moe` held before its own act. Both halves were measured against
@@ -2189,49 +2188,42 @@ from: weaver-spu
 to: spu-reduction-in-place-at-the-tap
 ```
 
-**The diagnostic binding asks past the fold, and the column is already in
-hand.** Charter section 13.7 as amended holds the three elections and this
-section represents them. Representation follows the two fold paths this
-section already distinguishes. On the GGUF path the fold's input is a
-host-side copy of one layer's final column, `n_embd` values contiguous at
-`f32` - the figure the artifact's own width sets - taken per layer per
-forward and dropped once its norm is folded: the diagnostic answer is that
-column continuing instead of dropping, and no second capture exists. On the
-native path `fold_norm` is the stronger in-place reading, one scalar crossing
-and no column held, so whether a family's tap holds a column to answer is a
-member of its declaration per charter section 14, spelled `taps_column`
-beside `taps_readout` and held to the same bar: a family declares it only
-where the answer has been shown on the engine that would serve it, so qwen2
-declares it on the GGUF answer shown first and every other family declares
-`false` until its own act. **The answer covers every sampled position**: each decode
-forward, and each append's prefill final position, a turn holding one append
-per generation so a tool round adds its own. Nothing else of the
-prompt crosses, and the bound's ground is the tap's one-column copy per 13.7,
-not the engine's gather, which at every layer but the last sees every prompt
-position.
+**The diagnostic binding asks past the fold, and the column is already in hand.**
+Charter section 13.7 as amended holds the three elections and this section represents
+them. Representation follows the two fold paths this section already distinguishes. On
+the GGUF path the fold's input is a host-side copy of one layer's final column, `n_embd`
+values contiguous at `f32` - the figure the artifact's own width sets - taken per layer
+per forward and dropped once its norm is folded: the diagnostic answer is that column
+continuing instead of dropping, and no second capture exists. On the native path
+`fold_norm` is the stronger in-place reading, one scalar crossing and no column held, so
+whether an entry's tap holds a column to answer is a member of its declaration per
+charter section 14, spelled `taps_column` beside `taps_readout` and held to the same
+bar: an entry declares it only where the answer has been shown on the engine that would
+serve it, so qwen2 declares it on the GGUF answer shown first and every other entry
+declares `false` until its own act. **The answer covers every sampled position**: each
+decode forward, and each append's prefill final position, a turn holding one append per
+generation so a tool round adds its own. Nothing else of the prompt crosses, and the
+bound's ground is the tap's one-column copy per 13.7, not the engine's gather, which at
+every layer but the last sees every prompt position.
 
-**The permission is admin's, the ask is the harness's, and this crate judges
-the pair.** `column_permission` arrives at admit inside the instruction, set
-from the binding's kind by admin per 13.7, so this crate still never learns
-the kind itself. `column_ask` crosses once, at session open, per the same
-clause's cadence election. An open carrying the ask refuses typed at the
-open on the three arms of 13.7's registry - no permission, no readout
-election, no column in the family's declaration - cited whole rather than
-restated in part, that clause holding the registry so no document decides a
-share. **The no-column arm fires at the open
-rather than at admit on purpose**: admission cannot know an ask will come,
-the ask being the open's member, and a diagnostic replay that elects the
-readout for norms alone against a family whose tap holds no column is a
-working configuration - the native tap's own shape - that an admit-time
-refusal would refuse. The open is the cheapest moment that knows the ask,
-which is 13.7's rule pointed at the right fact. An asked column that does
-not arrive at a sampled position is charter 13.10's fault, owned there
-since this act: the draw site faults the session loudly where the armed
-take answers nothing - the native tap's own shape meeting an ask its
-family's declaration let past - because the silent absence is what the
-fault rule forbids. Perturbation: restore the silent skip at the draw site
-and an armed generation completes with no column and no fault. Watched
-under exactly that restoration.
+**The permission is admin's, the ask is the harness's, and this crate judges the pair.**
+`column_permission` arrives at admit inside the instruction, set from the binding's kind
+by admin per 13.7, so this crate still never learns the kind itself. `column_ask`
+crosses once, at session open, per the same clause's cadence election. An open carrying
+the ask refuses typed at the open on the three arms of 13.7's registry - no permission,
+no readout election, no column in the resolved entry's declaration - cited whole rather
+than restated in part, that clause holding the registry so no document decides a share.
+**The no-column arm fires at the open rather than at admit on purpose**: admission
+cannot know an ask will come, the ask being the open's member, and a diagnostic replay
+that elects the readout for norms alone against a family whose tap holds no column is a
+working configuration - the native tap's own shape - that an admit-time refusal would
+refuse. The open is the cheapest moment that knows the ask, which is 13.7's rule pointed
+at the right fact. An asked column that does not arrive at a sampled position is charter
+13.10's fault, owned there since this act: the draw site faults the session loudly where
+the armed take answers nothing - the native tap's own shape meeting an ask its resolved
+entry's declaration let past - because the silent absence is what the fault rule
+forbids. Perturbation: restore the silent skip at the draw site and an armed generation
+completes with no column and no fault. Watched under exactly that restoration.
 
 ```graph
 node: spu-asked-column-arrives-or-faults
@@ -2978,15 +2970,14 @@ than a code fact.
   ordered, asserted on the tokens themselves and watched under a kept vector
   built from the tail alone, because the confirmation's counts cannot catch a
   lost survivor or a reversed tail.
-- The cheap refusals precede the device judgment: against a fixture family
-  declaring the widths one and two, with a binding naming three devices, a
-  binding whose artifact resolves to nothing answers the resolution refusal
-  rather than the width refusal, and an artifact whose header cannot be read
-  answers on the header rather than on the devices. Confirmed by watching both
-  fixtures answer on the width when the resolve and header steps move below the
-  judgment. **The three-device set is what makes the watch a watch,** since it
-  fixes what the reordered path would answer, so the two arms differ by the
-  ordering alone and neither reaches a device under either arrangement.
+- The cheap refusals precede the device judgment: against a fixture entry declaring the
+  widths one and two, with a binding naming three devices, a binding whose artifact
+  resolves to nothing answers the resolution refusal rather than the width refusal, and
+  an artifact whose header cannot be read answers on the header rather than on the
+  devices. Confirmed by watching both fixtures answer on the width when the resolve and
+  header steps move below the judgment. **The three-device set is what makes the watch a
+  watch,** since it fixes what the reordered path would answer, so the two arms differ
+  by the ordering alone and neither reaches a device under either arrangement.
 - The session never rewinds: a multi-turn session's resident length moves only
   by appends and by the two recorded reducers, the flush and the elision, and
   each turn's prompt tokens are the delta's alone, confirmed by watching the
@@ -3018,16 +3009,15 @@ than a code fact.
   nearest-match fallback. The watch reads the family the refusal names rather
   than the fact of a refusal, so a refusal arriving on some other ground does not
   pass it.
-- The width condition refuses against the declared set: a fixture family
-  declaring the widths one, two, and four refuses a binding naming three devices,
-  and the refusal names the width. Confirmed twice, by watching the binding pass
-  the condition when the width test is dropped from the judgment, and by watching
-  it pass when the declaration is read as a maximum. **The non-contiguous fixture
-  is what makes the second watch able to fail,** a declaration of one and two
-  answering alike under both readings, so a contiguous fixture would leave that
-  perturbation unwatchable while the test still passed. The width is judged
-  before either driver query, per section 3, which is what keeps the whole test
-  on a machine with no device.
+- The width condition refuses against the declared set: a fixture entry declaring the
+  widths one, two, and four refuses a binding naming three devices, and the refusal
+  names the width. Confirmed twice, by watching the binding pass the condition when the
+  width test is dropped from the judgment, and by watching it pass when the declaration
+  is read as a maximum. **The non-contiguous fixture is what makes the second watch able
+  to fail,** a declaration of one and two answering alike under both readings, so a
+  contiguous fixture would leave that perturbation unwatchable while the test still
+  passed. The width is judged before either driver query, per section 3, which is what
+  keeps the whole test on a machine with no device.
 - Signals are pre-sampler: the entropy of a step matches the distribution
   before sampling, confirmed by watching it collapse when the computation moves
   after the sampler.
@@ -3263,34 +3253,29 @@ count above one means the discipline upstream failed and this process is
 not the one to continue past it. The decode-carrying process's own count
 stays two and this act moves neither.
 
-**The binding rides `spu-instruction` as a `classify` subsection beside
-`decoder`**, per `weaver-types-Spec` section 2: the artifact and its device
-assignment, the same shape at the smaller size, handed to the classify
-process at its exec per charter section 15.3. Admission judges the binding
-against the family's declared capabilities and the device's room exactly as
-the decoder's admission judges its own, the model first per the charter's
-ordering, and the readiness emission is the label seam's first message.
+**The binding rides `spu-instruction` as a `classify` subsection beside `decoder`**, per
+`weaver-types-Spec` section 2: the artifact and its device assignment, the same shape at
+the smaller size, handed to the classify process at its exec per charter section 15.3.
+Admission judges the binding against the resolved entry's declared capabilities and the
+device's room exactly as the decoder's admission judges its own, the model first per the
+charter's ordering, and the readiness emission is the label seam's first message.
 
-**The first classify family is `modernbert`, entering section 5's registry
-with its capabilities declared, and the registry's selection gains the
-operation as a filter.** Charter section 14 already has every family
-declaring what operations its models serve, and the selection reads that
-declaration: a decode admission selects among families declaring decode,
-by architecture and the marker set as before, and a classify admission
-selects among families declaring classify the same way, so neither
-operation's candidates shadow the other's. The template joins the key only
-where a family renders one, per the template-joins-the-key ruling, and a
-classify family renders none, so its key is the architecture and the
-operation alone. The decoder's selection behavior does not move.
-`modernbert` serves classify and nothing else,
-renders no template, and reads its head from the artifact's own
-declaration, the label names being the artifact's `id2label` in index
-order, which is the head defining its labels the charter requires. The
-scores are the head's softmax, finite by construction over finite logits,
-one per label. Where the logits arrive non-finite the exchange faults
-rather than answers, per the trio's finiteness rule. The forward is the
-fork's `ModernBertForSequenceClassification`, and the tokenizer walks the
-same artifact-sidecar path the native decode families walk.
+**The first classify family is `modernbert`, entering section 5's registry with its
+capabilities declared, and the registry's selection gains the operation as a filter.**
+Charter section 14 already has every family declaring what operations its models serve,
+and the selection reads that declaration: a decode admission selects among entries
+declaring decode, by architecture and the marker set as before, and a classify admission
+selects among entries declaring classify the same way, so neither operation's candidates
+shadow the other's. The template joins the key only where an entry renders one, per the
+template-joins-the-key ruling, and a classify family renders none, so its key is the
+architecture and the operation alone. The decoder's selection behavior does not move.
+`modernbert` serves classify and nothing else, renders no template, and reads its head
+from the artifact's own declaration, the label names being the artifact's `id2label` in
+index order, which is the head defining its labels the charter requires. The scores are
+the head's softmax, finite by construction over finite logits, one per label. Where the
+logits arrive non-finite the exchange faults rather than answers, per the trio's
+finiteness rule. The forward is the fork's `ModernBertForSequenceClassification`, and
+the tokenizer walks the same artifact-sidecar path the native decode families walk.
 
 **Statelessness is structural.** The process holds the admitted artifact
 and no session type: each exchange tokenizes, forwards, and answers from

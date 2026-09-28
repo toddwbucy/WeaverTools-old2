@@ -1394,21 +1394,21 @@ does not hold.
 
 ## 14. The family libraries
 
-**Everything a model family defines is defined once, in that family's
-module, and nowhere else.** A family, Qwen or Gemma or the Harmony
-speakers, shares its template, its marker vocabulary, its tokenizer
-conventions, its configuration shapes, and its orchestration quirks across
-every operation type that serves its models, and the prior program proved
-the premise concretely: its encoder's text tower was a decoder-family
-member, sharing architecture and tokenizer with the decoder path that
-never knew it. The module discipline is the boundary: one module per
-family holding the template, the types, the parsing and rendering, and the
-forward orchestration, with nothing family-specific living outside its
-module and the kernels shared beneath, which is the prior program's own
-share-kernels-own-orchestration rule promoted to a charter line. **A family here is a
-template lineage**, on the operator's ruling of 2026-09-28: one module may carry
-several architecture entries that share its template and its orchestration, and an
+**Everything a model family defines is defined once, in that family's module, and
+nowhere else.** A family, Qwen or Gemma or the Harmony speakers, shares its template,
+its marker vocabulary, its tokenizer conventions, its configuration shapes, and its
+orchestration quirks across every operation type that serves its models, and the prior
+program proved the premise concretely: its encoder's text tower was a decoder-family
+member, sharing architecture and tokenizer with the decoder path that never knew it. The
+module discipline is the boundary: one module per family holding the template, the
+types, the parsing and rendering, and the forward orchestration, with nothing
+family-specific living outside its module and the kernels shared beneath, which is the
+prior program's own share-kernels-own-orchestration rule promoted to a charter line. **A
+family here is a lineage, a vendor's line of models**, on the operator's ruling of
+2026-09-28: one module holds every architecture entry of the lineage, and an
 architecture is an entry in its lineage's module rather than a module of its own.
+Entries in one module may carry different templates, where the artifact's own template
+selects between them.
 
 **Both directions of the end-to-end template requirement live here and are
 tested here.** Inbound, the family module is what makes input formatted
