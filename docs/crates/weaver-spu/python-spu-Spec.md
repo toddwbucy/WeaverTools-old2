@@ -35,14 +35,23 @@ governs all of them.
 
 ## 1. What python-spu is
 
-**A second implementation of one organ, honoring the same contracts.** The organ is the
-one `weaver-spu-PRD` section 1 charters: it holds a model on the device for as long as
-the worker that forked it lives, and it answers the harness across a two-initiator
-channel. `python-spu` is party to the three contracts the Rust SPU is party to,
-`weaver-harness-spu-contract` for residency, `weaver-harness-spu-decode-contract` for
-the token seam and `weaver-harness-spu-classify-contract` for the label seam, and it
-honors each as written. The contracts name no language, no type and no module, so the
-seams admit a second implementation as they stand and none of them changes for it.
+**A second implementation of one organ's decode role, honoring the same contracts.**
+The organ is the one `weaver-spu-PRD` section 1 charters: it holds a model on the device
+for as long as the worker that forked it lives, and it answers the harness across a
+two-initiator channel. `python-spu` is party to the two contracts the Rust decode
+process is party to, `weaver-harness-spu-contract` for residency and
+`weaver-harness-spu-decode-contract` for the token seam, and it honors each as written.
+The contracts name no language, no type and no module, so the seams admit a second
+implementation as they stand and neither changes for it.
+
+**The classify role is not this implementation's.** The label seam is served by a
+process of its own, `weaver-spu-classify`, which the harness launches from its own
+binary path, per `weaver-spu-Spec` section 11, so `spu-binary` does not reach it. A
+declaration electing classify under `python-spu` is served by that process as it is
+today. `python-spu` accepts the instruction's `classify` member as the wire admits it
+and acts on none of it, as the Rust decode process acts on none of it.
+`weaver-harness-spu-classify-contract` binds that process and not this one, and a Python
+classifier with its own binding is a later version, per section 9.
 
 **It writes no trace, as the Rust SPU writes none.** The harness is the sole writer, per
 `weaver-harness-trace-contract` and `weaver-spu-PRD` section 2. What `python-spu`
@@ -67,7 +76,7 @@ bit for bit.
 
     python-spu/
       src/python_spu/    the SPU: the channel ends, the wire, the session, the engine,
-                         the family, the sampler and the classifier
+                         the family and the sampler
       tests/             the conformance suite and the behaviour tests
       oracle/            a Rust program linking the workspace crates, which answers
                          the suite with the Rust code's own results
@@ -95,7 +104,7 @@ check the named contract's Conformance section lists.
 | --- | --- | --- |
 | The two channel ends at descriptors 3 and 4, close-on-exec set on both, the dumpable flag cleared before the engine's runtime is imported | 2 | a process test |
 | The `SOCK_SEQPACKET` envelope and the segmented frame, per `weaver-organ-channel` | 2 | oracle, over a socket pair |
-| Every payload of the three SPU contracts, accepted and refused | 2, 9 | oracle, serde round trips both ways |
+| Every payload of the two contracts it is party to, accepted and refused, and the instruction's `classify` member accepted and left unread | 2, 9 | oracle, serde round trips both ways |
 | Admission refuses and never evicts, and the weights hash is blake3 at admit | 3 | a process test, oracle for the hash |
 | The session appends and never rewinds, the identity prefix is permanent, an overflow refuses before any append | 4.2 | contract, decode section 8 |
 | The turn terminator made resident on every path, the stop within a token boundary of the cancel | 4.2, 4.3 | contract, decode section 8 |
@@ -108,7 +117,6 @@ check the named contract's Conformance section lists.
 | The dispositions, the knob set, the tunables arriving in the declaration, the effective values in the record | 8 | oracle, contract |
 | The derived seed, to the bit | 8.5 | the section's own test vectors, oracle |
 | The failure vocabulary: refusals typed at the floor, faults below the exchange | 9 | oracle, contract |
-| The classify submodule: completeness, the bound, readiness, the trace context echoed byte-exact | 11 | contract, classify section 8 |
 
 **A behaviour this implementation does not yet carry is refused at admission, never
 dropped silently.** An election the declaration makes and `python-spu` cannot honor
@@ -119,10 +127,11 @@ implementation does not advertise.
 
 ## 4. What is its own
 
-**The engine.** The first version runs Hugging Face `transformers` in eager mode at FP32
-on one CUDA device, serving the Qwen2 family from a local safetensors directory. It
-makes no download, runs no remote code, converts no quantization, falls back to no other
-device, and shards nothing. Section 9 names the versions after it.
+**The engine.** The first version runs Hugging Face `transformers` in eager mode at
+BF16, loading with `torch_dtype=bfloat16`, on one CUDA device, serving the Qwen2 family
+from a local safetensors directory. It makes no download, runs no remote code, converts
+no quantization, falls back to no other device, and shards nothing. Section 9 names the
+versions after it.
 
 **The kernel stack.** The kernels are PyTorch's and the CUDA libraries PyTorch brings
 with it, its own cuBLAS and cuDNN among them, not the ones the Rust SPU links. They are
@@ -148,12 +157,13 @@ the generator that draws. A comparison that let the two generators differ would 
 the generators at every sampled position, whatever the engines did, so `python-spu`
 carries the partner's sampler and never an approximation of it.
 
-**The first version's partner is the Rust native engine**, candle at FP32 on the same
-safetensors directory, on the Planner's election of 2026-09-28 recorded on #726. It is
-the one pairing that holds both the weights and the precision fixed, since llama.cpp
-computes on quantized blocks that no dequantized forward reproduces. Its chain, from
-`crates/weaver-spu/src/decoder/native.rs` and candle's `LogitsProcessor` at the pinned
-revision, is this:
+**The first version's partner is the Rust native engine**, candle on the same
+safetensors directory, which maps the weights at BF16 (`native.rs`, the single-device
+load's `DType::BF16`), on the Planner's election of 2026-09-28 recorded on #726. It is
+the one pairing that holds both the weights and the dtype fixed without changing
+`crates/`, since llama.cpp computes on quantized blocks that no dequantized forward
+reproduces. Its chain, from `crates/weaver-spu/src/decoder/native.rs` and candle's
+`LogitsProcessor` at the pinned revision, is this:
 
 1. The repetition penalty over the last `repetition_window` resident tokens, as candle's
    `apply_repeat_penalty` computes it, skipped where the penalty is 1 or the window 0.
@@ -217,8 +227,8 @@ without a model the way the Rust code answers it**, at the commit the oracle pin
 questions are the wire, the framing, the rendering, the seed, the signal arithmetic, the
 refusals and faults, and the sampler's sequence of draws over a whole generation from
 its seed, knobs, resident tail and logits, per section 5. It also certifies every
-check that section 8 of `weaver-harness-spu-decode-contract` and section 8 of
-`weaver-harness-spu-classify-contract` list, and the ordering and failure cases of
+check that section 8 of `weaver-harness-spu-decode-contract` lists, and the ordering
+and failure cases of
 `weaver-harness-spu-contract` sections 3 and 5, run against `python-spu` itself.
 
 **The evidence is the Rust code's own answer, read by execution.** The oracle links the
@@ -241,14 +251,19 @@ proves by the oracle fails the suite once the pin reaches it.
 - A turn completed end to end through the harness, the gate and admin, and a trace
   verifying under the diagnostic replay. That is epic #726's deployment item.
 - Families, precisions and engines beyond the version served.
+- The label seam, which the classify process serves and this implementation does not.
 - Speed.
 
 ## 7. What a substantive difference is
 
 Stated before any comparison run, per the same rule, so that no result chooses its own
-threshold. The comparison holds the weights, the precision, the knobs, the declared seed
-and the prompts fixed, and serves them from each SPU in turn, so that a difference has
-one cause, the implementation.
+threshold. The comparison holds the weights, the dtype, the knobs, the declared seed and
+the prompts fixed, and serves them from each SPU in turn. **Fixing the dtype does not
+fix the arithmetic.** Both sides compute at BF16, and each engine's accumulation and
+reduction order, which BF16 rounding makes visible, is part of the implementation being
+measured rather than a variable held apart from it. A difference therefore has one cause
+in the sense the comparison needs, the implementation, and the implementation includes
+its kernels.
 
 **At the distribution level**, both SPUs are driven along one token path, the
 partner's recorded path, with the re-feed drive of `weaver-spu-Spec` section 4.6, so
@@ -295,10 +310,15 @@ report carries every position's measures, so a reader can apply a different line
 same record without a second run.
 
 **The two numbers are elections, and they are revised only before a run.** 0.01 nats of
-margin is a probability ratio of about 1.01 between the top two tokens, well above what
-reordered FP32 arithmetic moves, and 0.001 nats of divergence is far above the same.
-Both are the operator's to confirm on this document, and a later run that wants
-different numbers states them in its own charter before it runs.
+margin is a probability ratio of about 1.01 between the top two tokens, and a top-1 flip
+inside it is a near-tie any rounding can move. 0.001 nats of divergence is chosen as the
+line for a distribution's shape, and at BF16 the rounding of two kernel stacks may reach
+it, which is the point of the next sentence: a label above the line says the two
+implementations differ at that position, kernels included, and not why. Both numbers
+are the operator's to confirm on this document. A run that finds many positions near
+either line raises that as a finding before the next run, and a later run that wants
+different numbers states them in its own charter before it runs, never in the report of
+the run that prompted them.
 
 ## 8. The environment
 
@@ -327,15 +347,17 @@ require it.
 
 ## 9. The versions
 
-**The first version is `transformers` eager at FP32, one CUDA device, Qwen2
+**The first version is `transformers` eager at BF16, one CUDA device, Qwen2
 safetensors.**
 
 **Each later version is a separate binary, with its own locked environment, and a
 separate deployment under the tuple**, crossed one axis at a time against the one before
 it. Epic #726 lists them: `llama-cpp-python` pinned to the Rust SPU's llama.cpp commit
-and build flags, the control, first, then the attention kernels, the precision, a
-minimal variant with the forward written in plain torch, and the device. None is
-chartered by this document, and each extends it when it is built.
+and build flags, the control, first, then the attention kernels, the precision, which is
+`transformers` at FP32 crossed against the first version at BF16, a minimal variant with
+the forward written in plain torch, the device, and a classifier serving the label seam
+with its own binding. None is chartered by this document, and each extends it when it is
+built.
 
 ## 10. What this document does not carry
 
