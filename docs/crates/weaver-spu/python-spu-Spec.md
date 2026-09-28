@@ -157,7 +157,10 @@ revision, is this:
 
 1. The repetition penalty over the last `repetition_window` resident tokens, as candle's
    `apply_repeat_penalty` computes it, skipped where the penalty is 1 or the window 0.
-2. Temperature zero or below is the argmax, and nothing below applies.
+2. Temperature zero or below is the argmax, and nothing below applies. The cutoff is
+   `native.rs`'s own, which builds the sampler by `from_sampling`, and not the 1e-7 of
+   candle's `LogitsProcessor::new`, which the engine does not call, so a temperature
+   just above zero divides the logits and samples.
 3. The logits divided by the temperature, then the softmax.
 4. Top-k where k is above zero, then top-p. A top-k of zero disables that gate.
 5. The draw, `WeightedIndex` over the remaining weights, from `rand`'s `StdRng` seeded
@@ -169,13 +172,17 @@ filters, then temperature, then llama.cpp's own draw from a seed folded to 32 bi
 later control version, `llama-cpp-python` against the Rust GGUF cells, uses llama.cpp's
 sampler natively and inherits that chain rather than reimplementing it.
 
-**The port is proven draw for draw on fixed logits.** The oracle gains an operation that
-runs candle's own `LogitsProcessor` over a supplied logits vector, knob set and seed,
-and the suite requires Python's draw to equal it over many vectors and seeds, including
-near-ties, a top-k of zero, a top-p of one and a temperature at zero. The sampler is a
-function of the logits alone once the knobs and the seed are fixed, so identical logits
-give identical draws, and the arithmetic is ported in candle's order and precision for
-that reason.
+**The port is proven draw for draw on fixed logits.** The oracle gains an operation
+that runs candle's own `LogitsProcessor` over a supplied logits vector, knob set and
+seed, and the suite requires Python's draw to equal it over many vectors and seeds. The
+edges are named cases: near-ties, a temperature at zero and one just above it, a top-k
+of zero and one at or past the vocabulary, a top-p of one and one at or past the mass
+top-k kept. The sampler is a function of the logits alone once the knobs and the seed
+are fixed, so identical logits give identical draws, and the arithmetic is ported in
+candle's order and precision for that reason. **The order the filters leave the
+candidates in is part of the draw.** Candle keeps the top-k by `select_nth_unstable_by`,
+whose partition decides the order `WeightedIndex` walks, so the port reproduces that
+order and not only the set.
 
 **Where exact draws prove impossible, the comparison falls back to distributions and
 says so.** If a draw cannot be reproduced exactly, the suite records which operation
