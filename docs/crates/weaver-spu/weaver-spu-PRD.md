@@ -235,41 +235,34 @@ below has to carry a reason the harness can place in that aggregate without tran
 Opened by the harness, carrying the SPU instruction it was handed in the enter
 directive. It ends in residency confirmed or in a typed refusal.
 
-1. **Resolve the binding to an artifact.** A binding naming a model this crate
-   cannot find is refused before the device is touched, and the refusal's account
-   names the path that failed, the step that failed on it, and the identity it
-   was judged under, because this crate runs as the agent and admin does not,
-   per section 7: the operator's
-   likeliest fault, an artifact readable to root under a directory the agent uid
-   cannot traverse, is visible from here and nowhere earlier.
-2. **Read what the artifact declares about itself, without loading it.** The old
-   tree reads a model file's header and metadata block to answer what family this is
-   and what its basic dimensions are, without reading tensor data and without
-   touching the device. That is a mechanic worth keeping, because it converts the
-   most common shape of a bad binding, an artifact that is present and wrong, into a
-   refusal that costs no device work.
-3. **Judge the assigned devices and the readout election against what admission
-   requires.** The binding
-   names the devices, per `weaver-types-PRD` section 2.1 and the ruling of
-   2026-08-03, and this crate judges those and selects none. What the
-   artifact's shard needs plus the working headroom the residency requires must
-   fit what each assigned device has free, which is the same inequality read
-   per device rather than a new one. Where the set is larger than one the
-   devices must also be able to reach each other, since a sharded forward
-   exchanges activations between them and a set that cannot is a set that
-   cannot serve. And the backend must be able to shard across that many, per
-   section 14's capability declaration. This is the one check on the devices,
-   per section 2, and nothing upstream performed an earlier one. The election
-   is judged in this step as well, against what the family's engine declares,
-   per section 13.7: the family is known from step 2's header read, so the
-   check costs no device work and an election the engine cannot honor refuses
-   before any device is taken.
-4. **Take the assigned devices and load the weights.** Where the set is one this
-   is one take and one load. Where it is larger the takes and the loads run in
-   the binding's shard order, so a failure partway is a partial take rather than
-   none, which section 5 accounts for.
-5. **Confirm residency.** The answer confirms and carries nothing else, per section
-   4.4.
+1. **Resolve the binding to an artifact.** A binding naming a model this crate cannot
+find is refused before the device is touched, and the refusal's account names the path
+that failed, the step that failed on it, and the identity it was judged under, because
+this crate runs as the agent and admin does not, per section 7: the operator's likeliest
+fault, an artifact readable to root under a directory the agent uid cannot traverse, is
+visible from here and nowhere earlier. 2. **Read what the artifact declares about
+itself, without loading it.** The old tree reads a model file's header and metadata
+block to answer what architecture this is and what its basic dimensions are, without
+reading tensor data and without touching the device. That is a mechanic worth keeping,
+because it converts the most common shape of a bad binding, an artifact that is present
+and wrong, into a refusal that costs no device work. 3. **Judge the assigned devices and
+the readout election against what admission requires.** The binding names the devices,
+per `weaver-types-PRD` section 2.1 and the ruling of 2026-08-03, and this crate judges
+those and selects none. What the artifact's shard needs plus the working headroom the
+residency requires must fit what each assigned device has free, which is the same
+inequality read per device rather than a new one. Where the set is larger than one the
+devices must also be able to reach each other, since a sharded forward exchanges
+activations between them and a set that cannot is a set that cannot serve. And the
+backend must be able to shard across that many, per section 14's capability declaration.
+This is the one check on the devices, per section 2, and nothing upstream performed an
+earlier one. The election is judged in this step as well, against what the resolved
+entry declares, per section 13.7: the entry is resolved from step 2's header read, so
+the check costs no device work and an election the engine cannot honor refuses before
+any device is taken. 4. **Take the assigned devices and load the weights.** Where the
+set is one this is one take and one load. Where it is larger the takes and the loads run
+in the binding's shard order, so a failure partway is a partial take rather than none,
+which section 5 accounts for. 5. **Confirm residency.** The answer confirms and carries
+nothing else, per section 4.4.
 
 **Every step before the fourth is refusable at no cost, and that ordering is the
 substance.** A refusal reaching the harness before any device work has happened is a
@@ -821,15 +814,14 @@ returns are attributable with more than one turn in flight or none.
 
 ### 13.3 The session
 
-**One resident decode session per residency, append-only, and the discipline
-is forced rather than elected.** The prior program proved on live hardware
-that hybrid and recurrent decoder families cannot roll their state back: a
-protocol that rewinds resident state fails silently on the families that
-keep recurrent layers, and the failure surfaces as position errors far from
-its cause. So the session advances only forward. Each turn appends its
-delta at the resident end, nothing ever asks resident state to rewind, and
-the protocol is uniform across families because the weakest family sets the
-rule.
+**One resident decode session per residency, append-only, and the discipline is forced
+rather than elected.** The prior program proved on live hardware that hybrid and
+recurrent decoder architectures cannot roll their state back: a protocol that rewinds
+resident state fails silently on the architectures that keep recurrent layers, and the
+failure surfaces as position errors far from its cause. So the session advances only
+forward. Each turn appends its delta at the resident end, nothing ever asks resident
+state to rewind, and the protocol is uniform across architectures because the weakest
+architecture sets the rule.
 
 **The identity prefix is established at open and permanent for the session's
 life.** `weaver-harness-PRD` section 2 rests the prefix's permanence on this
@@ -848,13 +840,13 @@ overflow and the harness decides what a full context means for the turn.
 
 **Ratified by the operator, 2026-08-02, in this act.** The family library renders. The
 harness sends canonical messages, the message model of `weaver-traits`, and the
-submodule renders them through the family's template into what the model sees. The
-rendered reality returns on the report path of 13.6, the template's identity, the token
-identifiers, and the block partition, so the record holds the mapping from the canonical
-conversation to what the model saw, per the operator's end-to-end requirement of
-2026-08-02: input formatted correctly for the template the resolved entry renders,
-verified per entry, and output style handled by the trace holding both the verbatim
-emission and the canonical parse.
+submodule renders them through the template the resolved entry renders into what the
+model sees. The rendered reality returns on the report path of 13.6, the template's
+identity, the token identifiers, and the block partition, so the record holds the
+mapping from the canonical conversation to what the model saw, per the operator's
+end-to-end requirement of 2026-08-02: input formatted correctly for the template the
+resolved entry renders, verified per entry, and output style handled by the trace
+holding both the verbatim emission and the canonical parse.
 
 The grounds. Family knowledge lives in one home, section 14's, rather than
 splitting across two domains or forcing the harness to link an SPU-domain
@@ -874,17 +866,15 @@ register as a condition, the change tied to its reason.
 appends the turn's delta and the generation returns with its measurement,
 the two crossings of the fork the basic loop's section 4 draws.
 
-**Ratified at the act's merge, 2026-08-02.** The stop lands at the token
-boundary. The generation checks for the harness's cancel between sampled
-tokens, which at production decode rates bounds the stop's latency well
-under the operator's perception, and a mid-kernel abort would buy
-milliseconds at the cost of device-state certainty. **An aborted generation
-still leaves the session well-framed:** the family's turn terminator is made
-resident before the answer returns, the prior program's own lesson, because
-an append-only session whose last turn ends mid-emission is malformed for
-every turn that follows. The partial output returns marked stopped, the
-harness closes the turn with the stop reason per the grammar, and the run
-stays open.
+**Ratified at the act's merge, 2026-08-02.** The stop lands at the token boundary. The
+generation checks for the harness's cancel between sampled tokens, which at production
+decode rates bounds the stop's latency well under the operator's perception, and a
+mid-kernel abort would buy milliseconds at the cost of device-state certainty. **An
+aborted generation still leaves the session well-framed:** the turn terminator of the
+renderer the resolved entry names is made resident before the answer returns, the prior
+program's own lesson, because an append-only session whose last turn ends mid-emission
+is malformed for every turn that follows. The partial output returns marked stopped, the
+harness closes the turn with the stop reason per the grammar, and the run stays open.
 
 ### 13.6 The measurement obligation
 
@@ -974,25 +964,22 @@ The clause apex section 3 step 6 states holds of every agent a client can
 reach, which is what it was protecting, and it is a property of the serving
 binding rather than of this seam in general.
 
-**Three elections are this clause's, made here so that one authority holds
-them and every citing document points rather than deciding a share.** First,
-the cadence: **the ask crosses once, at session open**, the once-crossing
-discipline of the instruction reaching the one ask whose answer runs for the
-residency. Second, the enforcement: **the permission crosses at admit, inside
-the instruction, set from the binding by admin** - the party that holds the
-binding and already derives the member vector from it - and **the open's
-refusal registry is this clause's, three arms and no others**: an open
-carrying the ask refuses, typed, at the open where the instruction carries
-no permission, where the readout was not elected at admit - no election
-means no tap runs and no column exists to continue - or where the family's
-declaration holds no column. The Spec and the decode contract cite this
-registry and add no arm of their own. This crate still never learns the
-binding's kind: it learns one admitted permission that admin vouches for,
-which is the same shape every
-other admitted election takes. The harness's own discipline, that a serving
-harness never writes the ask, is watched on the harness and its assertion
-lands with the code act, named here as owed. The bar is 13.7's unchanged:
-a load granting what it must not answer fails at its cheapest moment or lies
+**Three elections are this clause's, made here so that one authority holds them and
+every citing document points rather than deciding a share.** First, the cadence: **the
+ask crosses once, at session open**, the once-crossing discipline of the instruction
+reaching the one ask whose answer runs for the residency. Second, the enforcement: **the
+permission crosses at admit, inside the instruction, set from the binding by admin** -
+the party that holds the binding and already derives the member vector from it - and
+**the open's refusal registry is this clause's, three arms and no others**: an open
+carrying the ask refuses, typed, at the open where the instruction carries no
+permission, where the readout was not elected at admit - no election means no tap runs
+and no column exists to continue - or where the resolved entry's declaration holds no
+column. The Spec and the decode contract cite this registry and add no arm of their own.
+This crate still never learns the binding's kind: it learns one admitted permission that
+admin vouches for, which is the same shape every other admitted election takes. The
+harness's own discipline, that a serving harness never writes the ask, is watched on the
+harness and its assertion lands with the code act, named here as owed. The bar is 13.7's
+unchanged: a load granting what it must not answer fails at its cheapest moment or lies
 at its most expensive one.
 
 **What the tap can answer bounds what may be asked, and the bound's ground
@@ -1399,14 +1386,13 @@ entry in its lineage's module rather than a module of its own. Where one archite
 string carries two formats, the module holds both and the artifact's own template
 selects between them.
 
-**Both directions of the end-to-end template requirement live here and are
-tested here.** Inbound, the family module is what makes input formatted
-correctly for the family, and the reference test shape is the prior
-program's marker promotion, every control marker tokenizing to exactly
-one token because a degraded marker is structure read as prose. Outbound,
-the family module's parsers are the recorded bridge from the verbatim
-emission to the canonical form, with parse failures carried as their own
-distinct facts rather than collapsed into clean turns.
+**Both directions of the end-to-end template requirement live here and are tested
+here.** Inbound, the family module is what makes input formatted correctly for the
+template the resolved entry renders, and the reference test shape is the prior program's
+marker promotion, every control marker tokenizing to exactly one token because a
+degraded marker is structure read as prose. Outbound, the family module's parsers are
+the recorded bridge from the verbatim emission to the canonical form, with parse
+failures carried as their own distinct facts rather than collapsed into clean turns.
 
 **The modules become member crates when the second consumer exists, and
 not before.** This round the decoder is the only consumer, and a shared
