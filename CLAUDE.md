@@ -427,15 +427,17 @@ of 2026-09-26 is what its absence cost.
 ## Experiment evidence lives on the share
 
 **A run's evidence lives in its deposit on the shared bulk store, and the repository
-carries only the result note**, on the operator's word of 2026-09-28. Deposits sit under
-`weaver-testing/` on the bulk store, which olympus exports over NFS to the LAN and the
-thinkpad mounts, so each seat reads the other's runs where they were written. The
-record, the log, the summary, the box facts, the raw trace and the captured journal
-evidence all stay there, in the deposit and its `evidence/` directory. A trace runs to
-hundreds of megabytes, and committing one would make every clone carry it. **Every
-experiment's results go there by default**, and the result report goes in two places, a
-copy in the deposit and the same report under `experiments/` in the repository, which
-names its deposits and never copies their contents.
+carries only the result note and the scripts that produced its figures**, on the
+operator's word of 2026-09-28. Deposits sit under `weaver-testing/` on the bulk store,
+which olympus exports over NFS to the LAN and the thinkpad mounts, so each seat reads
+the other's runs where they were written. The record, the log, the summary, the box
+facts, the raw trace and the captured journal evidence all stay there, in the deposit
+and its `evidence/` directory. A trace runs to hundreds of megabytes, and committing one
+would make every clone carry it. **Every experiment's results go there by default**, and
+the result report goes in two places, a copy in the deposit and the same report under
+`experiments/` in the repository. The repository's copy names its deposits and copies no
+data from them, and beside it sit the commands that ran the run and every script that
+computed a number the report states, the harness itself cited by its commit.
 
 ## Police call
 
