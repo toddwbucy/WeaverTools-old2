@@ -6,11 +6,18 @@ which carries a username, is left out.
 The deposit this names is on the share, and the index beside this folder gives its
 path and the sha256 of every file in it. Nothing from it is copied here.
 
+**Every fenced command says where it runs, and is one of two kinds.** A command marked
+*to rerun* runs from the root of a checkout of this repository with the share mounted
+at `/mnt/bulk-store`. It names its script by the committed path, reads the deposit by
+its absolute path, and writes to stdout. A command marked *as it ran* is what was typed
+at the time, kept as the record, and says why it is not rerun.
+
 ## The harness
 
 WeaverTools main at `07a7e5d`, #716 merged, run from the primary checkout at that
 commit: `determinism_matrix.py` `2657c8b2` and `confirm_cells.py` `25ab96db`, per the
-deposit's `box-facts.txt`. git holds them:
+deposit's `box-facts.txt`. git holds them. To rerun, printing each
+file:
 
 ```
 git show 07a7e5d:experiments/deployment-tuple/baseline/determinism-matrix/code/determinism_matrix.py
@@ -20,6 +27,9 @@ git show 07a7e5d:experiments/deployment-tuple/baseline/determinism-matrix/code/c
 The stack is the partial run's, at 39fe573, unchanged.
 
 ## The run
+
+As it ran: its second line sets the working directory, the primary checkout at
+`07a7e5d`, and it is not rerun, since it drives the stack and writes into the deposit:
 
 ```
 printf '\e]2;MATRIX SMOKE - DO NOT CLOSE\a'

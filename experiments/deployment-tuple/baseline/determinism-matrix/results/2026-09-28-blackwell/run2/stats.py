@@ -1,7 +1,7 @@
 """run2's counts from its per-session record, which run2-close/stats.txt holds
 and RESULT-2026-09-27.md reports: sessions, sweeps, turns compared and
 unmatched, turns of more than one token, and the seeds recorded. Verbatim from
-the inline command run 2026-09-27 18:48 CDT, its output redirected to
+the inline command run 2026-09-27 18:49 CDT, its output redirected to
 run2-close/stats.txt."""
 import json, collections
 R='/mnt/bulk-store/weaver-testing/determinism-matrix-thinkpad-2026-09-27-39fe573-run2/matrix.jsonl'
