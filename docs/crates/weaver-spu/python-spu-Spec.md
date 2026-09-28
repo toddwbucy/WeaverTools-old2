@@ -135,8 +135,9 @@ versions after it.
 
 **The kernel stack.** The kernels are PyTorch's and the CUDA libraries PyTorch brings
 with it, its own cuBLAS and cuDNN among them, not the ones the Rust SPU links. They are
-recorded in the box facts beside the environment lock, since two runs on one card under
-two kernel stacks are two deployments under the tuple.
+recorded beside the environment lock, since two runs on one card under two kernel
+stacks are two deployments under the tuple, and the matrix's engine-library reader
+does not reach them until section 5's second precondition lands.
 
 **The runtime.** A CPython interpreter, one exact version per build, named by the lock
 of section 8.
@@ -212,10 +213,26 @@ says so.** If a draw cannot be reproduced exactly, the suite records which opera
 departs, the comparison of section 7 is made at the distribution level alone, and every
 cell it produces states that token streams are not comparable.
 
-**A precondition before any comparison run.** The native engine is confirmed to load the
-safetensors directory the Python SPU serves, and the declaration that selects the native
-engine for it is recorded, since which backend serves is a property of the artifact
-decided at admit, per `weaver-spu-Spec` section 4.1.
+**Two preconditions before any comparison run.** The first: the native engine is
+confirmed to load the safetensors directory the Python SPU serves, and the declaration
+that selects the native engine for it is recorded, since which backend serves is a
+property of the artifact decided at admit, per `weaver-spu-Spec` section 4.1.
+
+**The second: the determinism matrix's provenance readers are extended, as their own act
+under `determinism-matrix-Spec`, because three of them assume the Rust GGUF deployment
+and no comparison run could exit 0 on either side without them.** The weights reader
+hashes one file, so every safetensors directory reads unreadable, the Rust native
+partner's included, and it becomes a directory digest over the sorted relative paths and
+each file's sha256, a symbolic link refused. The engine-library reader runs `ldd` on the
+SPU binary and looks for llama.cpp's libraries, which names nothing a Python engine
+loads, since PyTorch opens its kernels at run time. It reads the libraries the loaded
+SPU holds instead, and how is that act's to elect: the obvious source, the process's own
+mappings under `/proc`, is closed to an unprivileged reader by the dumpable flag both
+SPUs clear at entry, per `weaver-spu-Spec` section 2, and reopening it would undo that
+section's claim. The toolchain reader reads `rustc` alone, and it reads per
+implementation: `rustc` for the Rust SPU, and the interpreter's version with the lock's
+hash for this one. Epic #726 carries the act as a stage C item, and no document here
+changes the matrix.
 
 ## 6. What conforms means
 
