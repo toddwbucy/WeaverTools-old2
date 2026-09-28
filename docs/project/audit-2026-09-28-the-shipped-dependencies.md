@@ -133,28 +133,55 @@ than shipped surface, noted as **[8]**.
 `pyworker`, `weaver-admin`, `weaver-gate`, `weaver-spu` and `weaver-state`. Two
 of those features change the picture.
 
-**`weaver-state` with `postgres`: twenty-four crates become seventy-five.** The
-`postgres` crate is the synchronous face of `tokio-postgres`, so the closure gains
-`tokio` 1.53 with `mio`, `socket2`, `tokio-util`, `pin-project-lite` and the `futures`
-family, which is the async runtime the hypothesis expected away. It gains the wire
-protocol, `postgres-protocol` and `postgres-types` with `byteorder`, `bytes`, `base64`,
-`percent-encoding` and `phf`, the authentication stack, `md-5`, `hmac`, `sha2` 0.11,
-`chacha20`, `rand` 0.10, `getrandom`, `stringprep` with `unicode-bidi`,
-`unicode-normalization` and `unicode-properties`, and `whoami`, `log`, `async-trait`,
-`parking_lot` and `lock_api`. It also brings `fallible-iterator` 0.2 beside the 0.3 that
-`rusqlite` holds, the one name this binary links at two versions. The member speaks to a
-local server over a socket, and the crate that speaks for it is a network client with a
-network client's dependencies. The `sha2` here is 0.11, a second major beside admin's
-and analysis's 0.10, with `digest`, `block-buffer`, `crypto-common` and `cpufeatures` at
-a second major beside it, so the deployed stack carries both lines across its binaries
-though no one binary links both. This is **[5]**.
+**Each closure below is complete, read as `cargo tree -p <crate> -e normal --locked
+--offline --features <feature>` diffed against the same command without the feature**,
+by name and version, so a count re-derives from the list beside it. Normal edges only:
+what the feature links into the binary, per the rule. The lock also carries build and
+dev edges, which the two lists below leave out on purpose. Two crates a reader of the
+lock will look for are absent for that reason: `rustversion`, a build dependency of
+`indoc`, and `portable-atomic`, which `pyo3` takes only on a target without 64-bit
+atomics, which this one is not.
 
-**`weaver-harness` with `pyworker`: `pyo3` 0.27 and the interpreter.** The
-closure gains `pyo3`, `pyo3-ffi`, `once_cell`, a second `syn` at 2.0 for the
-macros, and `indoc`, `unindent`, `heck` and `target-lexicon` for the build, and
-the `pyworker` binary links `libpython` at run time. `worker`, the Rust worker
-in the same crate, carries none of it. Which of the two a box runs is its
-`worker-binary` entry, and the deploy installs both. This is **[2]**.
+**`weaver-state` with `postgres`: twenty-four crates become seventy-five, fifty-one
+added.** The `postgres` crate is the synchronous face of `tokio-postgres`, and the
+fifty-one, grouped:
+
+- **The async runtime the hypothesis expected away, sixteen:** `tokio` 1.53, `mio`,
+  `socket2`, `tokio-util`, `pin-project-lite`, `futures-core`, `futures-channel`,
+  `futures-sink`, `futures-task`, `futures-util`, `parking_lot`, `parking_lot_core`,
+  `lock_api`, `scopeguard`, `async-trait`, `log`.
+- **The wire protocol, twelve:** `postgres`, `tokio-postgres`, `postgres-protocol`,
+  `postgres-types`, `byteorder`, `bytes`, `base64`, `percent-encoding`, `phf`,
+  `phf_shared`, `siphasher`, and `fallible-iterator` 0.2 beside the 0.3 that
+  `rusqlite` holds, the one name this binary links at two versions.
+- **The authentication stack, sixteen:** `md-5`, `hmac`, `sha2` 0.11, `digest` 0.11,
+  `block-buffer` 0.12, `crypto-common` 0.2, `cpufeatures` 0.3, `hybrid-array`,
+  `typenum`, `const-oid`, `chacha20`, `rand` 0.10, `rand_core`, `getrandom`, `cmov`,
+  `ctutils`.
+- **String preparation, six:** `stringprep`, `unicode-bidi`, `unicode-normalization`,
+  `unicode-properties`, `tinyvec`, `tinyvec_macros`.
+- **And `whoami`**, one.
+
+The member speaks to a local server over a socket, and the crate that speaks for it is
+a network client with a network client's dependencies. The `sha2` here is 0.11, a
+second major beside admin's and analysis's 0.10, with `digest`, `block-buffer`,
+`crypto-common` and `cpufeatures` at a second major beside it, so the deployed stack
+carries both lines across its binaries though no one binary links both. This is
+**[5]**.
+
+**`weaver-harness` with `pyworker`: sixteen crates become twenty-seven, eleven added.**
+`pyo3` 0.27 with `pyo3-ffi`, `pyo3-macros`, `pyo3-macros-backend` and
+`pyo3-build-config`, `once_cell`, `heck`, `indoc`, `unindent`, `target-lexicon`, and a
+second `syn` at 2.0 for the macros beside the 3.0 the serialization family holds, which
+is why the count by name is ten. The `pyworker` binary links `libpython` at run time.
+`worker`, the Rust worker in the same crate, carries none of it. Which of the two a box
+runs is its `worker-binary` entry, and the deploy installs both. This is **[2]**.
+
+**The two features that are on by default or in every consumer, for the same
+reading.** `weaver-state` without `sqlite`, its default, is sixteen crates, and the
+eight of the SQLite group above are what the feature adds. `weaver-types` with
+`config` is seventeen crates in place of eleven, the six of the YAML parser's group,
+and admin is the one consumer that turns it on.
 
 ## The judgment calls, each the operator's
 
