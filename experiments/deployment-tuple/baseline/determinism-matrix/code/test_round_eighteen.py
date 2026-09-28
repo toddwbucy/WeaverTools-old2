@@ -93,6 +93,59 @@ def test_an_interrupt_during_the_append_is_recorded_in_both_files():
     held(cells, 2)
 
 
+class HalfWritten:
+    """A file whose first write of a record lands half its line and then
+    raises KeyboardInterrupt, as a Ctrl-C mid-write can."""
+
+    def __init__(self, fh, state):
+        self.fh, self.state = fh, state
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.fh.close()
+        return False
+
+    def truncate(self, *a):
+        return self.fh.truncate(*a)
+
+    def write(self, s):
+        if not self.state["done"]:
+            self.state["done"] = True
+            self.fh.write(s[:len(s) // 2])
+            self.fh.flush()
+            raise KeyboardInterrupt
+        return self.fh.write(s)
+
+
+def test_a_partial_line_is_rewritten_whole():
+    # The append's rewrite after a write that landed half a line: the retry
+    # truncates back to where the line began, so matrix.jsonl holds whole
+    # lines, one per record. Perturbation: drop the truncate, and the half
+    # line and the whole one run together and the record no longer parses.
+    import builtins
+    state = {"records": 0, "done": False}
+
+    def opener(path, mode="r", *a, **k):
+        fh = builtins.open(path, mode, *a, **k)
+        if str(path).endswith("matrix.jsonl") and mode == "a":
+            state["records"] += 1
+            if state["records"] == 2:
+                return HalfWritten(fh, state)
+        return fh
+
+    def patch():
+        state.update(records=0, done=False)
+        dm.open = opener
+
+    def restore():
+        del dm.open
+    matrix, cells = both(patch, restore)
+    held(matrix, 2)
+    held(cells, 2)
+
+
 def test_an_interrupt_in_the_loop_body_is_recorded_in_both_files():
     # After record_session returns and before the write: the invocation
     # hold stands for the loop body's lines. Perturbation: drop the loop
