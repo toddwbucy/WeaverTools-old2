@@ -124,9 +124,20 @@ pinned commit.
 **Where it falls short of this document**, each gap named with the section it falls
 short of:
 
+- Section 1: admission refuses an instruction carrying a `classify` member, answering
+  `artifact_unreadable` (`server.py`), where section 1 has the member accepted and left
+  unread.
 - Section 2: it installs as a package with entry-point scripts, not as one zipapp, so a
   `spu-binary` hash would name a launcher. It also carries an experimental ModernBERT
   classifier and its entry point, which section 1 scopes out of this implementation.
+- Section 3 and `weaver-harness-spu-decode-contract`: a cancel arriving during a
+  generation is consumed and never answered, the generation's close being sent without
+  the cancel exchange's `at_rest` close (`server.py`), so a harness waiting on the
+  cancel can wait forever.
+- Section 3.1, the `knobs` row: `context-capacity` is bounded below 2^64 rather than
+  2^32 (`server.py`). The Rust resolution holds it as `u32` and refuses a value at or
+  past 2^32 as `NotACount`, where the prototype passes it to the engine and refuses it
+  late, or admits it.
 - Section 3.1: its oracle answers five operations, `session`, `seed`, `measure`,
   `render` and `round`, and a transport test over the oracle's descriptor. Every other
   operation the walk names is unbuilt.
@@ -138,6 +149,14 @@ short of:
   floor rather than a pin, `pydantic` is in the core, the Python `tokenizers` it has run
   under is 0.23.2 rather than the release built on the 0.21.4 crate, nothing digests the
   installed tree, and there is no import-set test.
+
+**The list names the gaps known at the carry, and it is not a walk.** Three of them were
+found by the review of the carry itself. The hardening act walks every exchange and
+every refusal of `weaver-harness-spu-contract` and `weaver-harness-spu-decode-contract`
+against the prototype, per H3's rule that a seam is exercised against its contract's
+failure cases. It starts from the cancel gap's sibling, which the walk judges against
+the contract's exchange rule: `server.py` answers an ask arriving mid-generation with a
+bare `{'kind': 'out_of_order'}` message. Epic #726 carries the walk as one item.
 
 ## 3. What it carries identically
 
