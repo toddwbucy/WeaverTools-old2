@@ -235,34 +235,39 @@ below has to carry a reason the harness can place in that aggregate without tran
 Opened by the harness, carrying the SPU instruction it was handed in the enter
 directive. It ends in residency confirmed or in a typed refusal.
 
-1. **Resolve the binding to an artifact.** A binding naming a model this crate cannot
-find is refused before the device is touched, and the refusal's account names the path
-that failed, the step that failed on it, and the identity it was judged under, because
-this crate runs as the agent and admin does not, per section 7: the operator's likeliest
-fault, an artifact readable to root under a directory the agent uid cannot traverse, is
-visible from here and nowhere earlier. 2. **Read what the artifact declares about
-itself, without loading it.** The old tree reads a model file's header and metadata
-block to answer what architecture this is and what its basic dimensions are, without
-reading tensor data and without touching the device. That is a mechanic worth keeping,
-because it converts the most common shape of a bad binding, an artifact that is present
-and wrong, into a refusal that costs no device work. 3. **Judge the assigned devices and
-the readout election against what admission requires.** The binding names the devices,
-per `weaver-types-PRD` section 2.1 and the ruling of 2026-08-03, and this crate judges
-those and selects none. What the artifact's shard needs plus the working headroom the
-residency requires must fit what each assigned device has free, which is the same
-inequality read per device rather than a new one. Where the set is larger than one the
-devices must also be able to reach each other, since a sharded forward exchanges
-activations between them and a set that cannot is a set that cannot serve. And the
-backend must be able to shard across that many, per section 14's capability declaration.
-This is the one check on the devices, per section 2, and nothing upstream performed an
-earlier one. The election is judged in this step as well, against what the resolved
-entry declares, per section 13.7: the entry is resolved from step 2's header read, so
-the check costs no device work and an election the engine cannot honor refuses before
-any device is taken. 4. **Take the assigned devices and load the weights.** Where the
-set is one this is one take and one load. Where it is larger the takes and the loads run
-in the binding's shard order, so a failure partway is a partial take rather than none,
-which section 5 accounts for. 5. **Confirm residency.** The answer confirms and carries
-nothing else, per section 4.4.
+1. **Resolve the binding to an artifact.** A binding naming a model this crate
+   cannot find is refused before the device is touched, and the refusal's account
+   names the path that failed, the step that failed on it, and the identity it
+   was judged under, because this crate runs as the agent and admin does not,
+   per section 7: the operator's
+   likeliest fault, an artifact readable to root under a directory the agent uid
+   cannot traverse, is visible from here and nowhere earlier.
+2. **Read what the artifact declares about itself, without loading it.** The old tree
+   reads a model file's header and metadata block to answer what architecture this is
+   and what its basic dimensions are, without reading tensor data and without touching
+   the device. That is a mechanic worth keeping, because it converts the most common
+   shape of a bad binding, an artifact that is present and wrong, into a refusal that
+   costs no device work.
+3. **Judge the assigned devices and the readout election against what admission
+   requires.** The binding names the devices, per `weaver-types-PRD` section 2.1 and the
+   ruling of 2026-08-03, and this crate judges those and selects none. What the
+   artifact's shard needs plus the working headroom the residency requires must fit what
+   each assigned device has free, which is the same inequality read per device rather
+   than a new one. Where the set is larger than one the devices must also be able to
+   reach each other, since a sharded forward exchanges activations between them and a
+   set that cannot is a set that cannot serve. And the backend must be able to shard
+   across that many, per section 14's capability declaration. This is the one check on
+   the devices, per section 2, and nothing upstream performed an earlier one. The
+   election is judged in this step as well, against what the resolved entry declares,
+   per section 13.7: the entry is resolved from step 2's header read, so the check costs
+   no device work and an election the engine cannot honor refuses before any device is
+   taken.
+4. **Take the assigned devices and load the weights.** Where the set is one this
+   is one take and one load. Where it is larger the takes and the loads run in
+   the binding's shard order, so a failure partway is a partial take rather than
+   none, which section 5 accounts for.
+5. **Confirm residency.** The answer confirms and carries nothing else, per section
+   4.4.
 
 **Every step before the fourth is refusable at no cost, and that ordering is the
 substance.** A refusal reaching the harness before any device work has happened is a
@@ -909,14 +914,15 @@ generation, not the declared ones an instruction carried.
 
 **The election governs production, and this crate is where production happens.** The
 agent's configuration elects the readout per load, per apex section 4's definition of
-done, and the election reaches this crate at admit beside the binding, the two crossing
-as one instruction. Elected, the per-layer activations are reduced in place at the tap
-and the reductions return on the same path as the generation, per apex section 3 step 6
-- a clause the paragraphs below scope to the serving binding, the diagnostic binding's
-wider answer being theirs. Not elected, no tap runs and no affordance idles. **An
-instruction that elects readout against an artifact whose resolved entry declares no tap
-refuses at admit,** because a load that grants an observability election it cannot honor
-fails at its cheapest moment or lies at its most expensive one.
+done, and the election reaches this crate at admit beside the binding, the two
+crossing as one instruction. Elected, the per-layer activations are reduced in place
+at the tap and the reductions return on the same path as the generation, per apex
+section 3 step 6 - a clause the paragraphs below scope to the serving binding, the
+diagnostic binding's wider answer being theirs. Not elected, no tap runs and no
+affordance idles. **An instruction that elects readout against an artifact whose
+resolved entry declares no tap refuses at admit,** because a load that grants an
+observability election it cannot honor fails at its cheapest moment or lies at its
+most expensive one.
 
 **The resolved entry's declaration is the ground and the engine is not.** While one of
 the two engines could not tap at all, which engine would serve was a second ground for
@@ -1370,21 +1376,22 @@ does not hold.
 ## 14. The family libraries
 
 **Everything a model family defines is defined once, in that family's module, and
-nowhere else.** A family, Qwen or Gemma or the Harmony speakers, shares its template,
-its marker vocabulary, its tokenizer conventions, its configuration shapes, and its
-orchestration quirks across every operation type that serves its models, and the prior
-program proved the premise concretely: its encoder's text tower was a decoder-family
-member, sharing architecture and tokenizer with the decoder path that never knew it. The
-module discipline is the boundary: one module per family holding the template, the
-types, the parsing and rendering, and the forward orchestration, with nothing
-family-specific living outside its module and the kernels shared beneath, which is the
-prior program's own share-kernels-own-orchestration rule promoted to a charter line. **A
-family here is a template lineage, the models that render one format family whatever
-their vendor**, on the operator's ruling of 2026-09-28: one module holds every
-architecture entry of the lineage with its orchestration, and an architecture is an
-entry in its lineage's module rather than a module of its own. Where one architecture
-string carries two formats, the module holds both and the artifact's own template
-selects between them.
+nowhere else.** A family, Qwen or Gemma or the Harmony speakers, shares its marker
+vocabulary, its tokenizer conventions, its configuration shapes, and its orchestration
+quirks across every operation type that serves its models, and renders one format
+family, a lineage carrying two formats holding both with the artifact's template
+selecting between them, and the prior program proved the premise concretely: its
+encoder's text tower was a decoder-family member, sharing architecture and tokenizer
+with the decoder path that never knew it. The module discipline is the boundary: one
+module per family holding the template, the types, the parsing and rendering, and the
+forward orchestration, with nothing family-specific living outside its module and the
+kernels shared beneath, which is the prior program's own share-kernels-own-orchestration
+rule promoted to a charter line. **A family here is a template lineage, the models that
+render one format family whatever their vendor**, on the operator's ruling of
+2026-09-28: one module holds every architecture entry of the lineage with its
+orchestration, and an architecture is an entry in its lineage's module rather than a
+module of its own. Where one architecture string carries two formats, the module holds
+both and the artifact's own template selects between them.
 
 **Both directions of the end-to-end template requirement live here and are tested
 here.** Inbound, the family module is what makes input formatted correctly for the
