@@ -766,7 +766,7 @@ is bounded, not drafted here, and incomplete for the same reason the charter is.
 - The decode submodule of section 13: the session, the token-boundary stop, the
   measurement production, the readout tap per backend, and the encoding of the
   token seam, elected with a measurement.
-- The family libraries of section 14: the per-family module surface and the
+- The family libraries of section 14: the per-family module surface and the per-entry
   capability declaration.
 
 Contracts this crate is party to are written with the PRDs of their other parties, one
@@ -846,17 +846,15 @@ overflow and the harness decides what a full context means for the turn.
 
 ### 13.4 Framing, and where it is performed
 
-**Ratified by the operator, 2026-08-02, in this act.** The family library
-renders.
-The harness sends canonical messages, the message model of `weaver-traits`,
-and the submodule renders them through the family's template into what the
-model sees. The rendered reality returns on the report path of 13.6, the
-template's identity, the token identifiers, and the block partition, so the
-record holds the mapping from the canonical conversation to what the model
-saw, per the operator's end-to-end requirement of 2026-08-02: input
-formatted correctly for the family, verified per family, and output style
-handled by the trace holding both the verbatim emission and the canonical
-parse.
+**Ratified by the operator, 2026-08-02, in this act.** The family library renders. The
+harness sends canonical messages, the message model of `weaver-traits`, and the
+submodule renders them through the family's template into what the model sees. The
+rendered reality returns on the report path of 13.6, the template's identity, the token
+identifiers, and the block partition, so the record holds the mapping from the canonical
+conversation to what the model saw, per the operator's end-to-end requirement of
+2026-08-02: input formatted correctly for the template the resolved entry renders,
+verified per entry, and output style handled by the trace holding both the verbatim
+emission and the canonical parse.
 
 The grounds. Family knowledge lives in one home, section 14's, rather than
 splitting across two domains or forcing the harness to link an SPU-domain
@@ -919,29 +917,24 @@ generation, not the declared ones an instruction carried.
 
 ### 13.7 Residual readout
 
-**The election governs production, and this crate is where production
-happens.** The agent's configuration elects the readout per load, per apex
-section 4's definition of done, and the election reaches this crate at
-admit beside the binding, the two crossing as one instruction. Elected, the
-per-layer activations are reduced in place at the tap and the reductions
-return on the same path as the generation, per apex section 3 step 6 - a
-clause the paragraphs below scope to the serving binding, the diagnostic
-binding's wider answer being theirs. Not
-elected, no tap runs and no
-affordance idles. **An instruction that elects readout against a family
-that declares no tap refuses at admit,** because a load that grants an
-observability election it cannot honor fails at its cheapest moment or
-lies at its most expensive one.
+**The election governs production, and this crate is where production happens.** The
+agent's configuration elects the readout per load, per apex section 4's definition of
+done, and the election reaches this crate at admit beside the binding, the two crossing
+as one instruction. Elected, the per-layer activations are reduced in place at the tap
+and the reductions return on the same path as the generation, per apex section 3 step 6
+- a clause the paragraphs below scope to the serving binding, the diagnostic binding's
+wider answer being theirs. Not elected, no tap runs and no affordance idles. **An
+instruction that elects readout against an artifact whose resolved entry declares no tap
+refuses at admit,** because a load that grants an observability election it cannot honor
+fails at its cheapest moment or lies at its most expensive one.
 
-**The family's declaration is the ground and the engine is not.** While
-one of the two engines could not tap at all, which engine would serve was
-a second ground for refusing, and standing that engine's tap on
-2026-08-22 retired it: both engines tap, so which one serves says nothing
-about whether the election can be honored. A family that declares no tap
-refuses whichever engine would have served it. **And a family declares a
-tap only where the bar below has been shown for it**, on the engine that
-would serve it, so the declaration is a record of a measurement rather
-than a statement of intent.
+**The resolved entry's declaration is the ground and the engine is not.** While one of
+the two engines could not tap at all, which engine would serve was a second ground for
+refusing, and standing that engine's tap on 2026-08-22 retired it: both engines tap, so
+which one serves says nothing about whether the election can be honored. An entry that
+declares no tap refuses whichever engine would have served it. **And an entry declares a
+tap only where the bar below has been shown for it**, on the engine that would serve it,
+so the declaration is a record of a measurement rather than a statement of intent.
 
 **An elected readout must be observational, and this clause was owed.** A
 diagnostic that changed the run it observes would corrupt every use of it
@@ -1112,25 +1105,21 @@ not.
 
 ### 13.9 The flush
 
-**The harness owns the decision and this seam carries it, the cut
-included.** The flush is the harness's ask on this seam, and since the
-operator's ruling of 2026-08-19 the ask names its cut: after a flush the
-session's first kept tokens are resident and everything beyond them is
-gone, the kept length being the ask's, bounded below by the identity
-prefix the prefix invariant keeps permanent and above by the resident
-count. The bound is arithmetic rather than refusal, the confirmation's
-counts carrying what held, so no outcome is silent. The cut is the
-loop's because the loop knows what it does not want to re-decode - a
-fixed outcome made one policy true for every use case, and which part
-of the context matters is cognition, which section 13.3 places outside
-this crate for eviction and this section now places outside it for
-retention, the same rule facing both ways. Where a family's state
-permits truncation to a position the outcome is reached by truncating
-to the kept length, and where it cannot roll back it is reached by
-re-establishing the kept resident sequence fresh, the invariant being
-the outcome rather than the mechanism, and the mechanism the Spec's per
-family. The harness still holds no handle to the cache and touches
-nothing, per section 2.
+**The harness owns the decision and this seam carries it, the cut included.** The flush
+is the harness's ask on this seam, and since the operator's ruling of 2026-08-19 the ask
+names its cut: after a flush the session's first kept tokens are resident and everything
+beyond them is gone, the kept length being the ask's, bounded below by the identity
+prefix the prefix invariant keeps permanent and above by the resident count. The bound
+is arithmetic rather than refusal, the confirmation's counts carrying what held, so no
+outcome is silent. The cut is the loop's because the loop knows what it does not want to
+re-decode - a fixed outcome made one policy true for every use case, and which part of
+the context matters is cognition, which section 13.3 places outside this crate for
+eviction and this section now places outside it for retention, the same rule facing both
+ways. Where the resolved entry's flush permits truncation to a position the outcome is
+reached by truncating to the kept length, and where it cannot roll back it is reached by
+re-establishing the kept resident sequence fresh, the invariant being the outcome rather
+than the mechanism, and the mechanism the Spec's per resolved entry. The harness still
+holds no handle to the cache and touches nothing, per section 2.
 
 ### 13.10 The faults this submodule raises
 
@@ -1312,13 +1301,12 @@ the ask names exactly as it executes the flush's cut. **A crate that chose
 the span would be judging what a context is worth**, and that is the thing
 the rule refuses in all three directions.
 
-**The outcome is specified and the mechanism is the Spec's per family**,
-which is 13.9's shape and for its reason. Where a family's state permits a
-rollback to the span's start the outcome is reached by rolling back and
-re-establishing the tail, and where it cannot it is reached by
-re-establishing the kept sequence whole. The invariant is that the resident
-sequence afterward is the concatenation, in order, of what preceded the span
-and what followed it.
+**The outcome is specified and the mechanism is the Spec's per resolved entry**, which
+is 13.9's shape and for its reason. Where the resolved entry's flush permits a rollback
+to the span's start the outcome is reached by rolling back and re-establishing the tail,
+and where it cannot it is reached by re-establishing the kept sequence whole. The
+invariant is that the resident sequence afterward is the concatenation, in order, of
+what preceded the span and what followed it.
 
 **The identity prefix stays permanent and bounds the ask from below**, per
 the prefix invariant the flush already answers to. A span reaching into the
