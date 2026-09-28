@@ -73,7 +73,7 @@ class Agent:
 
     def __init__(self, source_seed=SEED, replay_seed=SEED,
                  served=(DECLARATION, DECLARATION), loops=(LOOP, LOOP),
-                 devices=({"devices": CARD}, {"devices": CARD})):
+                 devices=({"devices": CARD, "complete": True}, {"devices": CARD, "complete": True})):
         self.seeds, self.loads, self.runs = (source_seed, replay_seed), 0, {}
         self.served, self.loops, self.run, self.devices = served, loops, None, devices
         self.starts = 0
@@ -341,10 +341,13 @@ def test_a_divergence_still_reads_as_one():
     assert session(agent)["verdict"] == "DIVERGED"
 
 
-def run_main(agent, device=None, hours="0.00003", extra=(), prepare=None, inspect=None, stack=None):
+def run_main(agent, device=None, hours="0.00003", extra=(), prepare=None, inspect=None, stack=None,
+             sessions=None):
     """`main` whole on the fake agent: a real declaration and config in a
     temporary directory, the stack's readers answering a fixed reading or
-    `stack`'s, and the exit code and the per-session records returned."""
+    `stack`'s, and the exit code and the per-session records returned.
+    `sessions` bounds the matrix's schedule to that many sessions, so a test
+    driving the loop to an interrupt ends however the loop behaves."""
     import hashlib
     import io
     with tempfile.TemporaryDirectory() as tmp:
@@ -367,7 +370,10 @@ def run_main(agent, device=None, hours="0.00003", extra=(), prepare=None, inspec
                   "serving_device", "unit_invocation"):
             fakes[k] = getattr(agent, k)
         saved = {k: getattr(base, k) for k in fakes}
-        argv = sys.argv
+        argv, schedule = sys.argv, dm.matrix_sessions
+        if sessions is not None:
+            import itertools
+            dm.matrix_sessions = lambda *a: itertools.islice(schedule(*a), sessions)
         try:
             for k, v in fakes.items():
                 setattr(base, k, v)
@@ -379,7 +385,7 @@ def run_main(agent, device=None, hours="0.00003", extra=(), prepare=None, inspec
                 except SystemExit as e:
                     code = e.code
         finally:
-            sys.argv = argv
+            sys.argv, dm.matrix_sessions = argv, schedule
             for k, v in saved.items():
                 setattr(base, k, v)
         if inspect:

@@ -80,7 +80,8 @@ def test_an_incomplete_turn_is_refused_by_name_not_dropped():
     rec = session(Editing(twice_on_replay))
     assert rec["verdict"] == "replay t-1 is incomplete: 2 model.output events", rec["verdict"]
     rec = session(Editing(surplus_on_replay))
-    assert rec["verdict"] == "replay t-3 is incomplete: no model.request, no model.output, no model.measurement", rec["verdict"]
+    assert rec["verdict"] == ("replay t-3 is incomplete: no model.request, no model.output,"
+                              " no model.measurement, no turn.closed"), rec["verdict"]
 
 
 def test_await_turns_waits_on_complete_turns_only():
@@ -88,15 +89,18 @@ def test_await_turns_waits_on_complete_turns_only():
     # written. Perturbation: count every turn, and the half-written one ends
     # the wait.
     complete = [{"run": "r", "turn": "t-1", "kind": k, "payload": {"content": [{"type": "text", "text": "a"}]}
-                 if k == "message.user" else {}} for k in ("message.user", "model.request", "model.output", "model.measurement")]
-    half = complete[:2]
+                 if k == "message.user" else {}}
+                for k in ("message.user", "model.request", "model.output", "model.measurement", "turn.closed")]
     saved = base.read_runs
     try:
-        base.read_runs = lambda path, keep=None: (["r"], {"r": half})
-        started = __import__("time").time()
-        turns, _ = base.await_turns("unused", 1, "r", timeout=0.3)
-        assert __import__("time").time() - started >= 0.3, "the wait ended on a half-written turn"
-        assert turns and turns[0]["incomplete"], turns
+        # Half-written, and written but for its closing event: the wait runs
+        # on through both (#716, after round twelve, for the second).
+        for part in (complete[:2], complete[:-1]):
+            base.read_runs = lambda path, keep=None, part=part: (["r"], {"r": part})
+            started = __import__("time").time()
+            turns, _ = base.await_turns("unused", 1, "r", timeout=0.3)
+            assert __import__("time").time() - started >= 0.3, "the wait ended on an unclosed turn"
+            assert turns and turns[0]["incomplete"], turns
         base.read_runs = lambda path, keep=None: (["r"], {"r": complete})
         turns, _ = base.await_turns("unused", 1, "r", timeout=0.3)
         assert turns and not turns[0]["incomplete"], turns
@@ -126,9 +130,11 @@ def test_each_load_reads_its_own_device():
     saved = base.load_devices.__defaults__
     base.load_devices.__defaults__ = (1, 0)
     try:
-        for devices, want in [(({"unreadable": "journal"}, {"devices": CARD}), "the source load's serving device could not be read"),
-                              (({"devices": CARD}, {"devices": []}), "the replay load's serving device could not be read"),
-                              (({"devices": CARD}, {"devices": other}), "source and replay did not bind the same devices")]:
+        for devices, want in [(({"unreadable": "journal"}, {"devices": CARD, "complete": True}), "the source load's serving device could not be read"),
+                              (({"devices": CARD, "complete": True}, {"devices": [], "complete": True}),
+                               "the replay load's serving device could not be read"),
+                              (({"devices": CARD, "complete": True}, {"devices": other, "complete": True}),
+                               "source and replay did not bind the same devices")]:
             rec = session(Agent(devices=devices))
             assert rec["verdict"].startswith(want), rec["verdict"]
     finally:
@@ -162,7 +168,7 @@ def test_the_device_reader_drops_no_load():
     saved = base.sh
     try:
         base.sh = journal([BOUNDARY, DEVICE, BOUNDARY, DEVICE])
-        assert base._device_groups({"agent": "karl"}, "t") == {"groups": [[CARD_ON_BOX], [CARD_ON_BOX]]}
+        assert base._device_groups({"agent": "karl"}, "t")["groups"] == [[CARD_ON_BOX], [CARD_ON_BOX]]
         base.sh = journal([BOUNDARY, DEVICE, BOUNDARY])
         assert base._device_groups({"agent": "karl"}, "t")["groups"][-1] == []
         base.sh = journal([DEVICE, BOUNDARY, DEVICE])

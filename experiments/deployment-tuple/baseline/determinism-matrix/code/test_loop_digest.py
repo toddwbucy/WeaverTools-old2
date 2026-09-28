@@ -170,7 +170,7 @@ def _drive_cell(composer_digest, served=None):
         g.admin = fake_admin
         g.wait_socket = lambda cfg, timeout=120: True
         g.gate_turn = fake_gate
-        g.serving_device = lambda cfg, since, invocation=None: {"devices": [{"ordinal": 0}]}
+        g.serving_device = lambda cfg, since, invocation=None: {"devices": [{"ordinal": 0}], "complete": True}
         # Each load its own unit invocation, as systemd starts each.
         invocations = iter(f"{i:032x}" for i in range(1, 1000))
         g.unit_invocation = lambda cfg: next(invocations)

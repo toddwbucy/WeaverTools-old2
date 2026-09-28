@@ -64,6 +64,11 @@ DEVICE_LINE = re.compile(
 # One per load, printed ahead of the device block, so it marks the boundary
 # that grepping the journal would otherwise destroy.
 LOAD_BOUNDARY = re.compile(r"ggml_cuda_init: found \d+ CUDA device")
+# The line the engine prints once its device block has ended: at the pinned
+# rev `ecce255`, `llama_model_load_from_file_impl` names every device it
+# binds and then constructs `llama_model_loader`, which logs this first
+# (#716, after round twelve). A block is complete only once it is seen.
+LOAD_COMPLETE = re.compile(r"llama_model_loader: loaded meta data")
 
 
 def unit_invocation(cfg):
@@ -123,24 +128,31 @@ def serving_device(cfg, since, invocation=None):
         # of them would otherwise compare equal across the halves.
         if any("unreadable" in d for d in found[-1]):
             return {"unreadable": f"the load named a device this reader cannot parse: {found[-1]}"}
-        return {"devices": found[-1]}
+        return {"devices": found[-1], "complete": groups["complete"][-1]}
     return {"devices": [], "note": "the load named no CUDA device"}
 
 
 def load_devices(cfg, tries=15, pause=0.2):
     """The devices the load that now stands bound, read by its unit's
     invocation, and that invocation (#716 round five). Retried briefly,
-    since journald can trail the load it records. Answers the reading, a
-    `devices` list or an `unreadable` note, and the invocation or None."""
+    since journald can trail the load it records, and **accepted only once
+    the block is complete**, the engine's next line seen after it: a block
+    of several cards can reach the journal a line at a time, and a read
+    taken between two lines would record the first card alone. Answers the
+    reading, a `devices` list or an `unreadable` note, and the invocation
+    or None."""
     invocation = unit_invocation(cfg)
     if not isinstance(invocation, str):
         return invocation, None
     seen = None
     for _ in range(tries):
         seen = serving_device(cfg, None, invocation)
-        if isinstance(seen, dict) and seen.get("devices"):
-            break
+        if isinstance(seen, dict) and seen.get("devices") and seen.get("complete"):
+            return seen, invocation
         time.sleep(pause)
+    if isinstance(seen, dict) and seen.get("devices"):
+        return {"unreadable": f"the device block under invocation {invocation} did not complete"
+                              f" within {tries} reads: {json.dumps(seen['devices'])}"}, invocation
     return seen, invocation
 
 
@@ -182,16 +194,24 @@ def _device_groups(cfg, since, invocation=None):
         base = ["journalctl", f"_SYSTEMD_INVOCATION_ID={invocation}", "--no-pager", "-o", "cat"]
     # Grepped in the journal rather than in this process: an unfiltered read
     # spans every load in the window and llama.cpp is verbose.
-    r = sh(base + ["-g", "ggml_cuda_init: found|using device CUDA"])
+    r = sh(base + ["-g", "ggml_cuda_init: found|using device CUDA|llama_model_loader: loaded meta data"])
     if r.returncode not in (0, 1):
         return {"unreadable": f"journalctl exit {r.returncode}: "
                               f"{r.stderr.strip()[:200]}"}
-    groups, current = [], None
+    groups, complete, current, done = [], [], None, False
     for line in r.stdout.splitlines():
         if LOAD_BOUNDARY.search(line):
             if current is not None:
                 groups.append(current)
-            current = []
+                complete.append(done)
+            current, done = [], False
+            continue
+        # The block's end, which journald can deliver after the device lines
+        # it follows, and a device line after it undoes it.
+        if LOAD_COMPLETE.search(line):
+            if current is None:
+                current = []
+            done = True
             continue
         # **No evidence is dropped** (#716 round three). A device line met
         # before any boundary is a load whose boundary fell before the
@@ -201,6 +221,7 @@ def _device_groups(cfg, since, invocation=None):
         # group, so either leaves the binding unheld rather than unread.
         if current is None:
             current = []
+        done = False
         m = DEVICE_LINE.search(line)
         if m:
             current.append({"ordinal": int(m.group(1)),
@@ -210,8 +231,9 @@ def _device_groups(cfg, since, invocation=None):
             current.append({"unreadable": f"a device line this reader cannot parse: {line[:200]}"})
     if current is not None:
         groups.append(current)
+        complete.append(done)
     if groups:
-        return {"groups": groups}
+        return {"groups": groups, "complete": complete}
     # No match. Distinguish a journal this user cannot read from a load that
     # genuinely bound no CUDA device, by asking whether the unit logged
     # anything at all. Paid only in the empty case.
@@ -219,7 +241,7 @@ def _device_groups(cfg, since, invocation=None):
     if probe.returncode != 0 or not probe.stdout.strip():
         return {"unreadable": "the unit's journal read back empty; this user "
                               "is likely in neither systemd-journal nor adm"}
-    return {"groups": []}
+    return {"groups": [], "complete": []}
 
 
 # **The declaration's artifact is read as the YAML scalar it is** (#716 round
@@ -1532,7 +1554,11 @@ def cut_turns(events):
             incomplete.append("no request text")
         if None in k:
             incomplete.append(f"{len(k[None])} events with no string kind")
-        for kind in ("model.request", "model.output", "model.measurement"):
+        # `turn.closed` is the turn's last event, so a turn is whole only
+        # once it stands: a wait that took the compared kinds alone could
+        # read a turn before the sink had written all of it (#716, after
+        # round twelve).
+        for kind in ("model.request", "model.output", "model.measurement", "turn.closed"):
             n = len(k.get(kind, []))
             if n == 0:
                 incomplete.append(f"no {kind}")

@@ -223,7 +223,7 @@ def test_the_cells_serve_and_restore_the_bytes_they_read():
 def test_an_interrupt_at_the_closing_unload_is_recorded_in_both_modes():
     # Codex round ten's thread 3. Perturbation: unguard the closing unload,
     # and the session is lost in either mode.
-    code, records, s = run_main(FailingFinalUnload(KeyboardInterrupt()), hours="0.01")
+    code, records, s = run_main(FailingFinalUnload(KeyboardInterrupt()), hours="1", sessions=4)
     assert [r["verdict"] for r in records] == ["interrupted"] and code == 1, (code, records)
     code, printed, reports, restored, summary = cells(FailingFinalUnload(KeyboardInterrupt()))
     assert code == 1 and [r["verdict"] for r in reports] == ["interrupted"], (code, reports)

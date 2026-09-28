@@ -16,6 +16,9 @@ from test_recorded_seed import CFG, SEED, Agent, Reloading, cells_main, run_main
 
 base = dm.base
 BOUNDARY = "ggml_cuda_init: found 1 CUDA devices (Total VRAM: 24075 MiB):"
+# The engine's next line after its device block, which marks it complete.
+COMPLETE = ("llama_model_loader: loaded meta data with 26 key-value pairs and 291 tensors"
+            " from /proc/self/fd/5 (version GGUF V3 (latest))")
 
 
 def device_line(ordinal, bus):
@@ -56,10 +59,11 @@ def test_the_device_read_is_the_load_just_started():
     # previous load's CUDA0 is returned for a load that bound CUDA1.
     inv = "b" * 32
     previous = [BOUNDARY, device_line(0, "0000:01:00.0")]
-    current = [BOUNDARY, device_line(1, "0000:02:00.0")]
+    current = [BOUNDARY, device_line(1, "0000:02:00.0"), COMPLETE]
     seen, invocation = with_sh(box(inv, current, previous), lambda: base.load_devices({"agent": "karl"}, 1, 0))
     assert invocation == inv and seen == {"devices": [{"ordinal": 1, "name": "NVIDIA RTX PRO 5000 Blackwell"
-                                                        " Generation Laptop GPU", "pci_bus_id": "0000:02:00.0"}]}, seen
+                                                        " Generation Laptop GPU", "pci_bus_id": "0000:02:00.0"}],
+                                            "complete": True}, seen
 
 
 def test_an_unreadable_or_crowded_invocation_is_refused():
@@ -228,7 +232,7 @@ def test_malformed_events_and_requests_are_named():
     # first text part alone, and the second is replayed short.
     events = [{"run": "r", "turn": "t-1", "kind": k, "payload": p} for k, p in [
         ("message.user", {"content": [{"type": "text", "text": "a"}, {"type": "text", "text": "b"}]}),
-        ("model.request", {}), ("model.output", {}), ("model.measurement", {})]]
+        ("model.request", {}), ("model.output", {}), ("model.measurement", {}), ("turn.closed", {})]]
     assert base.cut_turns(events)[0]["incomplete"] == ["the request is not one text part"]
     events[0]["payload"]["content"] = [{"type": "text", "text": "a"}]
     events.append({"run": "r", "turn": "t-1", "payload": {}})

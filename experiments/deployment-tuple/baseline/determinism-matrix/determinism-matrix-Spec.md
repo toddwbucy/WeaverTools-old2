@@ -154,16 +154,16 @@ event, a load whose unit invocation or serving device cannot be read, or which n
 device, a reload under the load's own invocation, a load under an invocation an earlier
 session read, source and replay loads on different devices, a replay carrying turns the
 source did not, an admin answer other than the step's, a turn not answered, a turn
-missing its request or a payload kind or carrying a compared kind twice or named by
-anything but a string, a source turn the replay does not carry, a check a record carries
-no value for, source or replay turns split across runs, under a run the gate names by
-anything but a string, or short of the depth, a replay read short, a seed mismatch under
-section 4, an exception, recorded as `error: <type>: <message>`, or an interrupt,
-recorded as `interrupted`. The one session path records each of these, so no session
-is lost to a raise. A replay read short is the sink one turn
-behind and is kept apart from DIVERGED, which is the strongest negative the harness
-emits. Faults are counted apart from both verdicts, as the summary's `errors`, so a
-run's divergence count is never inflated by sessions that were not compared.
+missing its request, a payload kind or its closing event, carrying a compared kind
+twice, or named by anything but a string, a source turn the replay does not carry, a
+check a record carries no value for, source or replay turns split across runs, under a
+run the gate names by anything but a string, or short of the depth, a replay read short,
+a seed mismatch under section 4, an exception, recorded as `error: <type>: <message>`,
+or an interrupt, recorded as `interrupted`. The one session path records each of these,
+so no session is lost to a raise. A replay read short is the sink one turn behind and is
+kept apart from DIVERGED, which is the strongest negative the harness emits. Faults are
+counted apart from both verdicts, as the summary's `errors`, so a run's divergence count
+is never inflated by sessions that were not compared.
 
 **Each session's record** carries the prompt, its character, the depth, the sweep,
 both run identities, the declared and recorded seeds, the verdict and the wall time,
@@ -209,10 +209,12 @@ ends is `unchanged`, and one that differs says so with both readings, a changed 
 being made only where both sides are readings and not where a closing read failed. The
 serving device is read from the worker's journal for each load as it stands, bound to
 that load by its unit's InvocationID and never by a time window, which a fast reload or
-a trailing journal holds the previous load inside. Both halves of a session are on one
-binding under two invocations, and no invocation recurs in a run. A journal kept by size
-holds minutes, so a read at the close would miss most of a run. The window read at the
-close is kept as a record and not counted. The summary carries these as `weights`,
+a trailing journal holds the previous load inside. A binding is taken only once its
+block is complete, the engine's next line seen after the device lines, since a block of
+several cards can reach the journal a line at a time. Both halves of a session are on
+one binding under two invocations, and no invocation recurs in a run. A journal kept by
+size holds minutes, so a read at the close would miss most of a run. The window read at
+the close is kept as a record and not counted. The summary carries these as `weights`,
 `engine_libraries`, `weaver_binaries`, `toolchain` and `serving_device`, the window read
 as `serving_device_journal_window`, and the counts as `sessions`, `reproduced`,
 `diverged` and `errors`, the faults, with the verdicts by prompt character and by
@@ -291,11 +293,15 @@ Blackwell probe's, in `blackwell-probe-Spec` section 5, and this section leaves 
 unchanged.
 
 **A run killed outright writes no summary.** An interrupt ends the run cleanly and still
-writes it, in either mode: the session it cut short is recorded as `interrupted`,
-the window is read at the close, and the run exits 1, since a session it began did not
-complete. A hangup, which is what closing the operator's terminal sends, ends the
-process before it does, and the per-session record written as each session closes is
-then the whole of what the run left.
+writes it, in either mode: the session it cut short is recorded as `interrupted`, the
+window is read at the close, and the run exits 1, since a session it began did not
+complete. Every step between the session loop and the summary, the declaration's
+restore, the run's last unload and the summary's write, is guarded: an interrupt there
+marks the run interrupted and the step is tried once more, and any other failure is
+logged, a restore that failed leaving the backup standing. A hangup, which is what
+closing the operator's terminal sends, ends the process before it does, and the
+per-session record written as each session closes is then the whole of what the run
+left.
 
 ## 6. The shared declarations
 
@@ -347,10 +353,11 @@ re-read the stack and found it unchanged.
 The seeds, per section 4, `--hours`, which must be finite, positive and a deadline the
 clock reaches, the config's `loop_sha256`, which must be 64 lowercase hex digits, and
 the declaration's artifact and any `--artifact` are refused by name, and the outdir is
-made only once every check has passed. A cells run checks each cell's artifact the same
-way, and requires `cells` to be a non-empty list of cells whose name, precision and
-artifact are non-empty strings, the names plain and none repeated, since each labels its
-cell's record and its weights reading. A refused run exits 2.
+made only once every check has passed, the last check being that each output the run
+writes can be created in it. A cells run checks each cell's artifact the same way, and
+requires `cells` to be a non-empty list of cells whose name, precision and artifact are
+non-empty strings, the names plain and none repeated, since each labels its cell's
+record and its weights reading. A refused run exits 2.
 
 **Every file a run opens is opened at preflight too.** The config must parse as a JSON
 object. The artifact, or in a cells run each cell's, is opened and hashed as the

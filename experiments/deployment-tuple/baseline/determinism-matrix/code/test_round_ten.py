@@ -93,7 +93,7 @@ def test_an_interrupt_records_its_session_and_closes_the_run_in_both_modes():
     # the run and exits 1.
     # Perturbation: drop the KeyboardInterrupt clause in verify_session, or
     # the interrupted flag in run_verdict, and a clause here fails.
-    code, records, s = run_main(InterruptedSecond(), hours="0.01")
+    code, records, s = run_main(InterruptedSecond(), hours="1", sessions=4)
     assert [r["verdict"] for r in records] == ["REPRODUCED", "interrupted"], [r["verdict"] for r in records]
     assert code == 1 and s["sessions"] == 2 and s["weights"]["status"] == "unchanged", (code, s["sessions"])
 

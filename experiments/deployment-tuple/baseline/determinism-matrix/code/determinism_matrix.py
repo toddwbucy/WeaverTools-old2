@@ -319,6 +319,10 @@ def run_session(cfg, session, declaration_sha=None):
     return rec
 
 
+# What a run writes into its outdir, and nothing else.
+OUTPUTS = ("matrix.jsonl", "matrix.log", "summary.json")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", required=True)
@@ -420,7 +424,7 @@ def main():
     # (#716 round five). What the operator's shell writes beside the run,
     # the config, the box facts and the clock log, is not the run's.
     if os.path.isdir(args.outdir):
-        stale = base.stale_outputs(args.outdir, ["matrix.jsonl", "matrix.log", "summary.json"])
+        stale = base.stale_outputs(args.outdir, OUTPUTS)
         if stale:
             refuse(f"the outdir already holds a run's output: {', '.join(stale)}."
                    " A run writes into a deposit no earlier run has written.")
@@ -434,10 +438,23 @@ def main():
             raise ValueError(f"the artifact cannot be read: {json.dumps(weights_open)}")
         opening = base.opening_readings(cfg)
         base.held_declaration(cfg, held)
+        # **Every output the run writes is created at preflight, last**
+        # (#716, after round twelve): an outdir the operator cannot write
+        # passed `makedirs` and failed at the first record, after a whole
+        # session had run. Each is created and removed again, so a refusal
+        # still leaves no output behind.
+        try:
+            os.makedirs(args.outdir, exist_ok=True)
+            for name in OUTPUTS:
+                path = os.path.join(args.outdir, name)
+                with open(path, "x"):
+                    pass
+                os.unlink(path)
+        except OSError as e:
+            raise ValueError(f"the outdir {args.outdir} cannot take the run's outputs: {base._why(e)}") from None
     except ValueError as e:
         refuse(str(e))
     libraries, binaries, tools = (opening[k] for k in base.STACK_WINDOW)
-    os.makedirs(args.outdir, exist_ok=True)
 
     deadline = time.time() + args.hours * 3600.0
     # Opened before the first load so the journal read at the summary
@@ -452,6 +469,23 @@ def main():
         print(line, flush=True)
         with open(logpath, "a") as fh:
             fh.write(line + "\n")
+
+    def closing(what, step):
+        """One step between the session loop and the summary, guarded
+        (#716, after round twelve). An interrupt marks the run interrupted
+        and the step is tried once more, since each is safe to repeat, and
+        any other raise is logged, so the summary is still written."""
+        nonlocal interrupted
+        for attempt in (1, 2):
+            try:
+                return step()
+            except KeyboardInterrupt:
+                interrupted = True
+                log(f"interrupted during {what}" + ("" if attempt == 2 else ", trying it once more"))
+            except Exception as e:  # noqa: BLE001 - the summary is still owed
+                log(f"{what} failed: {base._why(e)}")
+                return None
+        return None
 
     if args.cells:
         sessions = cell_sessions(standing, cfg["cells"])
@@ -514,13 +548,17 @@ def main():
     finally:
         # Restored only where this run swapped it: rewriting unconditionally
         # would turn an unrelated edit made during the run into a silent
-        # revert of the operator's own declaration.
-        if rewrites:
+        # revert of the operator's own declaration. The backup is removed
+        # only once the restore has landed, so a restore that failed leaves
+        # it standing and the next run refuses until it is resolved.
+        def restore():
             with open(cfg["declaration"], "wb") as fh:
                 fh.write(held)
             os.unlink(pending)
+        if rewrites:
+            closing("the declaration's restore", restore)
         # The run's own last unload, its answer read (#716 round twelve).
-        released = base.release(cfg)
+        released = closing("the run's last unload", lambda: base.release(cfg))
         if released:
             log(released)
 
@@ -654,8 +692,10 @@ def main():
         "error_detail": [dict({k: r[k] for k in ("probe", "depth", "cell") if k in r},
                               verdict=r["verdict"]) for r in errors[:20]],
     }
-    with open(os.path.join(args.outdir, "summary.json"), "w") as fh:
-        json.dump(summary, fh, indent=1)
+    def write_summary():
+        with open(os.path.join(args.outdir, "summary.json"), "w") as fh:
+            json.dump(summary, fh, indent=1)
+    closing("the summary's write", write_summary)
 
     log(f"done: {good}/{total} reproduced, {len(diverged)} diverged, "
         f"{len(errors)} errors")

@@ -31,7 +31,7 @@ class SwitchingCard(Reloading):
     in turn."""
 
     def serving_device(self, cfg, since, invocation=None):
-        return {"devices": CARD if (self.starts - 1) // 2 % 2 == 0 else OTHER}
+        return {"devices": CARD if (self.starts - 1) // 2 % 2 == 0 else OTHER, "complete": True}
 
 
 class ReusedInvocation(Reloading):
