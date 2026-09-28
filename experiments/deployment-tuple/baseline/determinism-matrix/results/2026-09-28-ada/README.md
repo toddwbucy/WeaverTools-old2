@@ -1,4 +1,4 @@
-# The determinism matrix on the olympus RTX 2000 Ada, against the A6000 pair and run3, 2026-09-28
+# The determinism matrix on the olympus Ada, against the A6000 pair and run3, 2026-09-28
 
 A dated result note in the shape of `determinism-matrix-Spec` section 8, read by no
 gate. It is the Ada cell the A6000 pair's report named as one of its two follow-ups, and
