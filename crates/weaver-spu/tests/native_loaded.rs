@@ -385,6 +385,125 @@ fn the_pair_agrees_with_the_single_card() {
     );
 }
 
+/// The single card keeps its rotary angle past the first position BF16
+/// cannot represent. The fork's qwen2 builds its rotary tables in fp32 and
+/// casts after the trigonometry, per Spec section 1.1, but that construction
+/// is private to the fork: the rotary watch of #640 reads this crate's own
+/// pair builder and says it cannot see the single card's. What the single
+/// card does expose is its generation. BF16 carries eight significand bits,
+/// so 257 is the first integer it cannot hold, and a BF16-first construction
+/// rounds every position from there, 257 to 256, which in the highest
+/// frequency lane turns cos(257) = 0.82 into cos(256) = -0.04. Past position
+/// 256, then, the single card agrees with the pair, whose tables are pinned,
+/// only while both keep the angle, and the agreement test above runs at
+/// positions where both orderings agree.
+///
+/// **The prefix runs past that position before the first draw, and the test
+/// refuses to run short.** A prefix under 257 tokens would pass on positions
+/// no rounding reaches and read as a watch it is not.
+///
+/// Perturbation: build the fork's `RotaryEmbedding` BF16-first, casting the
+/// inverse frequencies and the positions before their product, and the
+/// single card's greedy sequence parts from the pair's within the first
+/// draws. Recorded in the act that landed this test.
+#[test]
+fn the_single_card_keeps_its_rotary_angle_past_position_256() {
+    let Some(dir) = artifact_dir() else {
+        eprintln!("SKIP the_single_card_keeps_its_rotary_angle: no safetensors artifact");
+        return;
+    };
+    if cudarc::driver::CudaContext::new(1).is_err() {
+        eprintln!("SKIP the_single_card_keeps_its_rotary_angle: fewer than two CUDA devices");
+        return;
+    }
+    let knobs = EffectiveKnobs {
+        temperature: 0.0,
+        top_k: 1,
+        top_p: 1.0,
+        repetition_penalty: 1.0,
+        repetition_window: 0,
+        seed: 11,
+    };
+    // A user turn long enough that its last token sits past position 256:
+    // the first draw then lands where BF16 first rounds a position.
+    let mut prompt =
+        String::from("<|im_start|>user\nHere is a numbered list. Reply with its last item only.\n");
+    for item in 1..=40 {
+        prompt.push_str(&format!("item {item}: a short line of ordinary text\n"));
+    }
+    prompt.push_str("<|im_end|>\n<|im_start|>assistant\n");
+
+    let mut emissions = Vec::new();
+    for devices in [
+        vec![DeviceOrdinal(0)],
+        vec![DeviceOrdinal(0), DeviceOrdinal(1)],
+    ] {
+        let width = devices.len();
+        let mut residency = Residency::new();
+        let binding = ModelBinding {
+            artifact: ArtifactRef(dir.to_string_lossy().into_owned()),
+            devices,
+        };
+        let resident = residency
+            .admit(
+                &binding,
+                Headroom(64 * 1024 * 1024),
+                ReadoutElection(false),
+                false,
+            )
+            .unwrap_or_else(|refusal| panic!("the admit at width {width}: {refusal:?}"));
+        let prefix = resident.tokenize(&prompt).expect("tokenizes");
+        assert!(
+            prefix.len() > 256,
+            "the prefix must run past position 256 for the watch to see a rounded \
+             position, and it holds {} tokens",
+            prefix.len()
+        );
+        let mut session = resident.open_session(&knobs, 1024).expect("session opens");
+        session.open(&prefix).expect("prefix decodes");
+        let close = resident.tokenize("<|im_end|>").expect("close tokenizes");
+        let [terminator] = close.as_slice() else {
+            panic!("the turn close promotes to one token, got {close:?}");
+        };
+        let generated = session
+            .append_and_generate(
+                &[],
+                &StopCondition {
+                    stop_tokens: close.clone(),
+                    terminator: *terminator,
+                    max_tokens: 8,
+                },
+                &mut NeverCancels,
+                &mut |_| {},
+                PositionedSinks {
+                    field: None,
+                    on_column: &mut |_, _| {},
+                },
+                SamplerBuild {
+                    seed: 11,
+                    penalty_window: 64,
+                },
+            )
+            .expect("generates");
+        let text = resident.detokenize(&generated.tokens).expect("detokenizes");
+        eprintln!(
+            "width {width} at prefix {}: emission {text:?} tokens: {:?}",
+            prefix.len(),
+            generated.tokens
+        );
+        emissions.push(generated.tokens.clone());
+    }
+    assert!(
+        !emissions[0].is_empty() && !emissions[1].is_empty(),
+        "both widths generated"
+    );
+    assert_eq!(
+        emissions[0], emissions[1],
+        "past position 256 the single card's greedy sequence agrees with the pair's, \
+         whose rotary tables are pinned"
+    );
+}
+
 /// An elected readout travels with the generation, at both widths: one
 /// norm per layer per forward, in order, every figure finite, and the
 /// prefix decode's figures drained rather than leaking into the turn's.

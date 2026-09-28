@@ -233,26 +233,27 @@ from: spu-two-floor-links-types-without-config
 to: axiom-contract-is-a-complete-interface
 ```
 
-**External, the model half.** The two fork pins are the load-bearing
-dependencies of the whole crate and the survey names them preconditions.
-`llama-cpp-2` and `llama-cpp-sys-2` come from the same git source and revision,
-never one from the fork and one from the registry, because two sys crates
-resolve to two distinct types for one C library and the flash-attention policy
-type stops typechecking across them, which the archived tree recorded against
-itself. The fork exists for one reason, the ggml scheduler's eval callback,
-which is the only route to per-layer activations from a GGUF model without
-replacing the engine, and section 7 makes that seam a compile-time pin rather
-than a comment. `candle-core`, `candle-nn`, and `candle-transformers` come from
-their own pinned fork for `forward_with_intermediates`, the readout's working
-path, and the qwen2 rotary precision fix: the angle is computed in fp32 and
-the sine and cosine are cast to the model dtype afterwards. This describes
-revision `aee9af9c3e0b23ab9188a492d0b3ebdb5f3a3f4b`, which the pins below
-record. `cudarc` is caret-pinned rather than exact, so Cargo unifies this
-crate's device handles with candle's inside one minor line, exactness coming
-from the lock file rather than from a requirement that becomes unsatisfiable
-the day candle raises its floor. The manifest requires `0.19.8` and the lock
-resolves `0.19.10` as of #684, the first release whose build script
-accepts the CUDA 13.4 toolkit.
+**External, the model half.** The two fork pins are the load-bearing dependencies of the
+whole crate and the survey names them preconditions. `llama-cpp-2` and `llama-cpp-sys-2`
+come from the same git source and revision, never one from the fork and one from the
+registry, because two sys crates resolve to two distinct types for one C library and the
+flash-attention policy type stops typechecking across them, which the archived tree
+recorded against itself. The fork exists for one reason, the ggml scheduler's eval
+callback, which is the only route to per-layer activations from a GGUF model without
+replacing the engine, and section 7 makes that seam a compile-time pin rather than a
+comment. `candle-core`, `candle-nn`, and `candle-transformers` come from their own
+pinned fork for `forward_with_intermediates`, the readout's working path, and the qwen2
+rotary precision fix: the angle is computed in fp32 and the sine and cosine are cast to
+the model dtype afterwards. The pair builder holds that ordering in this crate and is
+read directly, and the single card holds it inside the fork's private rotary, which is
+watched through the generation: past position 256, the first integer BF16 cannot hold,
+the single card agrees with the pair only while both keep the angle. This describes
+revision `aee9af9c3e0b23ab9188a492d0b3ebdb5f3a3f4b`, which the pins below record.
+`cudarc` is caret-pinned rather than exact, so Cargo unifies this crate's device handles
+with candle's inside one minor line, exactness coming from the lock file rather than
+from a requirement that becomes unsatisfiable the day candle raises its floor. The
+manifest requires `0.19.8` and the lock resolves `0.19.10` as of #684, the first release
+whose build script accepts the CUDA 13.4 toolkit.
 
 **The pins, recorded here because no document of this corpus carried them
 until 2026-08-06.** `llama-cpp-2` and `llama-cpp-sys-2` both resolve to
