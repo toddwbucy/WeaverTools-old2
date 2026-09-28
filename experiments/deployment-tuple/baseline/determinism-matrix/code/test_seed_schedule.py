@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "cross-precision-repro"))
 
 from determinism_matrix import parse_seed_schedule, seed_for, with_declared_seed  # noqa: E402
+import confirm_cells as base  # noqa: E402
 
 DECLARATION = """session = "s-karl-1"
 tool-set = []
@@ -36,14 +37,58 @@ def test_the_seed_line_is_rewritten_and_nothing_else():
 
 
 def test_a_declaration_without_exactly_one_seed_line_refuses():
-    for text in ('session = "s"\n', TABLE + "seed = 9\n", DECLARATION + "seed = 9\n",
-                 DECLARATION.replace("[spu-instruction.decoder]\n", "[spu-instruction.decoder]\nnote = 'a, seed = 1'\n"),
+    for text in ('session = "s"\n', TABLE + "seed = 9\n",
                  'seed = 9\n' + DECLARATION.replace("seed = 451234785645, ", "")):
         try:
             with_declared_seed(text, 1)
         except ValueError:
             continue
         raise AssertionError(f"rewrote a seed in {text!r}")
+
+
+# A declaration whose strings and comments carry text shaped like the two
+# keys, which a text-matching locator counted as more sites.
+DECOYS = """session = "s-karl-1"
+tool-set = []
+permission-mode = "ask"
+
+[spu-instruction.decoder]
+residual-readout-election = false
+tunable-values = { seed = 451234785645, context-capacity = 16384 } # { seed = 9 }
+
+[spu-instruction.decoder.model-binding]
+artifact = "/opt/weaver/models/m.gguf"  # { artifact = "/decoy" }
+devices = [0]
+
+[[spu-instruction.decoder.identity]]
+role = "system"
+
+[[spu-instruction.decoder.identity.content]]
+type = "text"
+text = '''
+artifact = "/decoy"
+tunable-values = { seed = 9 }
+'''
+note = "a, seed = 1, artifact = '/decoy'"
+
+[spu-instruction.decoder.other]
+seed = 9
+artifact = "/other.gguf"
+"""
+
+
+def test_text_shaped_like_a_key_is_not_a_site():
+    # Key-like text inside a string or a comment, and the same key in
+    # another table, name no site: the seed and the artifact each rewrite
+    # alone and read back with every other byte where it stood.
+    # Perturbation: restore the text-matching locator, and the decoys count
+    # as more sites and both rewrites refuse. Watched under exactly that.
+    out = with_declared_seed(DECOYS, 7)
+    assert out == DECOYS.replace("seed = 451234785645,", "seed = 7,"), out
+    assert base.declaration_seed(out) == 7
+    out = base.with_artifact(DECOYS, "/opt/weaver/models/n.gguf")
+    assert out == DECOYS.replace('artifact = "/opt/weaver/models/m.gguf"', 'artifact = "/opt/weaver/models/n.gguf"'), out
+    assert base.declared_artifact(out) == "/opt/weaver/models/n.gguf"
 
 
 def test_a_seed_with_no_value_on_its_line_is_not_rewritten():

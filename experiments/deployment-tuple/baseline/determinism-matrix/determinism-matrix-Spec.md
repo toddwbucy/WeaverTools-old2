@@ -191,17 +191,19 @@ sampler's u64. The artifact is read the same way, as the string at
 `spu-instruction.decoder.model-binding.artifact` holding an absolute path. `--artifact`
 rewrites only that value, as a quoted string, and with `--seed-schedule`, a
 comma-separated list of distinct integers, only the seed's value is rewritten before
-each session, every other byte of the file kept. A rewrite that finds other than one
-site, or whose result does not read back the new value with the rest of the document
-unchanged, is refused, as is a scheduled seed past 2^63 - 1, the largest a TOML integer
-carries, before the first session. Both halves of a session read the same seed and
-successive sessions read different ones. The seed a matrix cell takes rotates by matrix
-cell and is offset by sweep, so over as many sweeps as the schedule has seeds every
-matrix cell meets every seed and no matrix cell keeps one seed from one sweep to the
-next. A schedule that cannot hold both properties with the sweep boundary, one seed or
-two, is refused. The declaration is restored when the run ends, by its clock or by an
-interrupt, and not by a hangup, per section 5. `--artifact` overrides the declaration's
-artifact for every session in the same way and is restored with it.
+each session, every other byte of the file kept. A rewrite finds its value by the key
+path it sits at, reading the document as TOML reads it so that text inside a string or a
+comment names nothing, and a rewrite that finds other than one value at the path, or
+whose result does not read back the new value with the rest of the document unchanged,
+is refused, as is a scheduled seed past 2^63 - 1, the largest a TOML integer carries,
+before the first session. Both halves of a session read the same seed and successive
+sessions read different ones. The seed a matrix cell takes rotates by matrix cell and is
+offset by sweep, so over as many sweeps as the schedule has seeds every matrix cell
+meets every seed and no matrix cell keeps one seed from one sweep to the next. A
+schedule that cannot hold both properties with the sweep boundary, one seed or two, is
+refused. The declaration is restored when the run ends, by its clock or by an interrupt,
+and not by a hangup, per section 5. `--artifact` overrides the declaration's artifact
+for every session in the same way and is restored with it.
 
 **A session whose seed the record does not bear out is a fault, not a verdict.** The
 source turns must carry one recorded seed, `sampling.seed` on each `model.request`, with

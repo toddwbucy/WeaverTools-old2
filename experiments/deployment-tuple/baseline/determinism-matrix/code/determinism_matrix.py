@@ -70,12 +70,9 @@ import confirm_cells as base
 # one. The rotation offsets by sweep so that no probe is wedded to one seed:
 # the matrix has as many prompts as the schedule has seeds, and a rotation
 # by cell alone would hand each prompt the same seed in every sweep.
-# The site is `seed = <integer>` at a line start, a tunable-values table's
-# own line, or after an inline table's `{` or `,`, the shape the declaration
-# format writes. Horizontal whitespace only: `\s` would carry the match
-# across a newline and rewrite the next line's value under a `seed =` that
-# names nothing.
-SEED_LINE = re.compile(r"(^[ \t]*|[{,][ \t]*)(seed[ \t]*=[ \t]*)([^\s,}\]#]+)", re.M)
+# The site is the one value at spu-instruction.decoder.tunable-values.seed,
+# found by where it sits in the document rather than by the text around it,
+# per `base.value_sites`.
 
 
 def parse_seed_schedule(text):
@@ -128,7 +125,7 @@ def with_declared_seed(declaration, seed):
     if isinstance(seed, bool) or not isinstance(seed, int) or not 0 <= seed <= base.I64_MAX:
         raise ValueError(f"the seed {seed!r} is not an integer a TOML declaration carries,"
                          f" 0 to {base.I64_MAX}")
-    return base.rewrite_site(declaration, SEED_LINE, base.SEED_PATH, seed, str(seed), "seed")
+    return base.rewrite_site(declaration, base.SEED_PATH, seed, str(seed), "seed")
 
 
 def seed_for(schedule, iteration, cell_index):

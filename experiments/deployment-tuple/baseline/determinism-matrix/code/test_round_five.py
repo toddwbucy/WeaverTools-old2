@@ -203,13 +203,16 @@ def test_the_artifact_rewrite_stays_on_its_line():
     empty = BINDING + "artifact =\ndevices = [0]\n"
     for bad_text in (empty, BINDING + 'artifact = "/a"\nartifact = "/b"\n',
                      BINDING + 'devices = [0]\nnote = "x, artifact = \'/y\'"\n',
-                     'artifact = "/old.gguf"\n' + BINDING + "devices = [0]\n",
-                     text + '[other]\nartifact = "/old.gguf"\n'):
+                     'artifact = "/old.gguf"\n' + BINDING + "devices = [0]\n"):
         try:
             base.with_artifact(bad_text, "/new.gguf")
         except ValueError:
             continue
         raise AssertionError(f"rewrote the artifact in {bad_text!r}")
+    # The same key in another table is another value: TOML says which is
+    # which, so it is left as it stands rather than read as a second site.
+    other = text + '[other]\nartifact = "/old.gguf"\n'
+    assert base.with_artifact(other, "/new.gguf") == other.replace('"/old.gguf" # was', '"/new.gguf" # was')
     for path in ("&m", "", "m.gguf"):
         try:
             base.with_artifact(text, path)

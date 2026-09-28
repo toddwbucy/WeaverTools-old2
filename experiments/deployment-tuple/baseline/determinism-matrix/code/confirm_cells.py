@@ -256,15 +256,160 @@ def _device_groups(cfg, since, invocation=None):
 SEED_PATH = ("spu-instruction", "decoder", "tunable-values", "seed")
 ARTIFACT_PATH = ("spu-instruction", "decoder", "model-binding", "artifact")
 # **A rewrite touches one value's text and nothing else**, so the comments
-# and the layout of the operator's file survive byte for byte. The site is
-# the key at a line start or after an inline table's `{` or `,`, with its
-# value: the seed as the integer token it is, the artifact as a basic or a
-# literal string. Horizontal whitespace only, so no match runs past a line
-# end into the next key. A site found in the text is not trusted to be the
-# value at the path: the rewrite is reparsed and must differ from the
-# original document at that path alone.
-ARTIFACT_SITE = re.compile(
-    r"""(^[ \t]*|[{,][ \t]*)(artifact[ \t]*=[ \t]*)("(?:[^"\\\n]|\\.)*"|'[^'\n]*')""", re.M)
+# and the layout of the operator's file survive byte for byte. The value is
+# found by where it sits in the document, not by what the text around it looks
+# like: `value_sites` reads the declaration token by token, skipping every
+# string and every comment, follows the table headers, the dotted keys, the
+# inline tables and the arrays, and names each scalar value by its full key
+# path. Text shaped like `artifact = "..."` inside an identity string, or
+# `seed = 9` inside a comment, is part of a string or a comment and names
+# nothing. A site found this way is still not trusted to be the value at the
+# path: the rewrite is reparsed and must differ from the original document at
+# that path alone.
+ARRAY = "[]"
+
+
+def toml_tokens(text):
+    """The declaration's tokens, each (kind, start, end): `str` for any of the
+    four string forms, `word` for a run a bare key, number, boolean or date
+    is spelled with, `nl` for a line end, and the punctuation `[ ] { } , =`
+    as itself. Comments and horizontal whitespace are skipped. A string that
+    does not close raises, since the document then does not parse either."""
+    tokens, i, n = [], 0, len(text)
+    while i < n:
+        c = text[i]
+        if c in " \t\r":
+            i += 1
+        elif c == "\n":
+            tokens.append(("nl", i, i + 1))
+            i += 1
+        elif c == "#":
+            while i < n and text[i] != "\n":
+                i += 1
+        elif c in "[]{},=":
+            tokens.append((c, i, i + 1))
+            i += 1
+        elif c in "\"'":
+            quote, start = c, i
+            if text.startswith(quote * 3, i):
+                i += 3
+                while True:
+                    j = text.find(quote * 3, i)
+                    if j < 0:
+                        raise ValueError("a multiline string in the declaration does not close")
+                    backslashes = len(text[i:j]) - len(text[i:j].rstrip("\\")) if quote == '"' else 0
+                    if backslashes % 2:
+                        i = j + 1
+                        continue
+                    i = j + 3
+                    while i < n and text[i] == quote and i < j + 5:
+                        i += 1
+                    break
+            else:
+                i += 1
+                while i < n and text[i] != quote and text[i] != "\n":
+                    i += 2 if quote == '"' and text[i] == "\\" else 1
+                if i >= n or text[i] != quote:
+                    raise ValueError("a string in the declaration does not close on its line")
+                i += 1
+            tokens.append(("str", start, i))
+        else:
+            start = i
+            while i < n and text[i] not in " \t\r\n#[]{},=\"'":
+                i += 1
+            tokens.append(("word", start, i))
+    return tokens
+
+
+def value_sites(text):
+    """Every scalar value in the declaration, as {key path: [(start, end)]},
+    the path a tuple of keys with `ARRAY` for an array's element. The
+    document is read as TOML reads it, strings and comments included, so
+    only a value names a site."""
+    tokens = toml_tokens(text)
+    sites, i = {}, 0
+
+    def peek(skip_nl=False):
+        j = i
+        while skip_nl and j < len(tokens) and tokens[j][0] == "nl":
+            j += 1
+        return j
+
+    def key_part(kind, start, end):
+        raw = text[start:end]
+        return tomllib.loads(f"k = {raw}")["k"] if kind == "str" else raw
+
+    def parse_key():
+        nonlocal i
+        parts = []
+        while i < len(tokens) and tokens[i][0] in ("word", "str"):
+            kind, start, end = tokens[i]
+            if kind == "word":
+                parts += [p for p in text[start:end].split(".") if p]
+            else:
+                parts.append(key_part(kind, start, end))
+            i += 1
+        if not parts:
+            raise ValueError("the declaration has a key this reader cannot follow")
+        return tuple(parts)
+
+    def parse_value(path):
+        nonlocal i
+        i = peek(skip_nl=True) if tokens[i][0] == "nl" else i
+        kind, start, end = tokens[i]
+        if kind == "{":
+            i += 1
+            while True:
+                i = peek(skip_nl=True)
+                if tokens[i][0] == "}":
+                    i += 1
+                    return
+                key = parse_key()
+                if tokens[i][0] != "=":
+                    raise ValueError("the declaration has an inline table this reader cannot follow")
+                i += 1
+                parse_value(path + key)
+                i = peek(skip_nl=True)
+                if tokens[i][0] == ",":
+                    i += 1
+        elif kind == "[":
+            i += 1
+            while True:
+                i = peek(skip_nl=True)
+                if tokens[i][0] == "]":
+                    i += 1
+                    return
+                parse_value(path + (ARRAY,))
+                i = peek(skip_nl=True)
+                if tokens[i][0] == ",":
+                    i += 1
+        elif kind in ("str", "word"):
+            i += 1
+            # A date and time spelled with a space is one value in two words.
+            while i < len(tokens) and tokens[i][0] == "word":
+                end = tokens[i][2]
+                i += 1
+            sites.setdefault(path, []).append((start, end))
+        else:
+            raise ValueError("the declaration has a value this reader cannot follow")
+
+    table = ()
+    while i < len(tokens):
+        kind = tokens[i][0]
+        if kind == "nl":
+            i += 1
+        elif kind == "[":
+            array_table = i + 1 < len(tokens) and tokens[i + 1][0] == "["
+            i += 2 if array_table else 1
+            table = parse_key() + ((ARRAY,) if array_table else ())
+            i += 2 if array_table else 1
+        else:
+            key = parse_key()
+            if i >= len(tokens) or tokens[i][0] != "=":
+                raise ValueError("the declaration has a line this reader cannot follow")
+            i += 1
+            parse_value(table + key)
+    return sites
 
 
 # **Every value a run takes is checked against its consumer's domain before
@@ -351,18 +496,18 @@ def declaration_seed(declaration):
     return value
 
 
-def rewrite_site(declaration, site, path, value, text, what):
-    """The declaration with the one `site` match's value replaced by `text`,
-    every other byte kept. Refused by name where the declaration does not
-    parse, where the text carries other than one site, or where the rewrite
+def rewrite_site(declaration, path, value, text, what):
+    """The declaration with the one value at `path` replaced by `text`, every
+    other byte kept. Refused by name where the declaration does not parse,
+    where it carries other than one value at the path, or where the rewrite
     does not read back `value` at `path` with the rest of the document
     unchanged."""
     before = declaration_document(declaration)
-    found = list(site.finditer(declaration))
+    found = value_sites(declaration).get(tuple(path), [])
     if len(found) != 1:
         raise ValueError(f"the declaration carries {len(found)} {what} sites, not one")
-    m = found[0]
-    swapped = declaration[:m.start(3)] + text + declaration[m.end(3):]
+    start, end = found[0]
+    swapped = declaration[:start] + text + declaration[end:]
     after = declaration_document(swapped, f"declaration rewritten with {what} {text}")
     try:
         declared_value(before, path)
@@ -573,7 +718,7 @@ def with_artifact(declaration, path):
     read back `path` with the rest unchanged. The path is absolute, since the
     worker resolves it."""
     stack_path(path, "artifact path")
-    return rewrite_site(declaration, ARTIFACT_SITE, ARTIFACT_PATH, path,
+    return rewrite_site(declaration, ARTIFACT_PATH, path,
                         json.dumps(path, ensure_ascii=False), "artifact")
 
 
