@@ -292,11 +292,12 @@ that release**, which is the record #699's items 639.2 and 639.3 ask for where t
 does not go. Read from the published sources rather than from the fork's account of
 them, crates.io `candle-transformers` 0.11.0 carries no `forward_with_intermediates` in
 any model, its `qwen2` builds the rotary tables BF16-first, the ordering the fix of this
-section retired and the single-card watch of section 4.1 fails on, and crates.io
-`candle-nn` 0.11.0 lacks the fork's `layer_norm` lookup of a legacy weight and bias
-name, the fix for upstream regression #3972. The `cudarc` requirement matches, `0.19.8`
-caret on both, so the lock is not what stops it. The fork stays until an upstream
-release carries all three, and the pin above is the one to move it from.
+section retired and its single-card watch fails on,
+`the_single_card_keeps_its_rotary_angle_past_position_256` in `tests/native_loaded.rs`,
+and crates.io `candle-nn` 0.11.0 lacks the fork's `layer_norm` lookup of a legacy weight
+and bias name, the fix for upstream regression #3972. The `cudarc` requirement matches,
+`0.19.8` caret on both, so the lock is not what stops it. The fork stays until an
+upstream release carries all three, and the pin above is the one to move it from.
 
 **Why the values sit in a Spec at all, which is a question worth answering.** A
 revision is representation and belongs here rather than in the charter. What
