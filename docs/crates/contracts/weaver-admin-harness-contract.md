@@ -172,7 +172,8 @@ state channel's end where the member stands, the SPU instruction, the gate instr
 where the kind declares a Gate, the state election the tee applies, the store election
 the member stands on, resolved to the embedded engine where the declaration is silent,
 per `weaver-state-PRD` section 4, the lineage of the restore where
-the declaration elects one, and the digests of the organ binaries admin started. The
+the declaration elects one, and the digests of the organ binaries admin started and of
+the two it hands the worker to fork, the agent's SPU and the gate. The
 state channel's end is the harness half of the socketpair admin created at the member's
 spawn, per the operator's ruling of 2026-08-26 carried at
 `weaver-harness-state-contract`: admin couriers it and speaks on it never. Its absence
@@ -321,7 +322,8 @@ service engine, resolved to the embedded engine where the declaration is silent,
 lineage of the restore where the declaration elects one, the parent's session, the run
 the cut falls in, and the turn the holdings stop at, resolved by admin and never the
 record's path, so the harness names its parent without opening anything, the digests of
-the organ binaries admin started, keyed by name, the declaration's digest as this crate
+the organ binaries admin started and of the agent's SPU and the gate it hands the
+worker, keyed by name, the declaration's digest as this crate
 read the file at the inventory, so the run and the record can both name what they were
 built from, and the intent to stop.
 

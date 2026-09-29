@@ -814,16 +814,17 @@ from: harness-dumpable-flag-cleared
 to: axiom-floor-is-vocabulary-behavior-is-socket
 ```
 
-**No path is taken anywhere in this crate.** There is no call that resolves,
-opens, or stores a filesystem path to the trace, per `weaver-harness-PRD`
-section 5, and the organ binaries of section 3 are the one exception, supplied
-by the composition root as a construction parameter the way `weaver-trace-Spec`
-section 6 takes its queue depth: a deployment fact, not an operator election
-and not a discovery. **The three named shapes are pinned by the compile-fail
-doctests of section 8, and the general prohibition stays review's,** three
-doctests reaching the shapes they name and not the open set of every way a path
-becomes a call argument. The pinning and the prohibition are two records for
-that reason, per section 8, and neither claims the other's instrument.
+**No path is taken anywhere in this crate.** There is no call that resolves, opens, or
+stores a filesystem path to the trace, per `weaver-harness-PRD` section 5, and the organ
+binaries of section 3 are the one exception, supplied by the composition root as a
+construction parameter the way `weaver-trace-Spec` section 6 takes its queue depth: a
+deployment fact the operator places in admin's configuration, the SPU's per agent per
+`weaver-admin-Spec` section 9, never an election in the declaration and never a
+discovery. **The three named shapes are pinned by the compile-fail doctests of section
+8, and the general prohibition stays review's,** three doctests reaching the shapes they
+name and not the open set of every way a path becomes a call argument. The pinning and
+the prohibition are two records for that reason, per section 8, and neither claims the
+other's instrument.
 
 ```graph
 node: harness-no-path-taken

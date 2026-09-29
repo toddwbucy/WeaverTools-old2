@@ -1081,34 +1081,31 @@ from: admin-cloexec-atomic-at-creation
 to: axiom-floor-is-vocabulary-behavior-is-socket
 ```
 
-**The unit template is fixed and the name is the one variable.** The
-template lives in admin's own service configuration, per section 9, and the
-only value interpolated is the validated agent name of section 4, so the
-delegated authority stays bounded by the allow-list exactly as charter
-section 7 requires. **The argument vector the ask carries takes no value the
-invocation's own input composes.** Its values are the coordination socket
-path of section 7, which this crate already derives from that same validated
-name, the two organ binary paths section 9 holds among the operator's
-installed values, and, where the declaration carries one, the agent's loop
-file as the named flag `--loop-file`, one token on both sides of the vector,
-composed here and parsed by the worker under the same spelling, per
-`weaver-types-Spec` section 2 and the operator's
-ruling of 2026-08-20 on issue #243. A worker that holds no file-read loop
-refuses the flag at its own argument parse, named rather than ignored, so a
-declaration the installation cannot honor fails the load loudly instead of
-standing as a fact with no effect. The loop file is the vector's one
-declaration-sourced value and it widens nothing: the declaration is the
-operator's file, validated at section 4's inventory before any unit is asked,
-and the worker resolves the path under the agent's own identity, so the value
-grants nothing the agent uid did not already have, per the bare clause below.
-An absent member puts no flag on the vector, the worker's own default
-standing, per `weaver-harness-PRD` section 2. A builder who let any of these
-values be composed from the invocation's own input would be widening the
-delegated authority by the route the name check closes, so the shape to hold
-is that the vector reads the allow-listed name and the operator's files, the
-installed values and the validated declaration, and reads nothing else. An
-earlier form of this clause counted three values and named the name the one
-variable, written before any declaration member rode the vector.
+**The unit template is fixed and the name is the one variable.** The template lives in
+admin's own service configuration, per section 9, and the only value interpolated is the
+validated agent name of section 4, so the delegated authority stays bounded by the
+allow-list exactly as charter section 7 requires. **The argument vector the ask carries
+takes no value the invocation's own input composes.** Its values are the coordination
+socket path of section 7, which this crate already derives from that same validated
+name, the two organ binary paths section 9 holds among the operator's installed values,
+the SPU's being the agent's own, and, where the declaration carries one, the agent's
+loop file as the named flag `--loop-file`, one token on both sides of the vector,
+composed here and parsed by the worker under the same spelling, per `weaver-types-Spec`
+section 2 and the operator's ruling of 2026-08-20 on issue #243. A worker that holds no
+file-read loop refuses the flag at its own argument parse, named rather than ignored, so
+a declaration the installation cannot honor fails the load loudly instead of standing as
+a fact with no effect. The loop file is the vector's one declaration-sourced value and
+it widens nothing: the declaration is the operator's file, validated at section 4's
+inventory before any unit is asked, and the worker resolves the path under the agent's
+own identity, so the value grants nothing the agent uid did not already have, per the
+bare clause below. An absent member puts no flag on the vector, the worker's own default
+standing, per `weaver-harness-PRD` section 2. A builder who let any of these values be
+composed from the invocation's own input would be widening the delegated authority by
+the route the name check closes, so the shape to hold is that the vector reads the
+allow-listed name and the operator's files, the installed values and the validated
+declaration, and reads nothing else. An earlier form of this clause counted three values
+and named the name the one variable, written before any declaration member rode the
+vector.
 
 **The classify arm's binary rides the vector too, where it stands, as
 `--classify-binary`.** It is the third organ path the vector carries and the
@@ -1659,7 +1656,8 @@ to: admin-log-ndjson-own-schema
 
 **What is logged is the charter's set.** Transitions directed and their
 outcomes, refusals issued, rollbacks with what each act undid or could not,
-and units started and stopped. Never a fact about what an agent did, per
+and units started and stopped, a unit's start naming the agent's SPU key and
+path per section 9. Never a fact about what an agent did, per
 charter section 2: the moment a line describes conduct rather than
 supervision it is a second record of the agent, and the review that finds
 one has found a defect. The instrument is named in that sentence and is the
@@ -1699,47 +1697,95 @@ accumulates, which is the charter's own grounds read forward.
 
 **Admin has operator-installed configuration of its own, and this Spec names it rather
 than leaving it implied.** The coordination socket's per-agent name, the log directory,
-the unit template, the agent config directory, the allow-list, and the two organ binary
-paths are deployment facts the operator installs. The store's socket directory joined
-the list 2026-09-04 under the key `state-store-socket`, optional, the service engine's
-conventional directory standing where the file is silent, and read under a service
-election alone. The operator socket's path left this list with the socket on 2026-08-05,
-and the coordination name stayed but changed hands: the operator places it, the harness
-binds it, and admin dials it, so one value reaches two crates and the operator's file is
-where they agree. They are not the agent config and no seam carries them, which is why
-the file takes no contract of its own. **The agent config directory holds one
-declaration per agent, `<agent>.toml`**, which this crate resolves by the agent's name
-and the format's extension, per `weaver-types-Spec` section 2, and a name that resolves
-to no file answers `NoSuchAgent`. **The file and its values part company at the start
-ask, and the distinction is worth holding.** This crate is the only one that reads the
-file. Three of the values do not stay in it: the coordination socket's name and the two
-organ binary paths reach the worker in section 6's argument vector, over the external
-boundary `weaver-admin-systemd-contract` holds rather than over any seam. The shape is a
+the unit template, the agent config directory, the allow-list, the two organ binary
+paths, and the optional map choosing each agent's SPU below are deployment facts the
+operator installs. The store's socket directory joined the list 2026-09-04 under the key
+`state-store-socket`, optional, the service engine's conventional directory standing
+where the file is silent, and read under a service election alone. The operator socket's
+path left this list with the socket on 2026-08-05, and the coordination name stayed but
+changed hands: the operator places it, the harness binds it, and admin dials it, so one
+value reaches two crates and the operator's file is where they agree. They are not the
+agent config and no seam carries them, which is why the file takes no contract of its
+own. **The agent config directory holds one declaration per agent, `<agent>.toml`**,
+which this crate resolves by the agent's name and the format's extension, per
+`weaver-types-Spec` section 2, and a name that resolves to no file answers
+`NoSuchAgent`. **The file and its values part company at the start ask, and the
+distinction is worth holding.** This crate is the only one that reads the file. Three of
+the values do not stay in it: the coordination socket's name and the two organ binary
+paths reach the worker in section 6's argument vector, over the external boundary
+`weaver-admin-systemd-contract` holds rather than over any seam. The shape is a
 satellite of section 11: what is fixed here is that these values exist, that they are
 the operator's to place, and that none of them is discovered at runtime by searching.
 
-**The organ binaries are on this list and not in the agent's declaration, and
-the placement is the ruling rather than a convenience.** They are one
-installation's facts rather than one agent's, identical for every agent the
-operator runs, so a declaration carrying them would state one fact in as many
-places as there are agents and make a binary's replacement an edit to every one
-of them, which is the divergence gate G5 exists to refuse. The charter's own
-test settles it from the other side: `weaver-harness-Spec` section 2 has the
-organ binaries supplied to the composition root as a deployment fact and names
-them not an operator election, and the agent's declaration is exactly the
-operator's elections.
+**The organ binaries are on this list and not in the agent's declaration, and the
+placement is the ruling rather than a convenience.** Which program runs under an agent's
+identity is part of the authority this crate is delegated, the same authority the
+allow-list bounds, so it is placed where the allow-list is, in the operator's own
+configuration, and never in a file the declaration's author edits. The charter's own
+test settles the gate's from the other side: `weaver-harness-Spec` section 2 has the
+organ binaries supplied to the composition root as a deployment fact, not a discovery,
+and the declaration is the agent's elections rather than the deployment's.
 
-**Two organ binaries are placed and one is derived, and the difference is
-the ruling rather than an inconsistency.** The SPU's and the gate's paths
-are on the list above because every agent needs them, so an installation
-that lacks either has no agents at all and should say so at its own
-configuration rather than at a load. **The state member's binary is found
-beside the worker's instead**, on the ruling of 2026-09-04, because the
-member stands only where a declaration elects it, and **the classify arm's
-binary follows that ruling for the same reason** as of 2026-09-07: admin
-joins `weaver-spu-classify` to the directory holding the worker binary the
-operator placed. **So this list does not grow and stays at the values every
-installation owes.**
+**The gate's binary is one installation's fact and the SPU's is one agent's**, on the
+operator's ruling of 2026-09-28 that `python-spu` is an option and not a takeover: an
+installation may serve one agent from the Rust SPU and another from `python-spu`, at
+once. The gate's path stays one value, identical for every agent, so a second copy of it
+per agent would be the divergence gate G5 refuses. The SPU's path is chosen per agent by
+two further values beside the allow-list, both optional:
+
+- `spu-implementations`, one line per implementation, a key and an absolute path,
+  the key lowercase letters, digits and hyphens.
+- `agent-spu`, one line per agent, an allow-listed name and a key the first file holds.
+
+**`spu-binary` stays, and it is the SPU of every agent `agent-spu` does not name.** An
+installation with one SPU therefore changes nothing, and one with two names each agent
+that departs from the default and no other. The three values are read where every value
+of this section is read, before any verb, and they are judged there: a line that does
+not parse, a relative path, a key or an agent named twice, an agent that is not on the
+allow-list, or a key `spu-implementations` does not hold fails the invocation as an
+unreadable configuration fails it today, before any unit is asked, because each is the
+operator's file contradicting itself and no load could stand on it. No new refusal names
+it, the configuration's failure having no lifecycle case to be.
+
+**What the SPU binary is, this crate does not judge.** It passes the agent's path on
+section 6's vector as it passed the installation's, and the worker forks it at enter as
+it forks any SPU, under the agent's identity, per section 6. That the file is an SPU
+honoring `weaver-harness-spu-contract` and `weaver-harness-spu-decode-contract` is the
+operator's placement to make true, and an implementation that does not is found at the
+SPU's admission, where every SPU's failures are found.
+
+**Which SPU served is recorded in the field that already records the stack, widened to
+the binaries this crate hands the worker.** The enter carries the digests of the organ
+binaries this crate starts, keyed by the binary's name, per
+`weaver-admin-harness-contract` section 3, and the harness copies them into the load
+event's `stack`, per `weaver-trace-Spec` section 3. Until this act that meant the worker
+and the state member, the two this crate starts itself, and left out the SPU and the
+gate, which the worker forks from the paths section 6 hands it. The set now takes those
+two as well, digested from the same paths the vector carries, so each agent's record
+names the SPU that served it by the file's name and sha256, and two agents served by two
+implementations carry two different entries. The map is keyed by name already, so no
+type changes, and a record written before this act lacks the two entries, which reads as
+those facts being unrecorded. Section 8's log line for a unit's start names the agent's
+key and path beside it.
+
+**Two agents on one card is the SPU's question and is already answered.** Admission
+judges each assigned device by one inequality, the shard's need plus the headroom
+against what the device has free, per `weaver-spu-Spec` section 3, which says the device
+is not the SPU's to arbitrate beyond it and that an occupant may be a second agent the
+operator wants there. So a second agent's SPU, of either implementation, is admitted
+where the card has room, and refused, never evicting, where it has not. Nothing here
+changes that, and `python-spu` judges room by the same inequality, per `python-spu-Spec`
+section 3.
+
+**Two organ binaries are placed and one is derived, and the difference is the ruling
+rather than an inconsistency.** The SPU's and the gate's paths are placed because every
+agent needs them, so an installation that lacks either has no agents at all and should
+say so at its own configuration rather than at a load. **The state member's binary is
+found beside the worker's instead**, on the ruling of 2026-09-04, because the member
+stands only where a declaration elects it, and **the classify arm's binary follows that
+ruling for the same reason** as of 2026-09-07: admin joins `weaver-spu-classify` to the
+directory holding the worker binary the operator placed. The classify arm is not chosen
+per agent, its binary being a sibling of the worker's and not of any SPU's.
 
 **That is a derivation and not a search**, which is the property this section
 protects. One placed value fixes one directory, and a sibling of a placed
@@ -2136,7 +2182,8 @@ Each names what settles it, and none is this Spec's to settle alone.
   - **`AgentState` and `AgentSummary` field lists.** The floor names the types in
   `lifecycle-answer` and their fields are satellites there, consumed here as drawn. -
   **The two values the argument vector does not carry.** Section 6's vector carries the
-  socket path, the two placed organ binaries, the loop file where a declaration names
+  socket path, the two placed organ binaries, the SPU's the agent's own, the loop file
+  where a declaration names
   one, and the derived classify binary where one stands, and the worker's remaining two
   inputs are named here rather than routed, because routing either now would carry a
   value nothing reads. The assembled prompt's identity is one: the agent's declaration

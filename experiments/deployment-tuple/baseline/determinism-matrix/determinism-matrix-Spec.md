@@ -401,9 +401,10 @@ cell's artifact, the config's `trace`, `gate_socket` and `admin_config`, and eve
 binary the admin configuration names are refused at preflight unless absolute, and a
 library `ldd` names by any other path is unreadable. The paths only the harness opens,
 the declaration file, `admin_bin`, `repo` and the outdir, are its own. A config may not
-name an SPU of its own: the admin launches the one its configuration names,
-`admin_config/spu-binary`, and the run reads it there, so a config carrying `spu_bin` is
-refused.
+name an SPU of its own: the admin launches the one its configuration names for the
+agent, the key `agent-spu` gives it in `spu-implementations` where the agent is named
+there and `spu-binary` otherwise, per `weaver-admin-Spec` section 9, and the run reads
+it there, so a config carrying `spu_bin` is refused.
 
 **Every file a run writes is its own.** A run in either mode writes three fixed names
 into its outdir, and its declaration backup beside the declaration.

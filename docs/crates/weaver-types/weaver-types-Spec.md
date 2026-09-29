@@ -1176,13 +1176,14 @@ and never the record's path, which admin read under its own custody and the harn
 no business holding, on the same discipline as the sink. The harness names the parent on
 the load event and starts its turn ordinal from the cut without opening anything, the
 record having been preloaded into the member before the enter per `weaver-admin-Spec`
-section 6. `stack` is the digests of the organ binaries admin started, keyed by the
-binary's name, so the load event names the stack that ran it and a record is sufficient
-for its own conditions without a deposit beside it, per `weaver-trace-PRD` section 3.1.
-Both are admin's facts and the harness authors them as it authors the store's.
-**`declaration` rides beside them as of 2026-09-04**, the digest of the declaration file
-as admin read it at the inventory, so the harness names it on the load event and answers
-it to an observation without holding the file, per issue #435.
+section 6. `stack` is the digests of the organ binaries admin started and of the agent's
+SPU and the gate it hands the worker to fork, keyed by the binary's name, so the load
+event names the stack that ran it and a record is sufficient for its own conditions
+without a deposit beside it, per `weaver-trace-PRD` section 3.1. Both are admin's facts
+and the harness authors them as it authors the store's. **`declaration` rides beside
+them as of 2026-09-04**, the digest of the declaration file as admin read it at the
+inventory, so the harness names it on the load event and answers it to an observation
+without holding the file, per issue #435.
 
 **`EnterBinding` is the kind resolved, and a directive disagreeing with its
 kind is unrepresentable rather than refused.** The config holds the kind as
