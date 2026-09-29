@@ -3,6 +3,10 @@ import gc
 from blake3 import blake3
 from pathlib import Path
 
+# The dtype the first version loads at, per python-spu-Spec sections 4 and 9: named
+# once, used by the load and read by the smoke's report, so the two cannot disagree.
+DTYPE='bfloat16'
+
 class AdmissionError(Exception):
     def __init__(self,kind,detail,**fields): self.kind=kind; self.fields=fields; super().__init__(detail)
 
@@ -33,7 +37,7 @@ class HFEngine:
                 if len(ids)!=1 or self.tokenizer.id_to_token(ids[0])!=marker:
                     raise AdmissionError('artifact_unreadable',f'marker not promoted: {marker}')
             self.model=AutoModelForCausalLM.from_pretrained(path,local_files_only=True,
-                trust_remote_code=False,dtype=torch.float32,attn_implementation='eager').to(self.device).eval()
+                trust_remote_code=False,dtype=getattr(torch,DTYPE),attn_implementation='eager').to(self.device).eval()
             self.layers=config.num_hidden_layers
             if readout:
                 for layer in self.model.model.layers:

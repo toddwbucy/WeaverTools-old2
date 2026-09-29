@@ -6,7 +6,7 @@
 **Document ID:** `python-spu-Spec`
 **Parent:** `weaver-spu-PRD`
 **Editorial:** Per the Working Rules.
-**Landing PR:** #741
+**Landing PR:** #749
 
 ---
 
@@ -145,7 +145,6 @@ short of:
 - Section 3.1: its oracle answers five operations, `session`, `seed`, `measure`,
   `render` and `round`, and a transport test over the oracle's descriptor. Every other
   operation the walk names is unbuilt.
-- Section 4: the engine loads at FP32, not BF16.
 - Section 5: the sampler is the native engine's, ported and proven as section 5 says,
   and it samples in pure Python at about 120 ms a token over a Qwen2.5 vocabulary on
   thinkpad, the softmax's glibc `expf` over every logit and the partition over every

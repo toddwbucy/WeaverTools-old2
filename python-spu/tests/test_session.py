@@ -100,3 +100,18 @@ def test_readout_does_not_change_logits(tiny_model):
             assert off.logits==on.logits
         assert not off.norms and len(on.norms)==6
     finally: off.close(); on.close()
+
+def test_the_engine_loads_every_parameter_at_the_version_dtype(tiny_model):
+    """python-spu-Spec sections 4 and 9: the first version loads at BF16. The tiny
+    model is saved at float32, so the load itself must cast. Perturbations: load at
+    torch.float32 and the parameters read float32, or name float32 as the version's
+    dtype and the constant disagrees with the Spec."""
+    import torch
+    from python_spu import engine as engine_module
+    assert engine_module.DTYPE=='bfloat16'
+    engine=HFEngine(tiny_model,[0],cpu=True)
+    try:
+        dtypes={p.dtype for p in engine.model.parameters()}
+        assert dtypes=={torch.bfloat16},dtypes
+    finally:
+        engine.close()

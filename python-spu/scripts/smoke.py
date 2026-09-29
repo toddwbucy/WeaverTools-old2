@@ -10,7 +10,14 @@ import subprocess
 import sys
 import time
 import tomllib
-from python_spu.client import LocalProcess
+
+# The package from this tree, for this process and for the SPU children it launches, as
+# scripts/declare_imports.py reaches it, so the README's command runs as written.
+ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT/'src'))
+os.environ['PYTHONPATH']=os.pathsep.join(filter(None,[str(ROOT/'src'),os.environ.get('PYTHONPATH')]))
+from python_spu.client import LocalProcess  # noqa: E402
+from python_spu.engine import DTYPE  # noqa: E402
 
 parser=argparse.ArgumentParser()
 parser.add_argument('artifact',type=Path)
@@ -79,14 +86,14 @@ keys=('output_tokens','entropies','surprisals','perplexity')
 for key in keys:
     assert runs[0]['generation']['measurement'][key]==runs[1]['generation']['measurement'][key],key
     assert runs[0]['generation']['measurement'][key]==runs[2]['generation']['measurement'][key],key
-report={'oracle_revision':tomllib.loads(Path('oracle/Cargo.toml').read_text())['dependencies']['weaver-spu']['rev'],
+report={'oracle_revision':tomllib.loads((ROOT/'oracle'/'Cargo.toml').read_text())['dependencies']['weaver-spu']['rev'],
     'deployment':{'host':platform.node(),'python':platform.python_version(),'torch':torch.__version__,
-      'transformers':transformers.__version__,'device':args.device,'dtype':'float32',
+      'transformers':transformers.__version__,'device':args.device,'dtype':DTYPE,
       'cuda_runtime':torch.version.cuda,
       'gpu_name':torch.cuda.get_device_name(0) if args.device=='cuda' else None,
       'cuda_visible_devices':os.environ.get('CUDA_VISIBLE_DEVICES'),
       'cublas_workspace_config':os.environ.get('CUBLAS_WORKSPACE_CONFIG'),
-      'attention':'eager','threads':1,'sampler':'python-random-MT19937'},
+      'attention':'eager','threads':1,'sampler':'candle-chain, rand StdRng ChaCha12'},
     'gpu_before':gpu_before,'gpu_after':gpu_status(),
     'repeatability':'exact for output tokens, entropies, surprisals and perplexity across fresh processes',
     'readout_neutrality':'same quantities exact with tap enabled', 'runs':runs}
