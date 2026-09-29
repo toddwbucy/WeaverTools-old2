@@ -8,7 +8,7 @@
 **Companion contract:** `weaver-harness-state-contract`, owed by the act that opens
 the seam and named here so the seam cannot open without it.
 **Editorial:** Per the Working Rules.
-**Landing PR:** #659
+**Landing PR:** #740
 
 ---
 
