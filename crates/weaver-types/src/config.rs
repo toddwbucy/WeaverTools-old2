@@ -452,7 +452,38 @@ pub fn parse(source: &str) -> Result<AgentConfig, ConfigError> {
     check_tunable_values(&config.spu_instruction.decoder.tunable_values)?;
     check_identity_roles(&config.spu_instruction.decoder.identity)?;
     check_trace_sink_surface(source, &config.trace_sink)?;
+    check_declared_paths(&config)?;
     Ok(config)
+}
+
+/// **A path in a declaration carries no control character**, per
+/// `weaver-types-Spec` section 2 and the operator's ruling of 2026-09-28:
+/// every reader in the suite, this parser, the deploy script's shell and the
+/// experiment harness, must agree on what a path is, and a control character
+/// is where they part, a shell's command substitution dropping a trailing
+/// newline this parser keeps. The three path fields are the restore's record,
+/// the loop file and the trace sink's path, each refused by its own name.
+#[cfg(feature = "config")]
+fn check_declared_paths(config: &AgentConfig) -> Result<(), ConfigError> {
+    let sink = match &config.trace_sink {
+        TraceSink::File { path, .. }
+        | TraceSink::Pipe { path, .. }
+        | TraceSink::Socket { path } => path,
+    };
+    let declared = [
+        ("trace-sink.path", Some(sink)),
+        ("loop-file", config.loop_file.as_ref()),
+        ("restore.record", config.restore.as_ref().map(|r| &r.record)),
+    ];
+    for (field, path) in declared {
+        if path.is_some_and(|p| p.to_string_lossy().chars().any(char::is_control)) {
+            return Err(ConfigError {
+                field: Some(FieldName(field.to_string())),
+                kind: ConfigErrorKind::BadValue,
+            });
+        }
+    }
+    Ok(())
 }
 
 /// **The identity prefix is `system` and the parse is where that binds**, per

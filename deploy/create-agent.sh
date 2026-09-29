@@ -84,7 +84,12 @@ SESSION=${SESSION:-$NAME-001}
 # account, database or file is made. A double quote ends the string early, a
 # backslash begins an escape that changes the value, and a control character
 # is either refused by TOML or ends the line, so `--session 'trial"2'` would
-# write `session = "trial"2"`. Neither value needs any of the three.
+# write `session = "trial"2"`. Neither value needs any of the three. The
+# control character is refused on a second ground too: weaver-types-Spec
+# section 2 elects that a path in a declaration carries none, because every
+# reader in the suite, admin's parser, this script's shell and the harness,
+# must agree on what a path is, and admin refuses a declared path carrying
+# one by name.
 for pair in "session:$SESSION" "artifact:$ARTIFACT"; do
   field=${pair%%:*} value=${pair#*:}
   if [[ "$value" == *[\"\\]* || "$value" =~ [[:cntrl:]] ]]; then

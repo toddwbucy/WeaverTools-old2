@@ -141,9 +141,13 @@ crate reads TOML 1.1, the deploy script and the experiment harness read with Pyt
 `tomllib`, which reads 1.0, and a declaration only one of them can read is one the
 others refuse. Admin's parser is the authority on what a declaration says, and syntax
 only 1.1 has, a multiline inline table or a `\e` escape among it, is outside what the
-program guarantees. JSON stays rejected on the criterion's comments clause: it has none,
-and a trailing-comma error at three in the morning on a file that gates a load is a bad
-way to learn about JSON.
+program guarantees. **A path in a declaration carries no control character**, on the
+operator's ruling of 2026-09-28: the restore's `record`, the `loop-file` and the trace
+sink's `path` are refused by name where one does, because every reader in the suite,
+admin's parser, the deploy script's shell and the harness, must agree on what a path is,
+and a control character is where they part. JSON stays rejected on the criterion's
+comments clause: it has none, and a trailing-comma error at three in the morning on a
+file that gates a load is a bad way to learn about JSON.
 
 ```graph
 node: types-config-format-toml

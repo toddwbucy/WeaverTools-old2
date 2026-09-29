@@ -660,3 +660,47 @@ fn the_declaration_weaver_analysis_derives_parses() {
         other => panic!("one text block, got {other:?}"),
     }
 }
+
+/// **A path carrying a control character refuses, naming its field**, per
+/// `weaver-types-Spec` section 2: every reader in the suite must agree on what
+/// a path is, and a control character is where they part. A trailing newline
+/// is the case that parted them, a shell dropping what this parse keeps.
+///
+/// Perturbation: remove the `check_declared_paths` call from `parse` and every
+/// case below parses. Watched under exactly that removal.
+#[test]
+fn a_path_carrying_a_control_character_refuses_by_name() {
+    let sink = "path = \"/var/lib/weaver/alpha/trace.ndjson\"";
+    for control in ["\\n", "\\u0007", "\\t", "\\u007F"] {
+        let source = full_config().replace(
+            sink,
+            &format!("path = \"/var/lib/weaver/alpha/trace.ndjson{control}\""),
+        );
+        let err = parse(&source).expect_err("refuses");
+        assert_eq!(err.kind, ConfigErrorKind::BadValue, "{control}");
+        assert_eq!(
+            err.field,
+            Some(FieldName("trace-sink.path".into())),
+            "{control}"
+        );
+    }
+    let looped = format!(
+        "loop-file = \"/etc/weaver/agents/a.loop.py\\n\"\n{}",
+        full_config()
+    );
+    let err = parse(&looped).expect_err("refuses");
+    assert_eq!(err.field, Some(FieldName("loop-file".into())));
+    let restored = format!(
+        "{}\n[restore]\nrecord = \"/var/lib/weaver/s-1\\u0007.ndjson\"\n",
+        full_config()
+    );
+    let err = parse(&restored).expect_err("refuses");
+    assert_eq!(err.field, Some(FieldName("restore.record".into())));
+    // A path with no control character parses as it did: a space, a quote and
+    // a non-ASCII character are not control characters.
+    let plain = full_config().replace(
+        sink,
+        "path = \"/var/lib/weaver/a b \\\"c\\\" \u{e9}.ndjson\"",
+    );
+    parse(&plain).expect("a path without a control character parses");
+}
