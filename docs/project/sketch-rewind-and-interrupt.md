@@ -132,13 +132,14 @@ exchanges and the harness serialises them, each refusal returning by the path it
 request line came in on, and the harness declares the run quiesced with an empty queue.
 **The quiescence position is the last closed turn boundary together with every flush and
 elision recorded between that turn's close and the quiescence event**, so a resumption
-from it is the exact re-prefill of section 1 whenever such an edit stands. **While
-quiesced the harness executes no tool**: a call the model makes in an interview turn is
-recorded and refused as quiesced, so an interview is conversation and never work. A
-half-written state is a state that never existed and is not worth interviewing. The
-trace records a quiescence event carrying the position, the wall clock instant and what
-was in flight when the request arrived, so a clean stop reads differently from a stop
-that caught the loop mid-turn.
+from it is the exact re-prefill of section 1 whenever such an edit stands. **A run with
+no closed turn has its quiescence position at its opening**, the load, and a branch from
+it is a fresh run from the identity alone. **While quiesced the harness executes no
+tool**: a call the model makes in an interview turn is recorded and refused as quiesced,
+so an interview is conversation and never work. A half-written state is a state that
+never existed and is not worth interviewing. The trace records a quiescence event
+carrying the position, the wall clock instant and what was in flight when the request
+arrived, so a clean stop reads differently from a stop that caught the loop mid-turn.
 
 **The interview enters through the gate as ordinary traffic.** The gate is the sole work
 ingress and it authenticates the researcher already, so a second channel would cost a
