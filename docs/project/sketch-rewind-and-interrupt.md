@@ -45,13 +45,16 @@ generation without its close. Nothing in R is rewritten and nothing is removed. 
 run's first event after its load is the branch event, carrying the parent run, the
 branch position, the reason (a retry, an interrupt's resumption, a diagnostic entry),
 what the record holds of the deployment tuple the branch stands on, the `load` payload's
-`stack` digests and declaration digest per `weaver-trace-Spec` section 3 and
-`model.measurement`'s `weights_hash`, the tuple beyond that, the device, the kernel
-stack, the batch and the sampler, being the deposit's box facts as the result notes
-record it, and the world's disposition, one of section 2's three: reset to N, divergence
-measured with what was found, or a changed world declared. Every later reader can walk
-from any run to the position it grew from, which is the lineage the analysis-web
-contract's branch position already expects a record to state.
+`stack` digests and declaration digest per `weaver-trace-Spec` section 3, and the parent
+run's `weights_hash` named as the expectation, since the branch event precedes any
+measurement of its own and the branch's first `model.measurement`, authored during its
+first generation per `weaver-harness-Spec` section 6.1, verifies it, a reader comparing
+the two and a mismatch authored as a fault, the tuple beyond that, the device, the
+kernel stack, the batch and the sampler, being the deposit's box facts as the result
+notes record it, and the world's disposition, one of section 2's three: reset to N,
+divergence measured with what was found, or a changed world declared. Every later reader
+can walk from any run to the position it grew from, which is the lineage the
+analysis-web contract's branch position already expects a record to state.
 
 **That departs from a standing ruling, and the departure is the operator's to make.**
 Under `weaver-state-PRD` section 4 today, a cut lands as a branch under a new session
