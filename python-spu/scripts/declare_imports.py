@@ -2,10 +2,11 @@
 
 Each launch runs the real serving path, python -m python_spu.server and, where given,
 the zipapp, with --declare-imports: the process records the modules it holds at
-admission and after its first generation, then exits. The union of every launch,
-with every name imports.txt already holds, is written back sorted beneath the file's
-header, and the run's device line in the header is stamped. The tiny model is built
-in a separate process, so building it adds nothing to what is recorded.
+admission and after its first generation, then exits. The union of this run's
+launches is the device's half, imports-cpu.txt or imports-cuda.txt, and it replaces
+that half whole, never merged with what the half held: a module this run no longer
+records leaves the half. The other half is not touched. The tiny model is built in a
+separate process, so building it adds nothing to what is recorded.
 
 Usage: python scripts/declare_imports.py --device cpu [--zipapp PATH] [--model DIR]
 """
@@ -22,7 +23,25 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from python_spu.client import LocalProcess  # noqa: E402
 
-LIST = ROOT / "src" / "python_spu" / "imports.txt"
+PACKAGE = ROOT / "src" / "python_spu"
+
+HEADER = """\
+# The modules python-spu may hold on {device} after admission and after its first
+# generation, per python-spu-Spec section 8: one clean run of the real serving path,
+# launched with -m and, where the stamp says so, from the zipapp. Written whole by
+# scripts/declare_imports.py --device {device}, replacing what this half held, and
+# reviewed, never edited by hand. The process is judged against the union of this
+# half and the other device's.
+#
+# {stamp}
+"""
+
+
+def write_half(path, device, recorded, stamp):
+    """Writes a device's half whole: the header and the recorded names, sorted. What
+    the file held before is not read, so a name this run did not record is gone."""
+    Path(path).write_text(HEADER.format(device=device, stamp=stamp)
+                          + "".join(f"{name}\n" for name in sorted(recorded)))
 
 TINY = r'''
 import sys, torch
@@ -53,15 +72,20 @@ def launch(command, arguments, model, record, device):
             "residual-readout-election": False, "surprisal-election": True,
             "identity": identity,
             "tunable-values": {"seed": 11, "context-capacity": 256, "max-tokens-per-turn": 4}}}
-        answer = process.ask({"kind": "admit", "instruction": instruction})
-        assert answer["payload"] == {"kind": "answer", "body": {"kind": "admitted"}}, answer
-        decode = process.channels[1]
-        decode.send({"kind": "open", "session": "declare", "messages": identity})
-        assert decode.receive() == {"kind": "opened"}
-        decode.send({"kind": "append_and_generate", "turn": "declare-turn", "delta": [
-            {"role": "user", "content": [{"type": "text", "text": "hello world"}]}]})
-        _, status = os.waitpid(process.pid, 0)
-        code = os.waitstatus_to_exitcode(status)
+        try:
+            answer = process.ask({"kind": "admit", "instruction": instruction})
+            assert answer["payload"] == {"kind": "answer", "body": {"kind": "admitted"}}, answer
+            decode = process.channels[1]
+            decode.send({"kind": "open", "session": "declare", "messages": identity})
+            assert decode.receive() == {"kind": "opened"}
+            decode.send({"kind": "append_and_generate", "turn": "declare-turn", "delta": [
+                {"role": "user", "content": [{"type": "text", "text": "hello world"}]}]})
+        except BaseException:
+            process.close()
+            raise
+        # The declaring process exits on its own once the first generation is
+        # recorded, so the channels stay open until it has, within a bound.
+        code = process.close(timeout=600, keep_open=True)
         if code != 0:
             raise RuntimeError(f"the declaring launch exited {code}: "
                                + (Path(scratch) / "stderr.txt").read_text())
@@ -78,7 +102,7 @@ def main(argv=None):
         model = args.model
         if model is None:
             model = Path(scratch) / "tiny-qwen2"
-            subprocess.run([sys.executable, "-c", TINY, str(model)], check=True)
+            subprocess.run([sys.executable, "-c", TINY, str(model)], check=True, timeout=600)
         record = Path(scratch) / "record.txt"
         env_path = os.environ.get("PYTHONPATH")
         os.environ["PYTHONPATH"] = os.pathsep.join(filter(None, [str(ROOT / "src"), env_path]))
@@ -87,18 +111,18 @@ def main(argv=None):
             launch([sys.executable, str(args.zipapp.resolve())], arguments, model, record,
                    args.device)
         recorded = {line.strip() for line in record.read_text().splitlines() if line.strip()}
-    text = LIST.read_text()
-    header = [line for line in text.splitlines() if line.startswith("#")]
-    names = {line.strip() for line in text.splitlines()
-             if line.strip() and not line.startswith("#")}
-    stamp = (f"# {args.device}: {datetime.date.today().isoformat()}, "
+    half = PACKAGE / f"imports-{args.device}.txt"
+    before = set()
+    if half.exists():
+        before = {line.strip() for line in half.read_text().splitlines()
+                  if line.strip() and not line.startswith("#")}
+    stamp = (f"generated {datetime.date.today().isoformat()}, "
              f"python {sys.version.split()[0]}, "
-             f"{'with the zipapp' if args.zipapp else 'without the zipapp'}")
-    header = [stamp if line.startswith(f"# {args.device}:") else line for line in header]
-    merged = sorted(names | recorded)
-    LIST.write_text("\n".join(header) + "\n" + "\n".join(merged) + "\n")
+             f"{'with the zipapp' if args.zipapp else 'without the zipapp'}, "
+             f"model {args.model.name if args.model else 'the tiny one'}")
+    write_half(half, args.device, recorded, stamp)
     print(json.dumps({"device": args.device, "recorded": len(recorded),
-                      "added": len(recorded - names), "declared": len(merged)}))
+                      "added": len(recorded - before), "dropped": len(before - recorded)}))
     return 0
 
 

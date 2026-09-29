@@ -19,6 +19,18 @@ def seal_inheritance():
                 if os.get_inheritable(held): os.set_inheritable(held,False)
             except OSError: pass
 
+def reap(pid,timeout=10):
+    """Waits for a child at most `timeout` seconds, kills it where it has not exited by
+    then, and answers its exit code. Every wait on a child goes through here, so a
+    child that never exits costs the bound and never the caller's whole run."""
+    deadline=time.monotonic()+timeout
+    while time.monotonic()<deadline:
+        done,status=os.waitpid(pid,os.WNOHANG)
+        if done: return os.waitstatus_to_exitcode(status)
+        time.sleep(.02)
+    os.kill(pid,signal.SIGKILL); _,status=os.waitpid(pid,0)
+    return os.waitstatus_to_exitcode(status)
+
 class LocalProcess:
     def __init__(self,stderr,*,module='python_spu.server',arguments=('--cpu-experiment',),channels=2,command=None):
         pairs=[socket.socketpair(socket.AF_UNIX,socket.SOCK_SEQPACKET) for _ in range(channels)]
@@ -45,14 +57,15 @@ class LocalProcess:
                    'payload':{'kind':'directive','body':body}})
         self.ordinal+=1
         return life.receive()
-    def close(self):
-        for channel in self.channels: channel.sock.close()
-        deadline=time.monotonic()+10
-        while time.monotonic()<deadline:
-            done,status=os.waitpid(self.pid,os.WNOHANG)
-            if done: break
-            time.sleep(.02)
-        else:
-            os.kill(self.pid,signal.SIGKILL); _,status=os.waitpid(self.pid,0)
-        self.log.close()
-        return os.waitstatus_to_exitcode(status)
+    def close(self,timeout=10,keep_open=False):
+        """Closes the channels, waits for the child through `reap`, and answers its
+        exit code. Where `keep_open`, the channels stay open until the child is
+        reaped, for a child meant to exit on its own that would read a closed channel
+        as its peer gone, and close once it has."""
+        if not keep_open:
+            for channel in self.channels: channel.sock.close()
+        try:
+            return reap(self.pid,timeout)
+        finally:
+            for channel in self.channels: channel.sock.close()
+            self.log.close()

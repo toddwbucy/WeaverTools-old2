@@ -69,12 +69,14 @@ lock's sha256 and the tree digest, which covers the interpreter, its standard li
 and every installed package. The packages are installed into the interpreter's own
 prefix rather than a venv, so the prefix is the whole of what runs.
 
-`src/python_spu/imports.txt` is the import set the serving process is judged against.
-Both halves are generated, the CPU half with `--device cpu` and the CUDA half on a card
-with the real model: `scripts/declare_imports.py --device cuda --zipapp <file> --model
-<dir>`. The zipapp carries the list as it stood when it was built, so rebuild it after
-the list changes. One built before the CUDA half faults on a device after its first
-generation, exit 3, torch loading triton's modules in its first forward.
+The serving process is judged against the union of two halves,
+`src/python_spu/imports-cpu.txt` and `imports-cuda.txt`, each generated on its device
+with the real model: `scripts/declare_imports.py --device cpu|cuda --zipapp <file>
+--model <dir>`, the CUDA one on a card. A regeneration replaces its device's half whole,
+so a module the new run does not load leaves the half. The zipapp carries both halves as
+they stood when it was built, so rebuild it after either changes. One built before the
+CUDA half landed faults on a device after its first generation, exit 3, torch loading
+triton's modules in its first forward.
 
 ## Files
 

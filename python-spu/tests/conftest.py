@@ -18,7 +18,11 @@ def oracle():
         assert line,'Rust oracle terminated'
         return json.loads(line)
     yield call
-    process.stdin.close(); process.wait(timeout=10)
+    process.stdin.close()
+    try: process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        process.kill(); process.wait()
+        raise
 
 @pytest.fixture
 def instruction():

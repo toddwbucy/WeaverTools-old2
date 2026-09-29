@@ -25,7 +25,7 @@ def gpu_status():
     if args.device!='cuda': return None
     return subprocess.check_output(['nvidia-smi',
         '--query-gpu=index,uuid,name,driver_version,memory.used,memory.total',
-        '--format=csv'],text=True).strip()
+        '--format=csv'],text=True,timeout=60).strip()
 gpu_before=gpu_status()
 identity=[{'role':'system','content':[{'type':'text','text':'You are a concise, helpful assistant.'}]}]
 delta=[{'role':'user','content':[{'type':'text','text':'What is 2 + 2? Answer in one short sentence.'}]}]

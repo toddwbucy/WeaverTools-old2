@@ -4,6 +4,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -14,7 +15,10 @@ from python_spu.transport import ChannelFault, Closed
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 import build_zipapp  # noqa: E402
+import declare_imports  # noqa: E402
 import tree_digest  # noqa: E402
+from python_spu import import_set  # noqa: E402
+from python_spu.client import reap  # noqa: E402
 
 
 def rust_spu():
@@ -40,7 +44,7 @@ def test_expf_resolves_to_the_libm_the_rust_spu_links():
     mapped = {os.path.realpath(line.split()[-1]) for line in open("/proc/self/maps")
               if re.search(r"/libm[.-][^/]*$", line.strip())}
     linked = [line for line in subprocess.run(["ldd", spu], capture_output=True, text=True,
-                                              check=True).stdout.splitlines()
+                                              check=True, timeout=60).stdout.splitlines()
               if line.strip().startswith("libm.so")]
     assert len(linked) == 1, linked
     assert mapped == {os.path.realpath(linked[0].split("=>")[1].split()[0])}, (mapped, linked)
@@ -49,7 +53,9 @@ def test_expf_resolves_to_the_libm_the_rust_spu_links():
 def serve_once(tmp_path, tiny_model, extra_environment=None):
     """A real server process through admission and one generation, with the import
     set judged as main() judges it. Answers the process's exit and stderr where it
-    died, and None where it answered the generation."""
+    died or failed an exchange, and None where it answered the generation. The
+    process is closed on every path, its channels first and then a bounded wait, so
+    a failed exchange with the process still serving cannot hang the test."""
     environment = dict(os.environ, **(extra_environment or {}))
     saved = dict(os.environ)
     os.environ.clear()
@@ -64,6 +70,7 @@ def serve_once(tmp_path, tiny_model, extra_environment=None):
         "model-binding": {"artifact": str(tiny_model), "devices": [0]},
         "residual-readout-election": False, "surprisal-election": True, "identity": identity,
         "tunable-values": {"seed": 11, "context-capacity": 256, "max-tokens-per-turn": 4}}}
+    generated = False
     try:
         answer = process.ask({"kind": "admit", "instruction": instruction})
         assert answer["payload"] == {"kind": "answer", "body": {"kind": "admitted"}}
@@ -72,19 +79,20 @@ def serve_once(tmp_path, tiny_model, extra_environment=None):
         assert decode.receive() == {"kind": "opened"}
         decode.send({"kind": "append_and_generate", "turn": "import-set-turn", "delta": [
             {"role": "user", "content": [{"type": "text", "text": "hello world"}]}]})
-        while True:
-            frame = decode.receive()
-            if frame["kind"] == "generated":
-                return None
+        while not generated:
+            generated = decode.receive()["kind"] == "generated"
     except (Closed, ChannelFault, ConnectionError, AssertionError, OSError, ValueError):
         pass
-    _, status = os.waitpid(process.pid, 0)
-    return os.waitstatus_to_exitcode(status), (tmp_path / "stderr.txt").read_text()
+    finally:
+        code = process.close()
+    if generated:
+        return None
+    return code, (tmp_path / "stderr.txt").read_text()
 
 
 def test_the_import_set_holds_through_admission_and_generation(tmp_path, tiny_model):
-    """The CPU half of the declared list covers a clean serving run. Where this fails
-    the list is stale, and scripts/declare_imports.py regenerates it for review."""
+    """The declared set covers a clean serving run on the CPU. Where this fails the
+    CPU half is stale, and scripts/declare_imports.py regenerates it for review."""
     assert serve_once(tmp_path, tiny_model) is None, (tmp_path / "stderr.txt").read_text()
 
 
@@ -115,7 +123,8 @@ def test_the_zipapp_is_reproducible_and_launches(tmp_path):
     assert "--declare-imports" in shown.stdout
     import zipfile
     names = zipfile.ZipFile(first).namelist()
-    assert "python_spu/imports.txt" in names and "python_spu/classifier.py" not in names
+    assert {"python_spu/imports-cpu.txt", "python_spu/imports-cuda.txt"} <= set(names)
+    assert "python_spu/classifier.py" not in names
 
 
 def test_the_tree_digest_reads_files_and_links_and_refuses_the_rest(tmp_path):
@@ -135,3 +144,45 @@ def test_the_tree_digest_reads_files_and_links_and_refuses_the_rest(tmp_path):
     os.mkfifo(tree / "lib" / "pipe")
     with pytest.raises(ValueError):
         tree_digest.digest(tree)
+
+
+def test_a_regenerated_half_replaces_itself_whole(tmp_path):
+    """A device's regeneration writes its half whole, so a module the new run no
+    longer records is no longer declared, unless the other half still records it.
+    Perturbation: merge the recorded names into what the half held, as the first form
+    did, and the dropped module stays allowed."""
+    cpu, cuda = tmp_path / "imports-cpu.txt", tmp_path / "imports-cuda.txt"
+    (cpu).write_text("# a header\nkept\ndropped\nshared\n")
+    declare_imports.write_half(cuda, "cuda", {"shared", "cuda_only"}, "test")
+    declare_imports.write_half(cpu, "cpu", {"kept", "shared"}, "test")
+    declared = import_set.declared([cpu.read_text(), cuda.read_text()])
+    assert declared == {"kept", "shared", "cuda_only"}, declared
+    assert "dropped" not in declared
+    assert cpu.read_text().startswith("# The modules python-spu may hold on cpu")
+
+
+def test_the_declared_set_is_the_union_of_the_committed_halves():
+    """What the process enforces is both halves and nothing else."""
+    package = ROOT / "src" / "python_spu"
+    halves = [(package / half).read_text() for half in import_set.HALVES]
+    assert import_set.DECLARED == import_set.parse(halves[0]) | import_set.parse(halves[1])
+    assert import_set.parse(halves[0]) and import_set.parse(halves[1])
+
+
+def test_reap_kills_a_child_that_outlives_its_bound():
+    """Perturbation: wait without a bound, and this test hangs."""
+    pid = os.posix_spawn("/bin/sleep", ["/bin/sleep", "60"], dict(os.environ))
+    begin = time.monotonic()
+    assert reap(pid, timeout=0.5) == -9
+    assert time.monotonic() - begin < 5
+
+
+def test_a_failed_exchange_with_the_process_serving_does_not_hang(tmp_path):
+    """An admission refused leaves the process serving, and serve_once's assertion
+    fails while it lives. It closes the channels and waits within a bound. Perturbation:
+    wait unbounded with the channels open, as the first form did, and this test hangs."""
+    begin = time.monotonic()
+    died = serve_once(tmp_path, tmp_path / "no-such-model")
+    assert died is not None, "a missing model was admitted"
+    assert time.monotonic() - begin < 60
+

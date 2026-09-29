@@ -1,13 +1,17 @@
 """The import set, per python-spu-Spec section 8.
 
 Every module the process holds after admission, and again after its first
-generation, must be one the declared list names, imports.txt beside this file. A
-module outside it faults the process: one line on standard error naming the modules
-and the stage, then an exit, which the harness meets as the SPU gone, since the
-lifecycle vocabulary has no case for an environment that loaded what it did not
-declare and a refusal would need one. Loaded is a subset of declared and not equal
-to it, because torch imports different modules on the CPU and on CUDA and some
-lazily, so the declared list is the union of a clean run of each.
+generation, must be one the declared set names. A module outside it faults the
+process: one line on standard error naming the modules and the stage, then an exit,
+which the harness meets as the SPU gone, since the lifecycle vocabulary has no case
+for an environment that loaded what it did not declare and a refusal would need one.
+
+**The declared set is two halves, one per device, and the process is judged against
+their union.** torch imports different modules on the CPU and on CUDA, and some
+lazily, so each half is a clean run on its device, imports-cpu.txt and
+imports-cuda.txt beside this file. Each is written whole by its own regeneration,
+never merged into, so a module a regeneration no longer records leaves its half,
+and is allowed only while the other half still records it.
 """
 import json
 import os
@@ -16,16 +20,29 @@ import sys
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
 
-def _read_declared():
-    # Read through the loader, so the list reads the same from the source tree and
-    # from inside the zipapp, and read once, at import, so reading it adds nothing
-    # the check itself would then have to allow.
-    loader = __loader__
-    data = loader.get_data(os.path.join(_HERE, "imports.txt"))
+HALVES = ("imports-cpu.txt", "imports-cuda.txt")
+
+
+def parse(text):
+    """A half's module names: every line that is not blank and not a comment."""
     return frozenset(
-        line.strip() for line in data.decode().splitlines()
+        line.strip() for line in text.splitlines()
         if line.strip() and not line.startswith("#")
     )
+
+
+def declared(texts):
+    """The declared set, the union of the halves' names."""
+    return frozenset().union(*(parse(text) for text in texts))
+
+
+def _read_declared():
+    # Read through the loader, so the halves read the same from the source tree and
+    # from inside the zipapp, and read once, at import, so reading them adds nothing
+    # the check itself would then have to allow. A missing half fails the import,
+    # never reads as an empty one.
+    loader = __loader__
+    return declared(loader.get_data(os.path.join(_HERE, half)).decode() for half in HALVES)
 
 
 DECLARED = _read_declared()
