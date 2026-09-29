@@ -494,6 +494,31 @@ mod tests {
         }
     }
 
+    /// **A reading the SPU rendered lands typed and renders back exactly**,
+    /// which holds only because the manifest turns on serde_json's
+    /// `float_roundtrip`. The value is a perplexity from the HeroBench run of
+    /// 2026-09-29, one of 780 readings that landed verbatim under the default
+    /// parse, which reads it as a neighbouring double that renders as
+    /// `1.4226275797516237`. Perturbation: drop the feature and this reading
+    /// and the series beside it land verbatim, and the test fails on typed.
+    #[test]
+    fn a_rendered_reading_lands_typed_and_renders_back() {
+        let pairs = [
+            pair("perplexity", "1.4226275797516235"),
+            pair("entropies", "[1.4226275797516235,0.000011356166396581102]"),
+        ];
+        let (typed, verbatim) = split("model.measurement", &pairs);
+        assert!(verbatim.is_empty(), "landed verbatim: {verbatim:?}");
+        let row = typed.measurement.as_ref().expect("typed");
+        assert_eq!(row.perplexity, Some(1.4226275797516235));
+        assert_eq!(row.entropies, Some(2));
+        let mut served = render(&typed).unwrap();
+        served.sort();
+        let mut sent = pairs.to_vec();
+        sent.sort();
+        assert_eq!(served, sent);
+    }
+
     /// Rows missing from their count are refused at read rather than served
     /// short, the one error the renderer has.
     #[test]

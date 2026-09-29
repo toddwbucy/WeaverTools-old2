@@ -20,7 +20,12 @@ weaver-types = { path = "../weaver-types" }
 weaver-traits = { path = "../weaver-traits" }
 rusqlite = { version = "0.37", features = ["bundled"], optional = true }
 postgres = { version = "0.19", optional = true }
-serde_json = { version = "1", features = ["raw_value"] }
+# `float_roundtrip` makes serde_json's float parse correctly rounded, so a
+# reading the SPU rendered parses to the value it rendered and the typed
+# landing of weaver-state-Spec section 3 can hold it typed. Without it the
+# fast parse misrounds, the rendered value differs, and the landing's
+# exactness rule sends the reading to `field` verbatim.
+serde_json = { version = "1", features = ["raw_value", "float_roundtrip"] }
 nix = { version = "0.31", features = ["socket", "fs", "uio", "user", "poll"] }
 
 # Test scaffolding only, per the operator ruling of 2026-09-22: wire
