@@ -117,9 +117,12 @@ owns it. Its shape, settled against the corpus:
 
 **Quiescence is admitted over admin.** It is administrative control of the run rather
 than work, so it rides `weaver-admin-harness-contract`, which has two initiators and one
-dial per verb already. On receipt the harness stops admitting work at the turn boundary:
-it refuses the next `turn()` its loop asks for as quiesced, in-flight forward passes and
-concurrent organ work finish, and nothing is cancelled mid-flight. **Every request
+dial per verb already. On receipt the harness stops admitting work at the exchange
+boundary: the gate exchange in flight completes with every turn its loop makes of it, no
+new exchange is admitted after the request, in-flight forward passes and concurrent
+organ work finish, and nothing is cancelled mid-flight. A loop's follow-up turns are
+therefore never refused mid-exchange, which matters because a loop such as
+`bravo_loop.py` fails its whole request when a follow-up turn refuses. **Every request
 already queued at the harness is refused as quiesced**, since the gate admits concurrent
 exchanges and the harness serialises them, each refusal returning by the path its
 request line came in on, and the harness declares the run quiesced with an empty queue.
