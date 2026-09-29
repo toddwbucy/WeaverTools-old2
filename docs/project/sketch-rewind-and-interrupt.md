@@ -132,22 +132,26 @@ boundary: the gate exchange in flight completes with every turn its loop makes o
 new exchange is admitted after the request, in-flight forward passes and concurrent
 organ work finish, and nothing is cancelled mid-flight. A loop's follow-up turns are
 therefore never refused mid-exchange, which matters because a loop such as
-`bravo_loop.py` fails its whole request when a follow-up turn refuses. **Every request
-already queued at the harness is refused as quiesced**, since the gate admits concurrent
-exchanges and the harness serialises them, each refusal returning by the path its
-request line came in on, and the harness declares the run quiesced with an empty queue.
-**The quiescence position is the last closed turn boundary together with every flush and
-elision recorded between that turn's close and the quiescence event**, so a resumption
-from it is the exact re-prefill of section 1 whenever such an edit stands. **A run with
-no closed turn has its quiescence position at its opening**, the load, and a branch from
-it starts from what that opening seated: the identity, and whatever the load restored
-where it was a restoring load, per `weaver-harness-Spec` section 6.1. **While quiesced
-the harness executes no tool**: a call the model makes in an interview turn is recorded
-and refused as quiesced, so an interview is conversation and never work. A half-written
-state is a state that never existed and is not worth interviewing. The trace records a
-quiescence event carrying the position, the wall clock instant and what was in flight
-when the request arrived, so a clean stop reads differently from a stop that caught the
-loop mid-turn.
+`bravo_loop.py` fails its whole request when a follow-up turn refuses. **A resume of
+either form takes effect at the exchange boundary too**: an admin directive may arrive
+while a turn runs, per `weaver-harness-Spec` section 3, so an interview exchange in
+flight completes under the mark before the run resumes, and no new exchange is admitted
+between the resume's arrival and its taking effect. **Every request already queued at
+the harness is refused as quiesced**, since the gate admits concurrent exchanges and the
+harness serialises them, each refusal returning by the path its request line came in on,
+and the harness declares the run quiesced with an empty queue. **The quiescence position
+is the last closed turn boundary together with every flush and elision recorded between
+that turn's close and the quiescence event**, so a resumption from it is the exact
+re-prefill of section 1 whenever such an edit stands. **A run with no closed turn has
+its quiescence position at its opening**, the load, and a branch from it starts from
+what that opening seated: the identity, and whatever the load restored where it was a
+restoring load, per `weaver-harness-Spec` section 6.1. **While quiesced the harness
+executes no tool**: a call the model makes in an interview turn is recorded and refused
+as quiesced, so an interview is conversation and never work. A half-written state is a
+state that never existed and is not worth interviewing. The trace records a quiescence
+event carrying the position, the wall clock instant and what was in flight when the
+request arrived, so a clean stop reads differently from a stop that caught the loop
+mid-turn.
 
 **The interview enters through the gate as ordinary traffic.** The gate is the sole work
 ingress and it authenticates the researcher already, so a second channel would cost a
