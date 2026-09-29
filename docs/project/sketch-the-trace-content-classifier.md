@@ -87,10 +87,16 @@ Four are weighed and one is ruled out. The table records what each is, the
 memory it takes to serve, its licence, and how it meets the seam.
 
     Candidate        What it is                                   Serve      Licence     Seam
-    ModernBERT       encoder, 149M, classify head, id2label       under 1G   Apache-2.0  as built
+    ModernBERT       encoder, 149M, classify head, id2label       under 1G   Apache-2.0  one head
     Laya             Convai, 421M, runs on a T4                   (owed)     Apache-2.0  (owed)
-    open-jev         DeBERTa-v3-large encoder                     (owed)     (owed)      as built
+    open-jev         DeBERTa-v3-large encoder                     (owed)     (owed)      one head
     Kev-0.8B / 4B    Qwen3.5-Base, LoRA r=16, pointer head        4G / 9-17G Apache-2.0  contract change
+
+**The classify seam serves one head as built.** The SPU's classify submodule admits
+one artifact and applies one softmax over its one `id2label` head, per
+`weaver-spu-Spec` section 11, so ModernBERT and open-jev meet the seam as built with
+one head only. Serving a decision per judgmental predicate takes three admitted
+classifiers or a multi-label head, and either is an act on the SPU's Spec.
 
 **ModernBERT is the first classify family the SPU carries**, per
 `weaver-spu-Spec` section 11, and `ModernBERT-base-zeroshot-v2.0` is on olympus
