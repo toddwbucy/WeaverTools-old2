@@ -779,6 +779,44 @@ fn derive_requires_and_renders_a_distinct_destination() {
     }
 }
 
+/// **A sink path carrying a control character refuses before anything is
+/// written**, per `weaver-types-Spec` section 2: a declared path carries none,
+/// and admin refuses the declaration that would otherwise be written.
+///
+/// Perturbation: remove the control-character check from `run_derive` and the
+/// derivation writes its declaration. Watched under exactly that removal.
+#[test]
+fn a_sink_path_carrying_a_control_character_refuses_and_writes_nothing() {
+    let door = Door::new();
+    std::fs::write(door.dir.join("record"), SOURCE).unwrap();
+    let out = door.dir.join("derived.toml");
+    for sink in ["/tmp/trace\n", "/tmp/tr\u{7}ace"] {
+        let result = std::process::Command::new(env!("CARGO_BIN_EXE_weaver-analysis"))
+            .arg("derive")
+            .arg(door.dir.join("record"))
+            .args([
+                "--as",
+                "diagnostic",
+                "--devices",
+                "0",
+                "--sink",
+                sink,
+                "--out",
+            ])
+            .arg(&out)
+            .output()
+            .unwrap();
+        assert!(!result.status.success(), "{sink:?} derived");
+        assert!(
+            String::from_utf8_lossy(&result.stderr).contains("control character"),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert!(!out.exists(), "{sink:?} wrote a declaration");
+        assert!(result.stdout.is_empty(), "{sink:?} printed a declaration");
+    }
+}
+
 // A child may refuse before reading stdin. Its status and stderr still decide
 // the result; only the resulting broken pipe is an expected write failure.
 fn write_signals_input(mut input: std::process::ChildStdin, record: &[u8]) {

@@ -965,7 +965,7 @@ are, and read the trace for whether the deliverable runs.
 **The four defects the live turn surfaced are closed, 2026-08-15.** Run
 identity landed first because five registered measurements join a result to a
 trace and could not: the session is the operator's and declared in
-`agent.yaml`, and the run reference is minted at the load from an instant, the
+`agent.toml`, and the run reference is minted at the load from an instant, the
 agent's name, and eight bytes of randomness, so a declaration without a
 `session` field is now refused at load. The unload's misreport of a clean
 unwind closed against the Spec's own clause. The unclosed run bracket on a

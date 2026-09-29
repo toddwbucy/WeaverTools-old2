@@ -161,6 +161,17 @@ fn run_derive(rest: &[String]) -> std::process::ExitCode {
         );
         return std::process::ExitCode::FAILURE;
     };
+    // **A sink path carrying a control character is refused before anything
+    // is written**, per `weaver-types-Spec` section 2's election that a path
+    // in a declaration carries none: every reader in the suite must agree on
+    // what a path is, and admin would refuse the declaration this writes.
+    if inputs.sink_path.chars().any(char::is_control) {
+        eprintln!(
+            "{}",
+            serde_json::json!({"analysis_refusal": "the sink path carries a control character, which weaver-types-Spec section 2 elects a declared path never carries"})
+        );
+        return std::process::ExitCode::FAILURE;
+    }
     let Ok(text) = read_stream(&trace) else {
         eprintln!(
             "{}",
