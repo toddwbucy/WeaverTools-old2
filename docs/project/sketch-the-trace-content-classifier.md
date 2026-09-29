@@ -6,7 +6,7 @@ moves into a charter or a Spec by an act of its own.
 
 **Date filed:** 2026-09-29
 
-**Landing PR:** none yet
+**Landing PR:** #738
 
 ---
 
