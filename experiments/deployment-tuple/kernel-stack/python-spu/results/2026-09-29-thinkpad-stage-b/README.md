@@ -6,6 +6,15 @@ the SPU per agent through `spu-implementations` and `agent-spu` (#734). The agen
 names the SPU that served by digest, and the turn's diagnostic replay certifies. Nothing
 belonging to karl changed.
 
+**Stage B passes on five of its six registered criteria, and the sixth is not
+measured.** The six are `PLAN.md` section 5's five pass criteria and section 6's
+replay. Criterion 4, the external listing of the served process's code mappings, was
+not taken in attempt 2, and it rests on in-process evidence only. That evidence is
+python-spu's own maps rule and a clean journal, which is not the observation the plan
+registered. A narrow attempt 3 is offered to the operator: load, one turn, the listing
+with the corrected selector, unload. If it runs, its listing joins this record and the
+pass reads whole.
+
 **Scope:**
 - one agent, karl2;
 - one turn;
@@ -39,6 +48,11 @@ is the same list.
 - `code/turn.py`, the one turn;
 - `code/replay.py`, the diagnostic replay's driver, adapted from W4a's.
 
+Each script now exits non-zero unless its outcome holds: `turn.py` unless the reply is
+`answered` with text, and `replay.py` unless `replay.closed` reads certified and the
+teardown is clean. That gate was added in review, after the run. The run's own records
+read `answered` and certified.
+
 **The copies are scrubbed of one box's paths.** `$WT` is a clean worktree at the commit
 each attempt names. `$AGENTS` is the operator's agent-configuration directory,
 `$MODELS` the operator's model directory, and `$OPERATOR` the operator's account.
@@ -60,7 +74,7 @@ Codex's passes on #741 added two more:
 - an install that recreates the prefix and holds it to the lock
   (`python-spu/scripts/installed_set.py`), since `pip install -r` removes nothing.
 
-## Attempt 2 (python-spu at 850720e, the stack at b62812e): pass
+## Attempt 2 (python-spu at 850720e, the stack at b62812e): pass on five criteria, criterion 4 not measured
 
 `attempt2-ATTEMPT.md`, with the sequence as run in `attempt2-COMMANDS.md`.
 
@@ -69,9 +83,9 @@ Codex's passes on #741 added two more:
 | The load answers, and admin's log names the SPU | pass: `outcome: ready`, `spu: python /opt/weaver/python-spu/python-spu.pyz` |
 | The load event's `stack` names what served | pass: python-spu.pyz 8197449f, worker 84991e7a and weaver-gate 488babf3, each equal to the installed file. The pyz rebuilt from 850720e is the same bytes |
 | One turn, with its request and measurement in the trace | pass: "The answer is four." The weights_hash is be1a0490, blake3 over the safetensors directory, recomputed independently |
-| Only admitted code is mapped | the external listing was not taken, a pgrep defect recorded in `attempt2-ATTEMPT.md`. The in-process maps rule passed at admission and after the first generation, and the journal carries no violation and no fault |
+| Only admitted code is mapped | **not measured**: the external listing was not taken, a pgrep defect recorded in `attempt2-ATTEMPT.md`. In-process evidence only: python-spu's maps rule passed at admission and after the first generation, and the journal carries no violation and no fault |
 | The card is empty after the unload | pass |
-| Nothing of karl's changed | pass: three before and after pairs, each diffing empty |
+| Nothing of karl's changed, required beside the criteria | pass: three before and after pairs, each diffing empty |
 | The diagnostic replay | **certified** |
 
 **The recreated prefix:**
@@ -84,8 +98,8 @@ Codex's passes on #741 added two more:
   its preconditions in #726 is that the matrix read which SPU served from the load
   event's `stack`, and this run shows that field is recorded.
 - **More than one turn.** A multi-turn replay's re-feed is #515's arrangement question.
-- **An external maps listing of the served process.** The in-process rule stands in for
-  it.
+- **Criterion 4, an external maps listing of the served process.** It was not measured.
+  The in-process rule is evidence toward it, not the observation registered.
 
 ## Found for #726
 

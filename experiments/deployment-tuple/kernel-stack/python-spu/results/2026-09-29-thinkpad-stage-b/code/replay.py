@@ -15,6 +15,13 @@ Usage, after `weaver-analysis derive ... --out <deposit>/derived.toml`:
 
     unshare -Ur python3 replay.py <source trace> <deposit>/derived.toml <deposit> \
         --bin <b62812e target/release> --spu /opt/weaver/python-spu/python-spu.pyz
+
+It exits 0 only when `replay.closed` reads certified and the teardown is clean: the
+leave answered, the worker and the member exited 0 and the temporary directory is gone.
+Anything else exits 1, each reason named on stderr: another closing outcome, a turn
+stopped before the close, a failed leave, a process that exited non-zero, a directory
+left behind. `--stand-only` exits 1 unless coordination bound and both processes stood.
+The stage B run of 2026-09-29 predates this gate, and its record reads certified.
 """
 import argparse
 import array
@@ -26,6 +33,7 @@ import shutil
 import signal
 import socket
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -40,6 +48,30 @@ def sha256(path):
     return digest.hexdigest()
 
 
+def verdict(result, teardown, stand_only):
+    """Every reason the run is not a certified replay torn down cleanly, as lines."""
+    failures = []
+    if stand_only:
+        failures += [f"{name} is false" for name, held in result["standing"].items()
+                     if not held]
+    else:
+        closing = result["closing"]
+        if closing["kind"] != "replay.closed":
+            failures.append(f"the replay stopped before it closed: {closing['kind']} "
+                            f"{json.dumps(closing.get('payload'))}")
+        else:
+            kind = (closing.get("payload") or {}).get("outcome", {}).get("kind")
+            if kind != "certified":
+                failures.append(f"the replay closed {kind}, not certified")
+        if teardown.get("leave_error") is not None:
+            failures.append(f"the leave failed: {teardown['leave_error']}")
+        if any(code != 0 for code in teardown["codes"]):
+            failures.append(f"a process exited non-zero: {teardown['codes']}")
+    if not teardown["directory_removed"]:
+        failures.append("the temporary directory was left behind")
+    return failures
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("source_trace", type=pathlib.Path)
@@ -51,6 +83,17 @@ def main():
                         help="stand the worker and the member, check both sockets, tear down; "
                              "no enter, so no SPU and no GPU")
     args = parser.parse_args()
+    teardown = {}
+    result = run(args, teardown)
+    failures = verdict(result, teardown, args.stand_only)
+    for failure in failures:
+        print(f"replay: {failure}", file=sys.stderr, flush=True)
+    return 1 if failures else 0
+
+
+def run(args, teardown):
+    """Stands, preloads, enters and waits, filling `teardown` as it tears down, and
+    answers what stood or how the replay closed. Judging either is `verdict`'s."""
     if os.getuid() != 0:
         raise SystemExit("run inside unshare -Ur: the preload door admits uid 0 alone")
     for path in (args.source_trace, args.derived, args.spu, args.bin / "worker",
@@ -115,10 +158,11 @@ def main():
             # which it probes and refuses by name where no stream socket is.
             time.sleep(2)
             member = processes[-1]
-            print(json.dumps({"coordination": coord.exists(),
-                              "worker_alive": worker.poll() is None,
-                              "member_alive": member.poll() is None}), flush=True)
-            return
+            standing = {"coordination": coord.exists(),
+                        "worker_alive": worker.poll() is None,
+                        "member_alive": member.poll() is None}
+            print(json.dumps(standing), flush=True)
+            return {"standing": standing}
 
         instruction = config["spu-instruction"]
         instruction["decoder"]["refeed-permission"] = True
@@ -176,7 +220,7 @@ def main():
             if terminal:
                 (E / "replay-terminal.json").write_text(json.dumps(terminal[-1], indent=2) + "\n")
                 print(json.dumps(terminal[-1]), flush=True)
-                break
+                return {"closing": terminal[-1]}
             progress = (len(rows), rows[-1]["kind"] if rows else None)
             if progress != last:
                 print("replay progress:", progress, flush=True)
@@ -193,6 +237,7 @@ def main():
             try:
                 exchange({"kind": "leave"}, 1)
             except Exception as error:
+                teardown["leave_error"] = str(error)
                 print("leave failed:", error, flush=True)
         if wire:
             wire.close()
@@ -209,10 +254,12 @@ def main():
         for log in logs:
             log.close()
         shutil.rmtree(directory)
+        teardown["codes"] = [p.returncode for p in processes]
+        teardown["directory_removed"] = not directory.exists()
         (E / "replay-cleanup.json").write_text(json.dumps({
-            "temporary_directory_removed": not directory.exists(),
-            "process_exit_codes": [p.returncode for p in processes]}) + "\n")
+            "temporary_directory_removed": teardown["directory_removed"],
+            "process_exit_codes": teardown["codes"]}) + "\n")
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

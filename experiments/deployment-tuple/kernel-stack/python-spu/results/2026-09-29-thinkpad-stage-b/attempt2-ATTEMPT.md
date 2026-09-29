@@ -1,10 +1,12 @@
-# Stage B, attempt 2, 2026-09-29: python-spu served one turn, and the replay certified
+# Stage B, attempt 2, 2026-09-29: python-spu served one turn and the replay certified, with criterion 4 not measured
 
 The operator loaded karl2 through `/etc/weaver/admin-stageb` at 11:57:48 CDT. The
 worker (84991e7a), weaver-admin (55529678) and weaver-gate (488babf3) are the b62812e
 builds. karl2's SPU is python-spu.pyz (8197449f), built from 850720e, #741's merge,
 into a prefix recreated by main's README block. One turn ran and answered. The unload
-left the card empty. The diagnostic replay of the turn certified.
+left the card empty. The diagnostic replay of the turn certified. Five of the six
+registered criteria were measured and passed. Criterion 4, the external maps listing,
+was not measured, and rests on in-process evidence only.
 
 ## What changed since attempt 1
 
@@ -48,11 +50,11 @@ weaver-state only, and the replay ran the b62812e build.
    and the measurement's `weights_hash` is be1a0490. That value is blake3 over
    `/opt/weaver/models/qwen2.5-0.5b-instruct-safetensors` by python-spu's own walk,
    recomputed independently here: the directory's hash, not a GGUF's. Pass.
-4. **The maps listing was not taken.** `pgrep -u weaver-karl2 -f python-spu.pyz`
+4. **Not measured: the maps listing was not taken.** `pgrep -u weaver-karl2 -f python-spu.pyz`
    matched two processes, the worker (2777435), whose argv names the zipapp, and the SPU
    (2777439). awk was handed `/proc/2777435 2777439/maps` and read nothing, so
    `maps-code.txt` is empty. The defect is in the command the executor wrote.
-   **The standing evidence is in-process.** python-spu's `enforce` judges every
+   **What stands is in-process evidence, which is not the observation registered.** python-spu's `enforce` judges every
    executable file-backed mapping at admission and again after the first generation,
    and exits 3 on a foreign one. The process served past both, and the journal carries
    no `loaded_code_violation`, no import violation and no `python_spu_fault`. The
