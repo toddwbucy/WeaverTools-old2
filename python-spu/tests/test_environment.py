@@ -316,16 +316,21 @@ def test_the_zipapp_is_the_same_bytes_under_any_interpreter(tmp_path):
 
 def test_code_outside_the_environment_is_foreign():
     """The maps rule, on a listing: code from the prefix and the admitted system
-    objects passes, and code from a temporary directory, an unlisted system object, a
-    deleted file or a memfd is foreign. A data mapping is not judged. Perturbations:
-    judge data mappings too, and the safetensors mapping is foreign; drop the deleted
-    clause, and the deleted object under the prefix passes."""
+    objects passes, the NVIDIA management library the card run mapped among them, and
+    code from a temporary directory, a sibling directory sharing the prefix's name, an
+    unlisted system object, a deleted file or a memfd is foreign. A data mapping is not
+    judged. Perturbations: judge data mappings too, and the safetensors mapping is
+    foreign; drop the deleted clause, and the deleted object under the prefix passes;
+    drop the separator from the root check, and the sibling passes; drop libnvidia-*
+    from the admitted names, and the management library is foreign."""
     roots = ("/opt/weaver/python-spu",)
     listing = "\n".join([
         "7f00-7f01 r-xp 00000000 00:00 1 /opt/weaver/python-spu/lib/libpython3.14.so",
         "7f01-7f02 r-xp 00000000 00:00 1 /usr/lib/libc.so.6",
         "7f02-7f03 r-xp 00000000 00:00 1 /usr/lib/libcuda.so.615.71.09",
         "7f03-7f04 r-xp 00000000 00:00 1 /usr/lib/libstdc++.so.6.0.36",
+        "7f03-7f04 r-xp 00000000 00:00 1 /usr/lib/libnvidia-ml.so.615.71.09",
+        "7f03-7f04 r-xp 00000000 00:00 1 /opt/weaver/python-spu-evil/x.so",
         "7f04-7f05 r--s 00000000 00:00 1 /opt/weaver/models/m/model.safetensors",
         "7f05-7f06 r--p 00000000 00:00 1 /tmp/data.bin",
         "7f06-7f07 r-xp 00000000 00:00 1 /tmp/abc/cuda_utils.cpython-314-x86_64-linux-gnu.so",
@@ -338,6 +343,7 @@ def test_code_outside_the_environment_is_foreign():
     assert loaded_code.foreign(listing, roots) == sorted([
         "/tmp/abc/cuda_utils.cpython-314-x86_64-linux-gnu.so",
         "/usr/lib/libfoo.so.1",
+        "/opt/weaver/python-spu-evil/x.so",
         "/opt/weaver/python-spu/lib/x.so (deleted)",
         "/memfd:jit (deleted)",
     ])
