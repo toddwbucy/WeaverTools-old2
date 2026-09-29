@@ -166,7 +166,7 @@ def prose_and_drafts(reasoning, answer, program):
         outside = outside[:block.start()] + "\n" + outside[block.end():]
     prose += [l for l in (reasoning or "").splitlines() if l.strip()]
     prose += [l for l in outside.splitlines() if l.strip() and not l.strip().startswith("```")
-              and l.strip() not in program_lines]
+              and (final is not None or l.strip() not in program_lines)]
     return prose, drafts
 
 
