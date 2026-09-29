@@ -15,9 +15,9 @@ per tool call and the benchmark's published results are single-shot programs. Th
 are the rusty runs of `herobench-agents-2026-09-29` on the shared bulk store,
 Qwen2.5-7B-Instruct on the Rust SPU playing HeroBench's level-1 crafting tasks. Its
 counted pair, session `s-rusty-b`, holds 978 positions of the kinds section 2 names over
-40 turns. More runs are owed before the split can hold out whole tasks on both sides,
-three tasks being too few, and each is named by its deposit when it lands. The
-single-shot corpus of the label split is not used to fit or to score.
+40 turns. That is one session of two runs, which admits no hold-out under section 4, so
+several more sessions are owed before any fitting, each named by its deposit when it
+lands. The single-shot corpus of the label split is not used to fit or to score.
 
 ## 2. Positions and the input at each
 
@@ -58,10 +58,13 @@ source is recorded beside them. Who labels is the first open cell.
 
 ## 4. The split
 
-**By task, never by line or by result set.** Every run's play of one task falls on one
-side, so neither a completion's lines nor a task's text straddle the split. The split is
-recorded in the deposit before any candidate is fitted, and a score on positions a
-candidate was fitted on is not reported.
+**By session, never by task, run, line or result set.** Every session falls whole on one
+side, because the input at a position accumulates the session's earlier contributions,
+per section 2 and `weaver-trace-PRD` section 3.2, so two tasks of one run or of one
+session share inputs and cannot sit on different sides. Today's corpus is one session of
+two runs and admits no hold-out, and the sessions owed in section 1 land before any
+fitting. The split is recorded in the deposit before any candidate is fitted, and a
+score on positions a candidate was fitted on is not reported.
 
 ## 5. Fitting and thresholds
 
@@ -77,32 +80,43 @@ split.
 The candidates are compared per predicate on precision and recall over the held-out
 positions. No figure pooled across the predicates is reported.
 
+**Each predicate needs 20 positives and 20 negatives on each side of the split**, the
+plan's number: below it a single label moves precision or recall by more than five
+points, which is larger than the differences the comparison is for. A predicate short of
+it on either side is excluded from section 8's worst-predicate selection, its shortfall
+is reported by side, and more labelled sessions are owed before it enters.
+
 ## 7. Serving
 
 **Per answer.** Each candidate's latency is measured at the window's bound, on the
-device it would serve from, over the held-out positions, and its 99th percentile is
-recorded. A candidate whose 99th percentile reaches `CLASSIFY_ANSWER_BOUND_MS` in
-`weaver-harness`, 30,000 ms, is not eligible however it scores, because the harness
-serialises classify asks and retires the classify arm after an answer past the bound.
+device it would serve from, over the held-out positions, and its maximum is recorded,
+not a percentile. A candidate with any observed answer at or past
+`CLASSIFY_ANSWER_BOUND_MS` in `weaver-harness`, 30,000 ms, is not eligible however it
+scores, because one answer past the bound retires the classify arm for the rest of the
+run, per `weaver-harness-Spec` section 6.
 
 **Per turn.** The routing stage asks about every position a turn produces, one ask at a
 time, the harness blocking on each, so a turn's classify cost is the sum over its
 positions. In the counted pair the positions per turn run to a median of 4 and a maximum
-of 132, and each candidate's per-turn cost is recorded at that maximum as well as the
-median. The number the per-turn cost is held to is the third open cell.
+of 132, and each candidate's per-turn cost is taken at the maximum positions per turn
+the traces show, the median recorded beside it. The number the per-turn cost is held to
+is the third open cell.
 
 The classifier's own deployment tuple is recorded beside its results, and it serves off
 the decoder's weights and off the decoder's device.
 
 ## 8. The selection rule, declared before fitting
 
-1. A candidate is eligible when its per-answer 99th percentile is under 30,000 ms and
-   its per-turn cost at the maximum is within the budget the third cell sets.
+1. A candidate is eligible when every observed answer is under 30,000 ms and its
+   per-turn cost at the maximum positions per turn is within the budget the third cell
+   sets.
 2. Among eligible candidates, the one selected has the highest held-out F1 on its worst
-   predicate. Precision and recall are reported beside it for every predicate.
+   predicate, over the predicates that meet section 6's label support. Precision and
+   recall are reported beside it for every predicate.
 3. A tie on that figure goes to the lower per-turn cost at the maximum.
-4. If no candidate is eligible, none is selected, and the report says which bound each
-   one missed.
+4. If no candidate is eligible, or no predicate meets section 6's label support, none is
+   selected, and the report says which bound each candidate missed and which predicates
+   fell short.
 
 The rule stands as merged, and the held-out results are read only after the split, the
 bound, the thresholds and the budget are recorded.
