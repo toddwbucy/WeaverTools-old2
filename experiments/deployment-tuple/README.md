@@ -5,7 +5,7 @@
 **Date filed:** 2026-09-25
 **Document ID:** `deployment-tuple-PRD`
 **Editorial:** Per the Working Rules.
-**Landing PR:** #716
+**Landing PR:** #742
 
 ---
 
@@ -97,8 +97,17 @@ yields identical hashes, and identical hashes reproduce, shown by Run 4 of issue
 And forcing the reduction library's kernel selection off its measured default moves
 bits, which is the mechanism named as the leading candidate for the one unexplained
 divergence in the record. **Owed:** the forced dispatch path, issue #485, blocked on an
-environment passthrough. Marker: the first shown, the second owed. Arm:
-`kernel-stack/`.
+environment passthrough. A third claim: a second implementation of the SPU is another
+kernel stack. python-spu, serving the weights the Rust native engine serves with the
+precision held as `python-spu-Spec` sections 5 and 7 hold it, is predicted to move bits
+against it, and that Spec's section 7 labels each departing position substantive or
+numerical by lines stated before any comparison run. It is falsified by the two
+serving identical fields at every position the comparison reads. Its precondition, that
+python-spu serves an agent under admin and its turn certifies under the diagnostic
+replay, is shown on thinkpad, with the external maps listing resting on in-process
+evidence. **Owed:** the comparison, epic #726. Marker: the first shown, the second
+owed, the third's precondition shown and its comparison owed. Arm: `kernel-stack/`,
+probe `kernel-stack/python-spu/`.
 
 **Batch composition, b.** Batch shape moves bits because reduction order moves with
 it, and that is the literature's result rather than this program's. The baseline
@@ -128,7 +137,7 @@ probe-set envelope, the arm having run on one stimulus. Marker: shown, olympus
 | weights | control only | `weights/` | none yet |
 | precision | shown | `precision/` | none yet, the olympus run predates this tree |
 | device | shown, third claim owed | `device/` | `blackwell/`, held |
-| kernel stack | first claim shown | `kernel-stack/` | none yet |
+| kernel stack | first claim shown, third's precondition shown | `kernel-stack/` | `python-spu/`, the precondition in [`results/2026-09-29-thinkpad-stage-b/`](kernel-stack/python-spu/results/2026-09-29-thinkpad-stage-b/README.md) |
 | batch composition | declared | `batch/` | none yet, a build |
 | sampler and seed | shown | `seed/` | none yet, the olympus run predates this tree |
 | none, the instrument | held on olympus and thinkpad | `baseline/` | `determinism-matrix/`, results in [`results/2026-09-28-blackwell/`](baseline/determinism-matrix/results/2026-09-28-blackwell/README.md) |
