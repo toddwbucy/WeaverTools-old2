@@ -147,16 +147,19 @@ loop mid-turn.
 ingress and it authenticates the researcher already, so a second channel would cost a
 socket and a contract for nothing. **An interview turn is marked positively, by its
 request, and timing marks nothing.** **The harness mints the interrupt's identifier and
-returns it in the quiescence verb's answer over admin**, single-use per interrupt, and
-the client's request line carries it. The harness admits an interview request only while
-the run is quiesced and only when its line carries that identifier, and refuses it
-otherwise, so the mark binds to the quiescence act rather than to any principal the gate
-admits, on the pattern of `weaver-admin-harness-contract`'s "what crosses is a
-capability rather than a name", and while the run is quiesced it refuses a request
-carrying none as quiesced. **Every turn the harness starts while the run is quiesced
-carries the interrupt's identifier on `turn.started`**, however many turns the loop
-makes of one request, since a loop may make several turns of one client request. The
-field that carries it on the request line is a Spec election owed, the line's format
+returns it in the quiescence verb's answer over admin**, and the client's request line
+carries it. The identifier is an unguessable bearer capability: 128 bits drawn from the
+harness's entropy source, single-use per interrupt, and returned only in that answer, so
+holding it is the proof of having asked for the quiescence, which is what the mark needs
+because the gate admits any authorised principal. The harness admits an interview
+request only while the run is quiesced and only when its line carries that identifier,
+and refuses it otherwise, so the mark binds to the quiescence act rather than to any
+principal the gate admits, on the pattern of `weaver-admin-harness-contract`'s "what
+crosses is a capability rather than a name", and while the run is quiesced it refuses a
+request carrying none as quiesced. **Every turn the harness starts while the run is
+quiesced carries the interrupt's identifier on `turn.started`**, however many turns the
+loop makes of one request, since a loop may make several turns of one client request.
+The field that carries it on the request line is a Spec election owed, the line's format
 being the Spec's under `weaver-gate-world-contract`. The trace is turn-bracketed, so the
 turn is the unit that is marked, and a replay presents the run with the interview or
 without it by that mark on every turn, and a count reports both.
