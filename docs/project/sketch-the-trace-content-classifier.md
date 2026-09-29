@@ -77,14 +77,18 @@ what makes a line a position. The task's outcome is a position too, the run's tu
 `score` event, which belongs to the computable share, joins game state with no model and
 is read by no candidate, so it needs no input.
 
-**The input at a position is what the model was shown**: the turn's rendered prompt,
-which `model.request` carries as `rendered`, and the generation cut at the span's end,
-and for a span on `message.tool_result` the result's content cut at the span. Nothing
-any organ authored about the generation is in it, not the measurement, not the per-token
-fields, not the classify seam's request and output, not the score, because none of it
-was presented to the model, and a kind added to the record later is excluded by the same
-rule. The span cut on the presented generation is the causal cut, so nothing the model
-had not yet written at the span is in its input.
+**The input at a position is what the model was shown**, the full effective context as
+`weaver-trace-PRD` section 3.2 reads it: "the accumulation of the recorded contributions
+under their recorded template identities, from the identity prefix the run's opening
+records", through this turn's contribution, which `model.request` carries as `rendered`,
+with every recorded flush and elision replayed as section 3.1 requires. To that the
+generation is added cut at the span's end, and for a span on `message.tool_result` the
+result's content cut at the span. Nothing any organ authored about the generation is in
+it, not the measurement, not the per-token fields, not the classify seam's request and
+output, not the score, because none of it was presented to the model, and a kind added
+to the record later is excluded by the same rule. The span cut on the presented
+generation is the causal cut, so nothing the model had not yet written at the span is in
+its input.
 
 Measured 2026-09-29 over HeroBench's own results, 3,882 single-shot completions
 whose text is on disk, segmented into positions (prose lines, draft lines,
