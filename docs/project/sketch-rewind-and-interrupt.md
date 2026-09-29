@@ -143,11 +143,13 @@ the run is quiesced and only when its line carries that identifier, and refuses 
 otherwise, so the mark binds to the quiescence act rather than to any principal the gate
 admits, on the pattern of `weaver-admin-harness-contract`'s "what crosses is a
 capability rather than a name", and while the run is quiesced it refuses a request
-carrying none as quiesced. `turn.started` carries the identifier for the turn it admits.
-The field that carries it on the request line is a Spec election owed, the line's format
+carrying none as quiesced. **Every turn the harness starts while the run is quiesced
+carries the interrupt's identifier on `turn.started`**, however many turns the loop
+makes of one request, since a loop may make several turns of one client request. The
+field that carries it on the request line is a Spec election owed, the line's format
 being the Spec's under `weaver-gate-world-contract`. The trace is turn-bracketed, so the
 turn is the unit that is marked, and a replay presents the run with the interview or
-without it by that mark alone, and a count reports both.
+without it by that mark on every turn, and a count reports both.
 
 **Cleanliness is read rather than inferred.** The run's closing event carries
 the list of interrupt identifiers it saw, the empty list being the positive
@@ -207,7 +209,8 @@ carries the toggle.
   such ask today. `weaver-analysis-Spec` section 4's `--through` cuts at a turn's close
   and excludes a between-turn edit, and the preload's election is the state contract's.
 - `weaver-trace-Spec` section 3: the quiescence event, the branch event with its world
-  disposition, the turn marker, the closing list.
+  disposition, the interrupt's identifier on every turn started while quiesced, the
+  closing list.
 - `weaver-types-Spec`: the quiescence condition beside `AgentState` in the observation's
   answer, the state's cases unchanged.
 - The web contract: the branch lineage as presented, and the fog toggle's agent-side
