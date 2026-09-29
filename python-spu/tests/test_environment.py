@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import build_zipapp  # noqa: E402
 import declare_imports  # noqa: E402
 import tree_digest  # noqa: E402
-from python_spu import import_set  # noqa: E402
+from python_spu import import_set, loaded_code  # noqa: E402
 from python_spu.client import reap  # noqa: E402
 
 
@@ -312,3 +312,78 @@ def test_the_zipapp_is_the_same_bytes_under_any_interpreter(tmp_path):
     assert pinned.read_bytes() == (tmp_path / "system.pyz").read_bytes()
     import zipfile
     assert {i.compress_type for i in zipfile.ZipFile(pinned).infolist()} == {zipfile.ZIP_STORED}
+
+
+def test_code_outside_the_environment_is_foreign():
+    """The maps rule, on a listing: code from the prefix and the admitted system
+    objects passes, and code from a temporary directory, an unlisted system object, a
+    deleted file or a memfd is foreign. A data mapping is not judged. Perturbations:
+    judge data mappings too, and the safetensors mapping is foreign; drop the deleted
+    clause, and the deleted object under the prefix passes."""
+    roots = ("/opt/weaver/python-spu",)
+    listing = "\n".join([
+        "7f00-7f01 r-xp 00000000 00:00 1 /opt/weaver/python-spu/lib/libpython3.14.so",
+        "7f01-7f02 r-xp 00000000 00:00 1 /usr/lib/libc.so.6",
+        "7f02-7f03 r-xp 00000000 00:00 1 /usr/lib/libcuda.so.615.71.09",
+        "7f03-7f04 r-xp 00000000 00:00 1 /usr/lib/libstdc++.so.6.0.36",
+        "7f04-7f05 r--s 00000000 00:00 1 /opt/weaver/models/m/model.safetensors",
+        "7f05-7f06 r--p 00000000 00:00 1 /tmp/data.bin",
+        "7f06-7f07 r-xp 00000000 00:00 1 /tmp/abc/cuda_utils.cpython-314-x86_64-linux-gnu.so",
+        "7f07-7f08 r-xp 00000000 00:00 1 /usr/lib/libfoo.so.1",
+        "7f08-7f09 r-xp 00000000 00:00 1 /opt/weaver/python-spu/lib/x.so (deleted)",
+        "7f09-7f0a r-xp 00000000 00:00 1 /memfd:jit (deleted)",
+        "7f0a-7f0b r-xp 00000000 00:00 0 [vdso]",
+        "7f0b-7f0c rwxp 00000000 00:00 0 ",
+    ])
+    assert loaded_code.foreign(listing, roots) == sorted([
+        "/tmp/abc/cuda_utils.cpython-314-x86_64-linux-gnu.so",
+        "/usr/lib/libfoo.so.1",
+        "/opt/weaver/python-spu/lib/x.so (deleted)",
+        "/memfd:jit (deleted)",
+    ])
+
+
+def test_a_clean_process_maps_no_foreign_code():
+    """The test process itself, in the locked environment, maps nothing foreign."""
+    assert loaded_code.foreign_now() == []
+
+
+def test_code_loaded_from_outside_faults_the_process(tmp_path, tiny_model):
+    """The perturbation section 8 names for the maps rule: a shared object copied out
+    of the environment and loaded at startup, as a compiler's output would be, faults
+    the process at admission, naming it, and it never answers. Perturbation: drop the
+    code check from enforce, and the process admits."""
+    source = Path(loaded_code.prefixes()[-1]).joinpath(
+        "lib", "python3.14", "site-packages", "markupsafe")
+    built = next(source.glob("_speedups*.so"))
+    site = tmp_path / "site"
+    site.mkdir()
+    # Loaded as an extension module rather than through ctypes, whose import in
+    # this interpreter opens a descriptor before the package counts what it
+    # inherited, which would fault the process for another reason first.
+    (site / "sitecustomize.py").write_text(
+        "import importlib.util\n"
+        f"copy = {str(tmp_path / 'throwaway.so')!r}\n"
+        f"with open({str(built)!r}, 'rb') as source, open(copy, 'wb') as target:\n"
+        "    target.write(source.read())\n"
+        "spec = importlib.util.spec_from_file_location('_speedups', copy)\n"
+        "spec.loader.exec_module(importlib.util.module_from_spec(spec))\n")
+    path = os.pathsep.join([str(site), os.environ.get("PYTHONPATH", "")])
+    died = serve_once(tmp_path, tiny_model, {"PYTHONPATH": path})
+    assert died is not None, "code loaded from outside the environment was served past"
+    code, stderr = died
+    assert code == 3, (code, stderr)
+    fault = json.loads(stderr.strip().splitlines()[-1])
+    assert fault["loaded_code_violation"] == "admission"
+    assert str(tmp_path / "throwaway.so") in fault["foreign"]
+
+
+def test_the_environment_carries_no_triton_and_torch_compiles_nothing():
+    """The lock leaves triton out, the environment holds none, and the package turns
+    torch's native DSL registration off before torch is imported."""
+    import importlib.util
+    import python_spu
+    assert importlib.util.find_spec("triton") is None
+    for lock in ("requirements.lock", "requirements-test.lock"):
+        assert not re.search(r"^triton==", (ROOT / lock).read_text(), re.M), lock
+    assert python_spu and os.environ["TORCH_DISABLE_NATIVE_JIT"] == "1"

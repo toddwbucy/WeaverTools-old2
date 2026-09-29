@@ -1,8 +1,13 @@
 # python-spu's test environment, the serving one and pytest, per python-spu-Spec section 8. Compiled from requirements-test.in with
 # constraints.txt by `uv pip compile requirements-test.in -c constraints.txt --generate-hashes
-# --python-version 3.14 --python-platform x86_64-manylinux_2_28 --no-header`, this
-# header then restored. Install with
-#   pip install --require-hashes --no-deps -r requirements-test.lock
+# --python-version 3.14 --python-platform x86_64-manylinux_2_28 --no-header
+# --no-emit-package triton`, this header then restored. **triton is left out on
+# purpose**: torch lists it, and where it is installed torch's dynamo imports it and
+# torch._native routes an outer-product bmm, Qwen2's rotary frequencies, through a
+# triton kernel, which compiles triton's driver helper with the system gcc at the
+# first forward on a device. Eager CUDA serves without it, per python-spu-Spec
+# section 8. Install with
+#   pip install --require-hashes --no-deps --only-binary=:all: -r requirements-test.lock
 # into a venv of the pinned interpreter:
 #   python-build-standalone 20260924, CPython 3.14.7, x86_64-unknown-linux-gnu, install_only
 #   https://github.com/astral-sh/python-build-standalone/releases/download/20260924/cpython-3.14.7+20260924-x86_64-unknown-linux-gnu-install_only.tar.gz
@@ -1044,22 +1049,6 @@ transformers==5.17.0 \
     # via
     #   -c constraints.txt
     #   -r requirements.in
-triton==3.8.0 \
-    --hash=sha256:1b84e7d512490ba529111260fa6f7cad8b254a6bb5fbdf41d5ef9a5e57f52d0a \
-    --hash=sha256:1f0497218e26b7d79773ad9c2a3fa3b539ee69f587a13fac2e552b1d322a8015 \
-    --hash=sha256:1f6b48d0591929a3867973acac3dccd4e058585f91bfb41022de496c9ffab304 \
-    --hash=sha256:372285307d4c44ee74cee32de0b4f04bd157e071427e38c6f4ee3e3beb2194f4 \
-    --hash=sha256:387dae4cb0089a7b6ba1a428ae0782b65c4c58f57d94617cb22ca8593d8ccbca \
-    --hash=sha256:398f4b009c7ab08ed9aeb1d1282dee822945b53f399a5e12a4fecb643cf2007d \
-    --hash=sha256:68988ac85d5e7086baeda0ddc175af9667db7529b3c5e11a5c0601b8bef2200a \
-    --hash=sha256:6d914c52f89dc942b1819db959e7c07a5999f678ec760f677625c706b7e0d743 \
-    --hash=sha256:74217bb56ed8692759227758e4c4b3bd2d608a209c1a7a081bf361fb4c2c1bf9 \
-    --hash=sha256:a9c404c69ed4a39e8ec632eaf6b9fe058a060bf98979c177f6ef666f06bb8d50 \
-    --hash=sha256:b7004666652f500ed854a86988e4b3d69d247188b5d2092b5df1e44f4a954099 \
-    --hash=sha256:e91ffa46d095b252248297292dd22bcbacd53a125a0c2eefbbbf74925a320bc3
-    # via
-    #   -c constraints.txt
-    #   torch
 typer==0.27.2 \
     --hash=sha256:269b7eb9d3c202ca84b4bc9618cb04ebb43d3d4d1e567e4c768607232c05f945 \
     --hash=sha256:b3a5fc4342d5fc8fda8fc3010b1cf117e9249aab7fae800c2eff62fd3842d97d
@@ -1083,3 +1072,6 @@ typing-inspection==0.4.4 \
     # via
     #   -c constraints.txt
     #   pydantic
+
+# The following packages were excluded from the output:
+# triton

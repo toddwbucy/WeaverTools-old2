@@ -23,7 +23,7 @@ pytest -q
 ```
 
 The suite runs in the locked test environment, `requirements-test.lock` installed with
-`--require-hashes --no-deps` into a venv of the pinned interpreter.
+`--require-hashes --no-deps --only-binary=:all:` into a venv of the pinned interpreter.
 
 The suite runs on the CPU. It covers Rust wire comparisons, seed derivation, rendering,
 measurement arithmetic, state transitions, tiny-model forwards, rollback, classifier
@@ -62,7 +62,7 @@ echo "5539eaf1de20bd9b5f43ea11c3c1f84cbac74fe927ac050318a9210c022618cb  $T" | sh
 sudo mkdir -p /opt/weaver/python-spu
 sudo tar -xzf $T -C /opt/weaver/python-spu --strip-components=1
 sudo /opt/weaver/python-spu/bin/python3.14 -m pip install --require-hashes --no-deps \
-    -r requirements.lock
+    --only-binary=:all: -r requirements.lock
 sudo /opt/weaver/python-spu/bin/python3.14 scripts/build_zipapp.py \
     --output /opt/weaver/python-spu/python-spu.pyz
 python3 scripts/tree_digest.py /opt/weaver/python-spu
@@ -80,9 +80,11 @@ The serving process is judged against the union of two halves,
 with the real model: `scripts/declare_imports.py --device cpu|cuda --zipapp <file>
 --model <dir>`, the CUDA one on a card. A regeneration replaces its device's half whole,
 so a module the new run does not load leaves the half. The zipapp carries both halves as
-they stood when it was built, so rebuild it after either changes. One built before the
-CUDA half landed faults on a device after its first generation, exit 3, torch loading
-triton's modules in its first forward.
+they stood when it was built, so rebuild it after either changes. A zipapp older than
+its halves faults where a module the old list lacks is loaded, exit 3. The process also
+faults, exit 3, on any code mapped from outside the environment, per python-spu-Spec
+section 8: the lock carries no triton, and torch's native kernel compilation is turned
+off.
 
 ## Files
 
