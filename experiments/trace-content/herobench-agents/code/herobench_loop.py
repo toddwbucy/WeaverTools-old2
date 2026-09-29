@@ -139,6 +139,9 @@ def drive(seat, text):
             # The pyworker maps every turn error to RuntimeError, so the cause
             # rides the verdict's predicate and a fault-ended run reads as one.
             ended = " ".join(str(error).split())[:200]
+            # The harness opened and recorded the refused turn, so it counts,
+            # and the verdict's figure matches the record's turns.
+            turns += 1
             won = _won(task["url"], task["character"], task["kind"], task["target"])
             break
         turns += 1
