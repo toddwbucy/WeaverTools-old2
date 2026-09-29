@@ -1,3 +1,4 @@
+mod sampler;
 mod session;
 use std::io::{self, BufRead};
 use serde::{Serialize, de::DeserializeOwned};
@@ -10,6 +11,11 @@ fn run(v: Value, raw_body: &str) -> Result<Value, String> {
     let body = v["body"].clone();
     match v["op"].as_str().unwrap_or("") {
         "session" => session::run(&body),
+        "rng" => sampler::rng(&v),
+        "select" => sampler::select(&v),
+        "generation" => sampler::generation(&v),
+        "probs" => sampler::probs(&v),
+        "weighted" => sampler::weighted(&v),
         "seed" => Ok(json!(weaver_spu::sampling::derived_seed(
             v["seed"].as_u64().ok_or("seed")?,
             &weaver_types::TurnKey(v["turn"].as_str().ok_or("turn")?.into()),
