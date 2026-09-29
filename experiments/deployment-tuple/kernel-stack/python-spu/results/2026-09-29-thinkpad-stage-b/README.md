@@ -36,26 +36,29 @@ thinkpad under `/mnt/bulk-store/weaver-testing/`. It holds:
 - the diagnostic replay's trace and logs.
 
 None of it is copied here. `deposit.sha256` beside this note gives every deposit file's
-sha256 and path, except this report's own copy, `RESULT.md`. The deposit's `SHA256SUMS`
-is the same list.
+sha256 and path, except this report's own copy, `RESULT.md`, and `attempt3-2026-09-29/`,
+which is prepared and not yet run. The deposit's `SHA256SUMS` is the same list.
 
 **What is here:**
 - this report;
 - `PLAN.md`, the plan and its criteria as registered before attempt 1, which is also
   attempt 1's command sequence;
 - `attempt1-ATTEMPT.md` and `attempt2-ATTEMPT.md`;
-- `attempt2-COMMANDS.md`, attempt 2's sequence as run;
-- `code/turn.py`, the one turn;
-- `code/replay.py`, the diagnostic replay's driver, adapted from W4a's.
+- `attempt2-COMMANDS.md`, attempt 2's sequence as run.
 
-Each script now exits non-zero unless its outcome holds: `turn.py` unless the reply is
-`answered` with text, and `replay.py` unless `replay.closed` reads certified and the
-teardown is clean. That gate was added in review, after the run. The run's own records
-read `answered` and certified.
+The scripts the commands run are the probe's own code, `../../code/`:
+- `turn.py`, the one turn;
+- `replay.py`, the diagnostic replay's driver, adapted from W4a's.
+
+`python-spu-probe-Spec` states what each enforces. Each now exits non-zero unless its
+outcome holds: `turn.py` unless the reply is `answered` with text, and `replay.py`
+unless `replay.closed` reads certified and the teardown is clean. That gate was added
+in review, after the run, and the run's own records read `answered` and certified.
 
 **The copies are scrubbed of one box's paths.** `$WT` is a clean worktree at the commit
 each attempt names. `$AGENTS` is the operator's agent-configuration directory,
 `$MODELS` the operator's model directory, and `$OPERATOR` the operator's account.
+`code/` in the plan and the commands is the probe's `code/`.
 
 ## Attempt 1 (b62812e): the load failed, and the failure was a finding
 
@@ -85,8 +88,21 @@ Codex's passes on #741 added two more:
 | One turn, with its request and measurement in the trace | pass: "The answer is four." The weights_hash is be1a0490, blake3 over the safetensors directory, recomputed independently |
 | Only admitted code is mapped | **not measured**: the external listing was not taken, a pgrep defect recorded in `attempt2-ATTEMPT.md`. In-process evidence only: python-spu's maps rule passed at admission and after the first generation, and the journal carries no violation and no fault |
 | The card is empty after the unload | pass |
-| Nothing of karl's changed, required beside the criteria | pass: three before and after pairs, each diffing empty |
+| Nothing of karl's changed, required beside the criteria | pass: the `untouched` and `admin-log` pairs diff empty. The karl pair differs in its first line only, the capture's own timestamp, shown below, and its other lines are equal |
 | The diagnostic replay | **certified** |
+
+The karl pair, whose sha256 values in `deposit.sha256` differ for this reason alone:
+
+```
+$ diff attempt2-2026-09-29/karl-before.txt attempt2-2026-09-29/karl-after.txt
+1c1
+< 2026-09-29 11:50:29 CDT
+---
+> 2026-09-29 11:58:51 CDT
+```
+
+Attempt 1's karl pair differs the same way, 10:38:02 against 10:40:10. From attempt 3
+on, the capture time is written to a file of its own.
 
 **The recreated prefix:**
 - `installed_set.py` exits 0 against the lock (9aa7e037);

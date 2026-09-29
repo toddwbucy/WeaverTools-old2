@@ -17,10 +17,11 @@ Usage, after `weaver-analysis derive ... --out <deposit>/derived.toml`:
         --bin <b62812e target/release> --spu /opt/weaver/python-spu/python-spu.pyz
 
 It exits 0 only when `replay.closed` reads certified and the teardown is clean: the
-leave answered, the worker and the member exited 0 and the temporary directory is gone.
-Anything else exits 1, each reason named on stderr: another closing outcome, a turn
-stopped before the close, a failed leave, a process that exited non-zero, a directory
-left behind. `--stand-only` exits 1 unless coordination bound and both processes stood.
+leave answered `left`, the worker and the member exited 0 on their own within the grace
+after it and the temporary directory is gone. Anything else exits 1, each reason named
+on stderr: another closing outcome, a turn stopped before the close, a leave refused or
+unanswered, a process that had to be signalled, a process that exited non-zero, a
+directory left behind. `--stand-only` exits 1 unless coordination bound and both processes stood.
 The stage B run of 2026-09-29 predates this gate, and its record reads certified.
 """
 import argparse
@@ -48,6 +49,45 @@ def sha256(path):
     return digest.hexdigest()
 
 
+LEFT = {"kind": "answer", "body": {"kind": "left"}}
+GRACE = 10  # seconds each process has to exit on its own after a clean leave
+
+
+def leave_failure(answer):
+    """None where the leave was answered `left`, and otherwise what was answered."""
+    payload = answer.get("payload") if isinstance(answer, dict) else answer
+    if payload == LEFT:
+        return None
+    return f"the leave was answered {json.dumps(payload)}"
+
+
+def stop(processes, grace):
+    """Waits up to `grace` seconds for every process to exit on its own, then signals
+    only those still running, the group first and a kill after ten more seconds.
+    Answers the pids it had to signal."""
+    deadline = time.monotonic() + grace
+    for process in processes:
+        try:
+            process.wait(timeout=max(0.0, deadline - time.monotonic()))
+        except subprocess.TimeoutExpired:
+            pass
+    signalled = []
+    for process in reversed(processes):
+        if process.poll() is not None:
+            continue
+        signalled.append(process.pid)
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+    return signalled
+
+
 def verdict(result, teardown, stand_only):
     """Every reason the run is not a certified replay torn down cleanly, as lines."""
     failures = []
@@ -65,6 +105,9 @@ def verdict(result, teardown, stand_only):
                 failures.append(f"the replay closed {kind}, not certified")
         if teardown.get("leave_error") is not None:
             failures.append(f"the leave failed: {teardown['leave_error']}")
+        if teardown.get("signalled"):
+            failures.append(f"a process did not exit on its own after the leave and was "
+                            f"signalled: {teardown['signalled']}")
         if any(code != 0 for code in teardown["codes"]):
             failures.append(f"a process exited non-zero: {teardown['codes']}")
     if not teardown["directory_removed"]:
@@ -233,24 +276,21 @@ def run(args, teardown):
     finally:
         if "cancel" in locals():
             cancel.set()
+        left = False
         if entered:
             try:
-                exchange({"kind": "leave"}, 1)
+                teardown["leave_error"] = leave_failure(exchange({"kind": "leave"}, 1))
             except Exception as error:
                 teardown["leave_error"] = str(error)
-                print("leave failed:", error, flush=True)
+            left = teardown["leave_error"] is None
+            if not left:
+                print("leave failed:", teardown["leave_error"], flush=True)
         if wire:
             wire.close()
-        for process in reversed(processes):
-            try:
-                os.killpg(process.pid, signal.SIGTERM)
-            except ProcessLookupError:
-                pass
-            try:
-                process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait()
+        # Only after a clean leave is a process expected to exit on its own, so only
+        # then is there a grace to wait out. Otherwise each is signalled at once.
+        signalled = stop(processes, GRACE if left else 0)
+        teardown["signalled"] = signalled if left else []
         for log in logs:
             log.close()
         shutil.rmtree(directory)
@@ -258,7 +298,8 @@ def run(args, teardown):
         teardown["directory_removed"] = not directory.exists()
         (E / "replay-cleanup.json").write_text(json.dumps({
             "temporary_directory_removed": teardown["directory_removed"],
-            "process_exit_codes": teardown["codes"]}) + "\n")
+            "process_exit_codes": teardown["codes"],
+            "signalled": signalled}) + "\n")
 
 
 if __name__ == "__main__":

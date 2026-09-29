@@ -39,10 +39,12 @@ compiles and loads no code at runtime".
 
 ## Nothing else changed
 
-Taken before (10:38:02) and after (10:40:10), each pair diffing empty:
+Taken before (10:38:02) and after (10:40:10). The `untouched` pair diffs empty. The karl
+pair differs in its first line only, which is those two capture times, and its other
+lines are equal:
 
-- `karl-before.txt` and `karl-after.txt`: `weaver-worker@karl.service` inactive, and no
-  `/run/weaver-karl`.
+- `karl-before.txt` and `karl-after.txt`: below the timestamp, `weaver-worker@karl.service`
+  inactive, and no `/run/weaver-karl`, in both.
 - `untouched-before.sha256` and `untouched-after.sha256`, 36 lines each: the sha256 of
   `/etc/weaver/admin/*`, `/opt/weaver/bin/*` and `/opt/weaver/lib/*`, karl's declaration
   a2a03d10, karl's trace by size and mtime (3,839,610,101 bytes), and admin's own log

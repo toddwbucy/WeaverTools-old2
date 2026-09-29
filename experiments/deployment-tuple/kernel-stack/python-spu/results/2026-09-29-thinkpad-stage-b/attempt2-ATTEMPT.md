@@ -103,10 +103,21 @@ does not record it. The clean exit above is the executor's reading after the run
 
 ## Nothing else changed
 
-Three pairs, each diffing empty:
+Three pairs. The `untouched` and `admin-log` pairs diff empty. The karl pair differs in
+its first line only, which is the capture's own timestamp, and its other lines are
+equal:
 
-- `karl-before.txt` (11:50:29) and `karl-after.txt`: `weaver-worker@karl.service`
-  inactive, and no `/run/weaver-karl`.
+```
+$ diff karl-before.txt karl-after.txt
+1c1
+< 2026-09-29 11:50:29 CDT
+---
+> 2026-09-29 11:58:51 CDT
+```
+
+- `karl-before.txt` and `karl-after.txt`: below the timestamp, `weaver-worker@karl.service`
+  inactive, and no `/run/weaver-karl`, in both. From attempt 3 on, the timestamp is
+  written to a file of its own, so the pair can diff empty.
 - `untouched-before.sha256` and `untouched-after.sha256`, 35 lines each:
   `/etc/weaver/admin/*`, `/opt/weaver/bin/*`, `/opt/weaver/lib/*`, karl's declaration
   a2a03d10, and karl's trace by size and mtime (3,839,610,101 bytes).
