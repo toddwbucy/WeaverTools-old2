@@ -10,8 +10,14 @@ import subprocess
 import sys
 import time
 import tomllib
-from python_spu.client import LocalProcess
-from python_spu.engine import DTYPE
+
+# The package from this tree, for this process and for the SPU children it launches, as
+# scripts/declare_imports.py reaches it, so the README's command runs as written.
+ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT/'src'))
+os.environ['PYTHONPATH']=os.pathsep.join(filter(None,[str(ROOT/'src'),os.environ.get('PYTHONPATH')]))
+from python_spu.client import LocalProcess  # noqa: E402
+from python_spu.engine import DTYPE  # noqa: E402
 
 parser=argparse.ArgumentParser()
 parser.add_argument('artifact',type=Path)
