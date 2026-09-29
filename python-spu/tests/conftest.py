@@ -1,8 +1,12 @@
 import json
+import os
 import subprocess
 from pathlib import Path
 import pytest
 ROOT=Path(__file__).resolve().parents[1]
+# The child processes the tests spawn import python_spu from this tree: the locked
+# environment holds the third-party packages alone, python-spu shipping as its zipapp.
+os.environ['PYTHONPATH']=os.pathsep.join(filter(None,[str(ROOT/'src'),os.environ.get('PYTHONPATH')]))
 @pytest.fixture(scope='session')
 def oracle():
     executable=ROOT/'oracle/target/debug/python-spu-oracle'

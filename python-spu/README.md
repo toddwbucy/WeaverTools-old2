@@ -22,6 +22,9 @@ cargo build --manifest-path oracle/Cargo.toml --locked
 pytest -q
 ```
 
+The suite runs in the locked test environment, `requirements-test.lock` installed with
+`--require-hashes --no-deps` into a venv of the pinned interpreter.
+
 The suite runs on the CPU. It covers Rust wire comparisons, seed derivation, rendering,
 measurement arithmetic, state transitions, tiny-model forwards, rollback, classifier
 scoring, Unix packet segmentation, Rust and Python transport, and the child process's
@@ -45,6 +48,32 @@ set a deterministic cuBLAS workspace configuration before the child starts. Name
 card with `CUDA_VISIBLE_DEVICES`. A report goes to the run's deposit on the shared bulk
 store, not into this tree.
 
+## Installing it on a box
+
+The operator's steps, root being needed for `/opt/weaver`. The interpreter is the one
+`requirements.lock`'s header names, by release, URL and sha256:
+
+```sh
+tar -xzf cpython-3.14.7+20260924-x86_64-unknown-linux-gnu-install_only.tar.gz \
+    -C /opt/weaver/python-spu --strip-components=1
+/opt/weaver/python-spu/bin/python3.14 -m pip install --require-hashes --no-deps \
+    -r requirements.lock
+python3 scripts/build_zipapp.py --output /opt/weaver/python-spu/python-spu.pyz
+python3 scripts/tree_digest.py /opt/weaver/python-spu
+```
+
+The zipapp's first line names `/opt/weaver/python-spu/bin/python3.14`. Admin serves it
+to an agent through `spu-implementations` and `agent-spu`, per
+`docs/crates/weaver-admin/weaver-admin-Spec.md` section 9. The box facts record the
+lock's sha256 and the tree digest, which covers the interpreter, its standard library
+and every installed package. The packages are installed into the interpreter's own
+prefix rather than a venv, so the prefix is the whole of what runs.
+
+`src/python_spu/imports.txt` is the import set the serving process is judged against.
+Its CPU half is generated, and its CUDA half is pending a GPU run of the real model:
+`scripts/declare_imports.py --device cuda --zipapp <file> --model <dir>`. Until that
+run lands, the process refuses to serve on a device, faulting at admission.
+
 ## Files
 
 - `src/python_spu/`: serving, the protocol, the model engine, sampling and the local
@@ -52,6 +81,10 @@ store, not into this tree.
 - `tests/`: the compatibility and behaviour tests.
 - `oracle/`: the Rust program that answers the suite with the Rust code's results.
 - `scripts/smoke.py`: the trained-model process test.
+- `scripts/build_zipapp.py`, `scripts/tree_digest.py`, `scripts/declare_imports.py`: the
+  one file admin serves, the installed tree's digest, and the import set's generator.
+- `requirements*.in`, `requirements*.lock`, `constraints.txt`: the hash-locked
+  environments and the proven set they are compiled against.
 
 ## Not yet shown
 

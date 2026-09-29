@@ -8,6 +8,7 @@ import socket
 import sys
 import time
 import pytest
+from python_spu.client import seal_inheritance
 from python_spu.transport import Channel
 from python_spu.wire import dump
 
@@ -19,6 +20,7 @@ def child(tmp_path):
     actions=[(os.POSIX_SPAWN_DUP2,copies[0],3),(os.POSIX_SPAWN_DUP2,copies[1],4),
              (os.POSIX_SPAWN_DUP2,log.fileno(),2)]
     actions += [(os.POSIX_SPAWN_CLOSE,fd) for fd in copies]
+    seal_inheritance()
     pid=os.posix_spawn(sys.executable,[sys.executable,'-m','python_spu.server','--cpu-experiment'],
                        dict(os.environ),file_actions=actions)
     for fd in copies: os.close(fd)

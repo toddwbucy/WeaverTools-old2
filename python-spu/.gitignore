@@ -8,3 +8,4 @@ oracle/target/
 models/
 .hf-cache/
 results/
+python-spu.pyz

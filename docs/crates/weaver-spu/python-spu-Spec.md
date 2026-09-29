@@ -92,13 +92,15 @@ bit for bit.
                          the suite with the Rust code's own results
       scripts/           the model smoke test and the build of the one file below
 
-**It ships as one file.** The build packs `src/python_spu/` into a zipapp with the
-standard library's `zipapp` module, its first line naming the pinned interpreter by
-absolute path, and admin's configuration names that file for each agent it serves. A
-launcher importing a package from elsewhere would leave the package out of the hash the
-harness takes, so two runs of different code could report one provenance. The zipapp
-holds no third-party package: the engine is imported from the environment, whose
-installed tree section 8 digests. The file is built, not committed.
+**It ships as one file.** `scripts/build_zipapp.py` packs `src/python_spu/`, the
+classifier left out, into one zip archive behind a first line naming the pinned
+interpreter by absolute path, and admin's configuration names that file for each agent
+it serves. Its entries are sorted and dated 1980-01-01 with fixed modes, so one tree
+always builds one file and the file's digest names the code rather than the moment of
+the build. A launcher importing a package from elsewhere would leave the package out of
+the hash the harness takes, so two runs of different code could report one provenance.
+The zipapp holds no third-party package: the engine is imported from the environment,
+whose installed tree section 8 digests. The file is built, not committed.
 
 **The oracle depends on the workspace crates at a pinned commit and on no copy of
 them.** It is a Rust program outside the workspace, so it is not a member and its
@@ -129,10 +131,8 @@ short of:
 - Section 1: admission refuses an instruction carrying a `classify` member, answering
   `artifact_unreadable` (`server.py`), where section 1 has the member accepted and left
   unread.
-- Section 2: it installs as a package with entry-point scripts, not as one zipapp, so a
-  launcher's digest would stand for the implementation. It also carries an experimental
-  ModernBERT classifier and its entry point, which section 1 scopes out of this
-  implementation.
+- Section 2: the tree still carries an experimental ModernBERT classifier and its entry
+  point, which section 1 scopes out of this implementation. The zipapp leaves it out.
 - Section 3 and `weaver-harness-spu-decode-contract`: a cancel arriving during a
   generation is consumed and never answered, the generation's close being sent without
   the cancel exchange's `at_rest` close (`server.py`), so a harness waiting on the
@@ -149,10 +149,12 @@ short of:
   and it samples in pure Python at about 120 ms a token over a Qwen2.5 vocabulary on
   thinkpad, the softmax's glibc `expf` over every logit and the partition over every
   index being most of it.
-- Section 8: its manifest carries version ranges and no hashes, the interpreter is a
-  floor rather than a pin, `pydantic` is in the core, the Python `tokenizers` it has run
-  under is 0.23.2 rather than the release built on the 0.21.4 crate, nothing digests the
-  installed tree, and there is no import-set test.
+- Section 8: `pydantic` is still in the core, the wire's models going through it until
+  the oracle proves the wire, which is its own act. The import set's CUDA half is
+  pending a GPU run of the real model, so the process refuses to serve on a device until
+  it lands.
+- Section 3.1, the `tokenize` row: the operation is unbuilt, so the tokenizer's
+  equivalence with the Rust side's is unproven until it lands.
 
 **The list names the gaps known at the carry, and it is not a walk.** Three of them were
 found by the review of the carry itself. The hardening act walks every exchange and
@@ -232,7 +234,7 @@ joins the walk in the act that moves the pin to it.
 | `residency`: `promote_stop_conditions`, `StopSet` | `stops`, over supplied stop inputs |
 | `residency`: `Headroom`, `AdmitRefusal` | the wire rows of section 3 for the refusals. The headroom judgment needs a device, per the `gpu` row |
 | `residency`: `Residency` and its methods, `Admission` and its accessors, `Resident`'s `model`, `open_session`, `declared_eos` and `stop_set`, `LoadedModel` | excluded from the oracle: each needs a loaded model or a device. The process tests and the contract rows of section 3 |
-| `residency`: `Resident::tokenize`, `Resident::detokenize` | `tokenize`, a mirror. Both reach the native engine's `tokenize` and `detokenize`, which are `pub(crate)` and need a loaded model, so the operation calls `tokenizers` 0.21.4, the version `weaver-spu` links, with the two calls `native.rs` makes, `encode(text, false)` and `decode(ids, false)`, against the artifact's `tokenizer.json`. This implementation pins the Python `tokenizers` release built on the 0.21.4 crate, so both sides run one tokenizer, and the operation compares both directions on the rendered prefix and every delta |
+| `residency`: `Resident::tokenize`, `Resident::detokenize` | `tokenize`, a mirror. Both reach the native engine's `tokenize` and `detokenize`, which are `pub(crate)` and need a loaded model, so the operation calls `tokenizers` 0.21.4, the version `weaver-spu` links, with the two calls `native.rs` makes, `encode(text, false)` and `decode(ids, false)`, against the served artifact's `tokenizer.json`, and compares both directions on the rendered prefix and every delta. This implementation runs the Python `tokenizers` 0.23.2 the lock pins, which `transformers` 5.17.0 requires, so the two sides run two releases and the operation is the proof of their equivalence on the artifacts served, a divergence being a finding against the engine's version. Section 7's check that each generation's input token identifiers are equal on both sides is the backstop on the prompts a comparison actually runs |
 | `sampling`: `Disposition`, `is_frozen`, `Knobs`, `EffectiveKnobs`, `SessionParameters`, `EffectiveSessionParameters`, `tunable_names`, `resolve`, `KnobRefusal` | `knobs`: resolution against supplied tunable values, and each refusal |
 | `sampling`: `derived_seed` | `seed`, and section 8.5's test vectors |
 | the native engine's `sample` | `generation`, `probs`, `select`, `weighted` and `rng`, mirrors, per section 5: it needs a loaded model, so the operations run the code it runs at the pinned revisions. `generation` is candle's `LogitsProcessor` with the engine's penalty over a whole generation, `probs` the probability vector's bits, `select` the whole index order `select_nth_unstable_by` leaves, `weighted` rand's `WeightedIndex` over scripted words, and `rng` the generator's words |
@@ -481,34 +483,64 @@ the run that prompted them.
 
 ## 8. The environment
 
-**Every package is pinned to an exact version and a hash.** The build installs from a
-lock that carries a hash for every file, and an install that meets a file without one
-refuses. A range, `torch>=2` or `transformers>=5,<6`, is not a pin, and the prototype's
-ranges are replaced by the lock.
+**Every package is pinned to an exact version and a hash.**
+`python-spu/requirements.lock` carries a hash for every file, compiled from
+`requirements.in` against `constraints.txt`, the set the prototype's GPU smoke ran on
+thinkpad on 2026-09-28, so every transitive version is one that has run and none is
+chosen fresh. It installs with `pip install --require-hashes --no-deps`, which refuses a
+file without a hash and resolves nothing. `requirements-test.lock` is the same set and
+pytest. torch 2.14.0's wheel is PyPI's own, and it brings its own CUDA runtime, cuBLAS
+and cuDNN, distinct from the CUDA the Rust stack builds against, which the lock's header
+records.
 
-**The interpreter is pinned.** One CPython version per build, named in the lock. A build
-under another interpreter is another build.
+**The interpreter is pinned by release and digest.** python-build-standalone 20260924,
+CPython 3.14.7, whose archive URL and sha256 the lock's header names, placed at
+`/opt/weaver/python-spu`, where agent identities can read and run it. A build under
+another interpreter is another build. It links the system glibc dynamically, and section
+5's claim rests on that: `tests/test_environment.py` reads the `libm` the process maps
+once the sampler has loaded `expf` and requires it to be the one `ldd` names for the
+Rust SPU's binary.
 
 **The installed tree is digested, because a lock states what should be installed and not
-what is.** The digest is taken over the environment's site-packages directory: its
-files' paths relative to it, sorted, each with its sha256, a symbolic link refused. It
-is recorded beside the lock's hash, and with the SPU binary's digest it is what section
-1 names as what served.
+what is.** The packages install into the interpreter's own prefix, not a venv, and the
+digest is taken over that whole prefix, the interpreter binary and its standard library
+included, by `scripts/tree_digest.py`: every entry's path relative to the prefix,
+sorted, a file by its sha256 and a symbolic link by the text it points to, never
+followed, anything else refused. The prefix holds links of its own, `bin/python3` among
+them, so a link is recorded rather than refused. The digest is recorded beside the
+lock's hash, and with the SPU binary's digest it is what section 1 names as what served.
 
 **The core imports the standard library alone, and the engine is the one addition.** The
 channel ends, the wire, the session, the seed and the sampler's arithmetic are standard
-library code. The engine is the package set the serving version requires, `torch` and
-`transformers` for the first. `blake3` stays, because the Rust SPU's weights hash is
-blake3 and admission computes it. `pydantic` is dropped once the oracle proves the wire,
-since a second model of the payloads beside the oracle's would be a transcription the
-suite exists to avoid.
+library code. The engine is the package set the serving version requires, `torch`,
+`transformers` and `tokenizers` for the first. `blake3` stays, because the Rust SPU's
+weights hash is blake3 and admission computes it. `pydantic` is dropped once the oracle
+proves the wire, since a second model of the payloads beside the oracle's would be a
+transcription the suite exists to avoid, and until then it is in the lock.
 
-**The import set is a test, and serving depends on it.** After the model loads, the
-modules the process holds are compared with the declared set, and a module outside the
-set refuses to serve. The test that proves it is perturbation-verified: an extra import
-added at load must fail it, and the suite records that it does. This is the Python
-counterpart of the rule of 2026-09-23 that nothing enters a binary unless operations
-require it.
+**The import set is judged, and serving depends on it.** After admission and again after
+the first generation, since torch loads some modules only in its first forward, every
+module the process holds must be one `src/python_spu/imports.txt` declares. Loaded is a
+subset of declared and not equal to it, because torch imports different modules on the
+CPU and on CUDA, so the list is the union of a clean run of each, through the real
+serving path launched with `-m` and from the zipapp, generated by
+`scripts/declare_imports.py` and reviewed. A module outside it faults the process: one
+line on standard error naming the modules and the stage, then an exit, which the harness
+meets as the SPU gone, since the lifecycle vocabulary has no case for an environment
+that loaded what it did not declare. The generator runs the server with
+`--declare-imports`, which records instead of judging and exits once the first
+generation is recorded, so the mode never serves. The suite proves the rule by
+perturbation: a module imported at startup through `sitecustomize` faults the process at
+admission, naming the module. This is the Python counterpart of the rule of 2026-09-23
+that nothing enters a binary unless operations require it.
+
+**The process counts its inherited descriptors before any module opens one of its own.**
+python-build-standalone's `ctypes` opens the interpreter's own executable at import,
+inheritable, where the system build opens nothing, and the sampler and the transport
+import `ctypes` before adoption. So the package records the descriptors it holds when it
+is first imported, and adoption judges that record, section 3's descriptors 3 and 4 and
+nothing else. A test driver spawning a child marks its own descriptors close-on-exec
+first, since the same descriptor in a Python parent would otherwise reach the child.
 
 ## 9. The versions
 
