@@ -14,6 +14,7 @@ import argparse
 import datetime
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -39,7 +40,10 @@ HEADER = """\
 
 def write_half(path, device, recorded, stamp):
     """Writes a device's half whole: the header and the recorded names, sorted. What
-    the file held before is not read, so a name this run did not record is gone."""
+    the file held before is not read, so a name this run did not record is gone. An
+    empty record is refused, never written as a half that declares nothing."""
+    if not recorded:
+        raise ValueError(f"the {device} run recorded no modules, so no half is written")
     Path(path).write_text(HEADER.format(device=device, stamp=stamp)
                           + "".join(f"{name}\n" for name in sorted(recorded)))
 
@@ -97,6 +101,21 @@ def main(argv=None):
     parser.add_argument("--zipapp", type=Path)
     parser.add_argument("--model", type=Path)
     args = parser.parse_args(argv)
+    # Each input path is read before any launch, by lstat and stat rather than by
+    # exists(), which answers False for a path it may not look at, so a missing,
+    # misspelled or unreadable one refuses by name instead of reaching a launch.
+    try:
+        if args.zipapp is not None and not stat.S_ISREG(os.stat(args.zipapp).st_mode):
+            raise ValueError(f"--zipapp {args.zipapp} is not a file")
+        if args.model is not None and not stat.S_ISDIR(os.stat(args.model).st_mode):
+            raise ValueError(f"--model {args.model} is not a directory")
+        return _declare(args)
+    except (OSError, ValueError) as error:
+        print(f"declare_imports: {error}", file=sys.stderr)
+        return 1
+
+
+def _declare(args):
     arguments = ["--cpu-experiment"] if args.device == "cpu" else []
     with tempfile.TemporaryDirectory() as scratch:
         model = args.model
@@ -112,10 +131,11 @@ def main(argv=None):
                    args.device)
         recorded = {line.strip() for line in record.read_text().splitlines() if line.strip()}
     half = PACKAGE / f"imports-{args.device}.txt"
-    before = set()
-    if half.exists():
+    try:
         before = {line.strip() for line in half.read_text().splitlines()
                   if line.strip() and not line.startswith("#")}
+    except FileNotFoundError:
+        before = set()
     stamp = (f"generated {datetime.date.today().isoformat()}, "
              f"python {sys.version.split()[0]}, "
              f"{'with the zipapp' if args.zipapp else 'without the zipapp'}, "

@@ -185,3 +185,99 @@ def test_a_failed_exchange_with_the_process_serving_does_not_hang(tmp_path):
     died = serve_once(tmp_path, tmp_path / "no-such-model")
     assert died is not None, "a missing model was admitted"
     assert time.monotonic() - begin < 60
+
+
+def refused(command, **kwargs):
+    """Runs a script and answers whether it exited non-zero having printed nothing."""
+    done = subprocess.run(command, capture_output=True, text=True, timeout=120, **kwargs)
+    return done.returncode != 0 and not done.stdout.strip(), done
+
+
+def unreadable(path):
+    """Makes a directory this process may not read, and answers it, where the process
+    is not root, which reads every directory."""
+    if os.geteuid() == 0:
+        pytest.skip("root reads every directory")
+    path.mkdir(parents=True)
+    (path / "inside").write_text("x\n")
+    os.chmod(path, 0o000)
+    return path
+
+
+def test_the_tree_digest_is_never_of_nothing(tmp_path):
+    """Each root that is not a readable tree exits non-zero and prints no digest.
+    Perturbations: drop the lstat check, and the link to a directory is digested; drop
+    the walk's onerror, and the tree with an unreadable subdirectory is digested
+    without it; drop the empty check, and the empty directory is digested."""
+    (tmp_path / "file").write_text("x\n")
+    (tmp_path / "empty").mkdir()
+    (tmp_path / "target").mkdir()
+    (tmp_path / "target" / "a").write_text("a\n")
+    os.symlink(tmp_path / "target", tmp_path / "link")
+    (tmp_path / "partial").mkdir()
+    (tmp_path / "partial" / "a").write_text("a\n")
+    roots = {"absent": tmp_path / "absent", "a file": tmp_path / "file",
+             "empty": tmp_path / "empty", "a link to a directory": tmp_path / "link"}
+    roots["0o000"] = unreadable(tmp_path / "walled")
+    unreadable(tmp_path / "partial" / "walled")
+    roots["an unreadable subdirectory"] = tmp_path / "partial"
+    try:
+        for label, root in roots.items():
+            ok, done = refused([sys.executable, str(ROOT / "scripts" / "tree_digest.py"),
+                                str(root)])
+            assert ok, (label, done.returncode, done.stdout, done.stderr)
+    finally:
+        os.chmod(tmp_path / "walled", 0o700)
+        os.chmod(tmp_path / "partial" / "walled", 0o700)
+
+
+def test_the_zipapp_is_never_built_from_nothing(tmp_path):
+    """A source without the package, a package lacking a file the process cannot
+    start without, and a package with an unreadable subdirectory are each refused.
+    Perturbations: drop the REQUIRED check, and the package without server.py builds;
+    drop the walk's onerror, and the unreadable subdirectory is skipped."""
+    with pytest.raises(OSError):
+        build_zipapp.build(tmp_path / "absent", tmp_path / "a.pyz")
+    lacking = tmp_path / "lacking" / "python_spu"
+    lacking.mkdir(parents=True)
+    for name in build_zipapp.REQUIRED:
+        if name != "server.py":
+            (lacking / name).write_text("\n")
+    with pytest.raises(ValueError, match="server.py"):
+        build_zipapp.build(tmp_path / "lacking", tmp_path / "b.pyz")
+    whole = tmp_path / "whole" / "python_spu"
+    whole.mkdir(parents=True)
+    for name in build_zipapp.REQUIRED:
+        (whole / name).write_text("\n")
+    unreadable(whole / "walled")
+    try:
+        with pytest.raises(PermissionError):
+            build_zipapp.build(tmp_path / "whole", tmp_path / "c.pyz")
+    finally:
+        os.chmod(whole / "walled", 0o700)
+    assert not any((tmp_path / name).exists() for name in ("a.pyz", "b.pyz", "c.pyz"))
+
+
+def test_the_zipapp_requires_both_import_set_halves():
+    assert set(import_set.HALVES) <= set(build_zipapp.REQUIRED)
+
+
+def test_declare_imports_refuses_its_inputs_before_any_launch(tmp_path):
+    """A missing model or a zipapp that is not a file refuses by name, and an empty
+    record writes no half. Perturbations: drop the stat checks, and the missing model
+    reaches a launch, which raises; drop the empty check, and a half declaring nothing
+    is written."""
+    assert declare_imports.main(["--device", "cpu", "--model", str(tmp_path / "absent")]) == 1
+    assert declare_imports.main(["--device", "cpu", "--zipapp", str(tmp_path)]) == 1
+    with pytest.raises(ValueError):
+        declare_imports.write_half(tmp_path / "imports-cpu.txt", "cpu", set(), "test")
+    assert not (tmp_path / "imports-cpu.txt").exists()
+
+
+def test_smoke_refuses_a_missing_model_before_writing(tmp_path):
+    """Perturbation: drop the check, and the report directory is made before the
+    refused admission."""
+    ok, done = refused([sys.executable, str(ROOT / "scripts" / "smoke.py"),
+                        str(tmp_path / "absent"), "--output", str(tmp_path / "out" / "r.json")])
+    assert ok, (done.returncode, done.stdout, done.stderr)
+    assert not (tmp_path / "out").exists()

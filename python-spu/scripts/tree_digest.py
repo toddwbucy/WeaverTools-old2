@@ -6,6 +6,11 @@ sha256, a symbolic link by the text it points to and never followed, and anythin
 else refused. The listing's own sha256 is the tree's digest, so two trees agree on
 the digest exactly where they agree on every file and every link.
 
+**A digest is never of nothing.** The root must be a directory by lstat, not a link
+to one and not absent, every error the walk meets is raised rather than skipped, and
+a tree with no entries is refused, so a misspelled, missing or unreadable root exits
+non-zero instead of printing the digest of an empty listing.
+
 Usage: python3 scripts/tree_digest.py <root> [--list]
 """
 import hashlib
@@ -14,9 +19,16 @@ import stat
 import sys
 
 
+def _raise(error):
+    raise error
+
+
 def listing(root):
+    mode = os.lstat(root).st_mode
+    if not stat.S_ISDIR(mode):
+        raise ValueError(f"{root} is not a directory")
     lines = []
-    for directory, subdirectories, files in os.walk(root, followlinks=False):
+    for directory, subdirectories, files in os.walk(root, onerror=_raise, followlinks=False):
         subdirectories.sort()
         for name in sorted(files + [d for d in subdirectories
                                     if os.path.islink(os.path.join(directory, d))]):
@@ -33,12 +45,17 @@ def listing(root):
                 lines.append(f"{digest.hexdigest()}  {relative}")
             else:
                 raise ValueError(f"{relative} is neither a file nor a link")
+    if not lines:
+        raise ValueError(f"{root} holds no files or links")
     return sorted(lines, key=lambda line: line.split("  ", 1)[1])
 
 
+def digest_of(lines):
+    return hashlib.sha256(("\n".join(lines) + "\n").encode()).hexdigest()
+
+
 def digest(root):
-    text = "\n".join(listing(root)) + "\n"
-    return hashlib.sha256(text.encode()).hexdigest()
+    return digest_of(listing(root))
 
 
 def main(argv=None):
@@ -47,9 +64,14 @@ def main(argv=None):
         print(__doc__.strip().splitlines()[-1], file=sys.stderr)
         return 2
     root = argv[0]
+    try:
+        lines = listing(root)
+    except (OSError, ValueError) as error:
+        print(f"tree_digest: {error}", file=sys.stderr)
+        return 1
     if "--list" in argv[1:]:
-        print("\n".join(listing(root)))
-    print(f"{digest(root)}  {root}")
+        print("\n".join(lines))
+    print(f"{digest_of(lines)}  {root}")
     return 0
 
 

@@ -505,8 +505,11 @@ digest is taken over that whole prefix, the interpreter binary and its standard 
 included, by `scripts/tree_digest.py`: every entry's path relative to the prefix,
 sorted, a file by its sha256 and a symbolic link by the text it points to, never
 followed, anything else refused. The prefix holds links of its own, `bin/python3` among
-them, so a link is recorded rather than refused. The digest is recorded beside the
-lock's hash, and with the SPU binary's digest it is what section 1 names as what served.
+them, so a link is recorded rather than refused. A digest is never of nothing: a root
+that is not a directory by `lstat`, an error anywhere in the walk, and a tree with no
+entries each exit non-zero, and so does the zipapp's build over a package missing a
+file the process cannot start without. The digest is recorded beside the lock's hash,
+and with the SPU binary's digest it is what section 1 names as what served.
 
 **The core imports the standard library alone, and the engine is the one addition.** The
 channel ends, the wire, the session, the seed and the sampler's arithmetic are standard

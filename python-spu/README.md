@@ -50,15 +50,20 @@ store, not into this tree.
 
 ## Installing it on a box
 
-The operator's steps, root being needed for `/opt/weaver`. The interpreter is the one
-`requirements.lock`'s header names, by release, URL and sha256:
+The operator's steps, from this directory, each one that writes under `/opt/weaver`
+taken through `sudo`. The interpreter is the one `requirements.lock`'s header names, by
+release, URL and sha256, and the download is checked against that sha256 before it is
+unpacked:
 
 ```sh
-tar -xzf cpython-3.14.7+20260924-x86_64-unknown-linux-gnu-install_only.tar.gz \
-    -C /opt/weaver/python-spu --strip-components=1
-/opt/weaver/python-spu/bin/python3.14 -m pip install --require-hashes --no-deps \
+T=cpython-3.14.7+20260924-x86_64-unknown-linux-gnu-install_only.tar.gz
+curl -fLO https://github.com/astral-sh/python-build-standalone/releases/download/20260924/$T
+echo "5539eaf1de20bd9b5f43ea11c3c1f84cbac74fe927ac050318a9210c022618cb  $T" | sha256sum -c
+sudo mkdir -p /opt/weaver/python-spu
+sudo tar -xzf $T -C /opt/weaver/python-spu --strip-components=1
+sudo /opt/weaver/python-spu/bin/python3.14 -m pip install --require-hashes --no-deps \
     -r requirements.lock
-python3 scripts/build_zipapp.py --output /opt/weaver/python-spu/python-spu.pyz
+sudo python3 scripts/build_zipapp.py --output /opt/weaver/python-spu/python-spu.pyz
 python3 scripts/tree_digest.py /opt/weaver/python-spu
 ```
 
