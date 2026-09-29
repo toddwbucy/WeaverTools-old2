@@ -43,11 +43,14 @@ as `message.system`, and the model's reasoning and program as `message.assistant
 **Where the agent plays action by action, each action its own shell call**, each
 action's request, the tool name and its arguments, is recorded on `tool.call.started`
 and the environment's answer on `message.tool_result`, each at a position of its own,
-and the join from a position to game state is by position and free. The computable
-labels that read the requested item, tile or action read the call event, and those that
-read the outcome read the result. A program run as one invocation collapses every action
-into one call and one `message.tool_result`, which is how HeroBench's published runs
-ran, so the state work plays the per-action shape.
+and the join from a position to game state is by position and free. The gate's shell
+tool records the name `bash` and the command as one opaque `arguments.command` string,
+so the requested action, item and tile are read by decoding the per-action CLI's own
+argument shape inside that string, which is the tool's schema and the HeroBench tool's
+to define. The computable labels that read the requested item, tile or action read the
+call event, and those that read the outcome read the result. A program run as one
+invocation collapses every action into one call and one `message.tool_result`, which is
+how HeroBench's published runs ran, so the state work plays the per-action shape.
 
 ## 2. The split that makes the case for building
 
@@ -65,6 +68,13 @@ programs:
   case for deriving them.
 
 Positions no recipe reaches are a third count, never folded into either.
+
+**A labeled position is an event together with a span of its payload**: a prose line or
+a program statement of `message.assistant`, an action's request on `tool.call.started`,
+or its answer on `message.tool_result`. The harness writes one `message.assistant` and
+one `model.output` per generation, and the trace has no event per line, so the span is
+what makes a line a position. The input at a position is the trace up to and including
+that event, with that event's payload cut at the span's end.
 
 Measured 2026-09-29 over HeroBench's own results, 3,882 single-shot completions
 whose text is on disk, segmented into positions (prose lines, draft lines,
@@ -146,11 +156,11 @@ split and scored on the held-out split, the split is recorded in the deposit bes
 labels, and a score on positions a candidate was fitted on is not reported. **The labels
 come from outside every candidate**: no candidate, and no model of a candidate's family,
 labels a position it is scored on, and the labels' source is recorded in the deposit
-beside them. **Every candidate reads the same input at a position**, the trace window
-ending there, its extent fixed before any candidate is scored, within every candidate's
-context, and recorded, so a difference in score is the model's and not its input's. The
-computable share needs no model, its labels joining game state by position, so no
-candidate is scored on it.
+beside them. **Every candidate reads the same input at a position**, the input section 2
+defines for it, its extent fixed before any candidate is scored, within every
+candidate's context, and recorded, so a difference in score is the model's and not its
+input's. The computable share needs no model, its labels joining game state by position,
+so no candidate is scored on it.
 
 **Each judgmental predicate is scored as its own binary decision**: whether a position
 recites the dump, whether it states a plan, and whether it contradicts what was recited,
