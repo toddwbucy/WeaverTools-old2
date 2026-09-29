@@ -12,7 +12,7 @@ later releasing it.
 **Parent:** `weaver-agents-PRD`
 **Companion contract:** `weaver-harness-spu-contract`, drafted with this document
 **Editorial:** Per the Working Rules.
-**Landing PR:** #727
+**Landing PR:** #734
 
 ---
 
@@ -73,10 +73,11 @@ program outside the crate tree and is party to the residency and decode contract
 this charter says of the organ binds it: the residency, the device, the cache and its
 rule, the seams it serves and the one organ per agent. What it says of this crate's own
 code does not, and the classify role of section 15 stays with this crate's classify
-process, which `python-spu` does not replace. One decode implementation serves a box for
-the length of a run, admin's `spu-binary` naming which, so the sentence above holds of
-the decode process on every box: whichever implementation serves is the one decode
-process there holding device memory.
+process, which `python-spu` does not replace. Which implementation serves is chosen per
+agent in admin's configuration, per `weaver-admin-Spec` section 9, so two agents on one
+box may be served by two implementations at once, and the sentence above holds of the
+organ: whichever implementation serves an agent is the one process holding that agent's
+model on the device.
 
 **It is a domain root, and its members are not enumerated here.** The domain is semantic
 processing, all of it, per the reading the stub carried and this charter keeps: decode

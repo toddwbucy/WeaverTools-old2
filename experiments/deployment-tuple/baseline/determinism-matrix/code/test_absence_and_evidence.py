@@ -190,16 +190,16 @@ def test_an_engine_library_line_nobody_can_parse_is_unreadable():
     # S2. Perturbation: restore the bare `continue`, and the library is not
     # in the reading at all.
     import tempfile
-    saved_sh, saved_exists = base.sh, base.os.path.exists
+    saved_sh, saved_stat = base.sh, base._stat_spu
     with tempfile.NamedTemporaryFile() as lib:
         ldd = f"\tlibggml.so.0 => {lib.name} (0x00007f)\n\tlibllama.so.0 (0x00007f)\n"
         try:
-            base.os.path.exists = lambda p: True
+            base._stat_spu = lambda p: None
             base.sh = lambda args, **kw: subprocess.CompletedProcess(args, 0, ldd, "")
             reading = base.engine_libraries({}, ("/spu", "admin config spu-binary"))
             assert "libggml.so.0" in reading and not base.is_reading(reading), reading
         finally:
-            base.sh, base.os.path.exists = saved_sh, saved_exists
+            base.sh, base._stat_spu = saved_sh, saved_stat
 
 
 def test_a_guessed_binary_is_not_held():

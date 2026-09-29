@@ -6,7 +6,7 @@
 **Document ID:** `python-spu-Spec`
 **Parent:** `weaver-spu-PRD`
 **Editorial:** Per the Working Rules.
-**Landing PR:** #732
+**Landing PR:** #734
 
 ---
 
@@ -46,10 +46,10 @@ implementation as they stand and neither changes for it.
 
 **The classify role is not this implementation's.** The label seam is served by a
 process of its own, `weaver-spu-classify`, which the harness launches from its own
-binary path, per `weaver-spu-Spec` section 11, so `spu-binary` does not reach it. A
-declaration electing classify under `python-spu` is served by that process as it is
-today. `python-spu` accepts the instruction's `classify` member as the wire admits it
-and acts on none of it, as the Rust decode process acts on none of it.
+binary path, per `weaver-spu-Spec` section 11, so no SPU choice in admin's configuration
+reaches it. A declaration electing classify under `python-spu` is served by that process
+as it is today. `python-spu` accepts the instruction's `classify` member as the wire
+admits it and acts on none of it, as the Rust decode process acts on none of it.
 `weaver-harness-spu-classify-contract` binds that process and not this one, and a Python
 classifier with its own binding is a later version, per section 9.
 
@@ -61,19 +61,21 @@ route alone: a record the harness writes from a `python-spu` report verifies und
 trace contract exactly as a record written from a Rust report does.
 
 **Nothing else in the agent changes, and nothing else learns which SPU served.** Admin
-launches whatever file its `spu-binary` configuration names, and the harness hashes that
-file into `weaver_binaries` at both ends of a run. `spu-binary` is admin-wide, so one
-implementation serves a box for the length of a run.
+launches whatever file its configuration names for the agent, `spu-binary` or the
+agent's own key in `spu-implementations`, per `weaver-admin-Spec` section 9, so one
+agent may be served by the Rust SPU and another by `python-spu` on one box at once.
+Admin digests that file into the load record's `stack` under the file's name, and the
+determinism matrix reads it into `weaver_binaries` at both ends of a run.
 
 **What served is named by two digests, and neither waits on the SPU reporting its own
-identity**, which section 10 defers. The first is the `spu-binary` hash. Section 2 ships
-`python-spu` as one file whose first line names the pinned interpreter by absolute path,
-so that hash covers every line of `python-spu`'s own code and fixes which interpreter
-runs it, the interpreter's version being the toolchain reader's to record. The second is
-the digest of the installed tree section 8 defines, which covers the engine as installed
-rather than as the lock says it should be. The box facts carry it beside the lock's
-hash, and the matrix's record carries it once section 5's second precondition reaches
-it.
+identity**, which section 10 defers. The first is the SPU binary's digest in the
+record's `stack`. Section 2 ships `python-spu` as one file whose first line names the
+pinned interpreter by absolute path, so that digest covers every line of `python-spu`'s
+own code and fixes which interpreter runs it, the interpreter's version being the
+toolchain reader's to record. The second is the digest of the installed tree section 8
+defines, which covers the engine as installed rather than as the lock says it should be.
+The box facts carry it beside the lock's hash, and the matrix's record carries it once
+section 5's second precondition reaches it.
 
 **It does not replace the Rust SPU.** Both serve, and the record says which. Under the
 deployment tuple a different implementation is a different kernel stack, and so a
@@ -92,11 +94,11 @@ bit for bit.
 
 **It ships as one file.** The build packs `src/python_spu/` into a zipapp with the
 standard library's `zipapp` module, its first line naming the pinned interpreter by
-absolute path, and admin's `spu-binary` names that file. A launcher importing a package
-from elsewhere would leave the package out of the hash the harness takes, so two runs of
-different code could report one provenance. The zipapp holds no third-party package: the
-engine is imported from the environment, whose installed tree section 8 digests. The
-file is built, not committed.
+absolute path, and admin's configuration names that file for each agent it serves. A
+launcher importing a package from elsewhere would leave the package out of the hash the
+harness takes, so two runs of different code could report one provenance. The zipapp
+holds no third-party package: the engine is imported from the environment, whose
+installed tree section 8 digests. The file is built, not committed.
 
 **The oracle depends on the workspace crates at a pinned commit and on no copy of
 them.** It is a Rust program outside the workspace, so it is not a member and its
@@ -128,8 +130,9 @@ short of:
   `artifact_unreadable` (`server.py`), where section 1 has the member accepted and left
   unread.
 - Section 2: it installs as a package with entry-point scripts, not as one zipapp, so a
-  `spu-binary` hash would name a launcher. It also carries an experimental ModernBERT
-  classifier and its entry point, which section 1 scopes out of this implementation.
+  launcher's digest would stand for the implementation. It also carries an experimental
+  ModernBERT classifier and its entry point, which section 1 scopes out of this
+  implementation.
 - Section 3 and `weaver-harness-spu-decode-contract`: a cancel arriving during a
   generation is consumed and never answered, the generation's close being sent without
   the cancel exchange's `at_rest` close (`server.py`), so a harness waiting on the
@@ -171,7 +174,7 @@ check the named contract's Conformance section lists.
 | The two channel ends at descriptors 3 and 4, close-on-exec set on both, the dumpable flag cleared before the engine's runtime is imported | 2 | a process test |
 | The `SOCK_SEQPACKET` envelope and the segmented frame, per `weaver-organ-channel` | 2 | oracle, over a socket pair |
 | Every payload of the two contracts it is party to, accepted and refused, and the instruction's `classify` member accepted and left unread | 2, 9 | oracle, serde round trips both ways |
-| Admission refuses and never evicts, and the weights hash is blake3 at admit | 3 | a process test, oracle for the hash |
+| Admission judges each device by the one room inequality, refuses and never evicts, so a second agent's SPU of either implementation is admitted where the card has room, and the weights hash is blake3 at admit | 3 | a process test on a device, oracle for the hash |
 | The session appends and never rewinds, the identity prefix is permanent, an overflow refuses before any append | 4.2 | contract, decode section 8 |
 | The turn terminator made resident on every path, the stop within a token boundary of the cancel | 4.2, 4.3 | contract, decode section 8 |
 | The flush per resolved entry and the elision's exact removal | 4.4, 4.5 | contract, decode section 8 |
@@ -489,8 +492,8 @@ under another interpreter is another build.
 **The installed tree is digested, because a lock states what should be installed and not
 what is.** The digest is taken over the environment's site-packages directory: its
 files' paths relative to it, sorted, each with its sha256, a symbolic link refused. It
-is recorded beside the lock's hash, and with the `spu-binary` hash it is what section 1
-names as what served.
+is recorded beside the lock's hash, and with the SPU binary's digest it is what section
+1 names as what served.
 
 **The core imports the standard library alone, and the engine is the one addition.** The
 channel ends, the wire, the session, the seed and the sampler's arithmetic are standard
@@ -529,8 +532,9 @@ and what the harness records. It waits until it can be coordinated with the olym
 seat, on the operator's ruling of 2026-09-28, and section 1 states what names the
 implementation until then.
 
-**A per-agent binding of the SPU**, so two implementations could serve one box side by
-side. `spu-binary` is admin-wide today, and that is a later design question.
+**Which agents a deployment serves from which SPU.** That is the operator's choice in
+admin's configuration, per `weaver-admin-Spec` section 9, and this document binds only
+what `python-spu` must be to serve one.
 
 **The comparison cells.** Their declarations, predictions and falsifiers are the
 deployment-tuple charter's, per Document Format section 2, and this document supplies

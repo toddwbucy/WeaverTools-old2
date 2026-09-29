@@ -7,7 +7,7 @@ build order. Code is written against it under the gates of Working Process secti
 **Document ID:** `weaver-trace-Spec`
 **Parent:** `weaver-trace-PRD`
 **Editorial:** Per the Working Rules.
-**Landing PR:** #670
+**Landing PR:** #734
 
 ---
 
@@ -779,18 +779,18 @@ to: trace-load-names-its-loop-and-its-member
 ```
 
 **The `load` event names its lineage and its stack**, as of 2026-09-06, per the
-charter's section 3.1 on issue #432. `lineage` is present where
-the session stands from a record and absent otherwise, never null: `parent` is the
-record's session, `run` the run the cut falls in, and `through` the turn the holdings
-stop at, a whole record resolved to its last run's last turn, copied from the enter's
-`Lineage` per `weaver-types-Spec` section 4 and never the record's path, which the
-harness does not hold. `stack` is the digests of the organ binaries admin started,
-keyed by the binary's name, sha256 hex, copied from the enter, so a record is
-sufficient for its own conditions without a deposit beside it. Both ride the
-`Elections` payload on the drift reason above, and a record older than this act lacks
-the members, which reads as those facts being unrecoverable and never as a default.
-Neither is read from the deployment: the harness authors what the enter carried, as it
-authors the store's identity.
+charter's section 3.1 on issue #432. `lineage` is present where the session stands from
+a record and absent otherwise, never null: `parent` is the record's session, `run` the
+run the cut falls in, and `through` the turn the holdings stop at, a whole record
+resolved to its last run's last turn, copied from the enter's `Lineage` per
+`weaver-types-Spec` section 4 and never the record's path, which the harness does not
+hold. `stack` is the digests of the organ binaries admin started and of the agent's SPU
+and the gate it hands the worker to fork, keyed by the binary's name, sha256 hex, copied
+from the enter, so a record is sufficient for its own conditions without a deposit
+beside it. Both ride the `Elections` payload on the drift reason above, and a record
+older than this act lacks the members, which reads as those facts being unrecoverable
+and never as a default. Neither is read from the deployment: the harness authors what
+the enter carried, as it authors the store's identity.
 
 **`elision` carries its coordinates and `flush` does not need to.** An
 earlier draft of this section gave the elision `FlushCounts` on the reading

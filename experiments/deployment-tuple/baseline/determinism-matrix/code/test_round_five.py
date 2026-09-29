@@ -251,13 +251,13 @@ def test_an_ldd_path_holding_a_space_is_read_whole():
         with open(lib, "wb") as fh:
             fh.write(b"lib")
         ldd = f"\tlibggml.so.0 => {lib} (0x00007f)\n\tlibllama.so.0 => not found\n"
-        saved_exists = base.os.path.exists
+        saved_stat = base._stat_spu
         try:
-            base.os.path.exists = lambda p: True
+            base._stat_spu = lambda p: None
             reading = with_sh(lambda args, **kw: subprocess.CompletedProcess(args, 0, ldd, ""),
                               lambda: base.engine_libraries({}, ("/spu", "admin config spu-binary")))
         finally:
-            base.os.path.exists = saved_exists
+            base._stat_spu = saved_stat
         assert reading["libggml.so.0"] == {"path": lib, "sha256": base._sha256(lib)}, reading
         assert "unreadable" in reading["libllama.so.0"], reading
 

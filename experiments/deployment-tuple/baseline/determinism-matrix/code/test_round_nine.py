@@ -138,10 +138,13 @@ def test_a_guessed_binary_is_refused_before_either_run_starts():
     assert code == 2 and "resolved a binary by a guess" in err.getvalue(), (code, err.getvalue())
 
 
-def test_the_real_binaries_reader_is_refused_where_it_guesses():
-    # The same through the real reader: an admin configuration naming no
-    # SPU sends the resolution beside the admin binary. Perturbation: drop
-    # the guessed clause, and the first call returns.
+def test_the_real_binaries_reader_is_refused_where_admin_names_no_spu():
+    # The same through the real reader: an admin configuration naming no SPU
+    # is one admin refuses every verb on, spu-binary being required, so the
+    # opening reading is refused as unreadable naming it, and never resolved
+    # by the guess beside the admin binary (#734, the pass on 9d1853a).
+    # Perturbation: read a required file's absence as absence in
+    # `_read_admin`, and the guess is resolved and refused only as a guess.
     with tempfile.TemporaryDirectory() as tmp:
         conf, bindir = os.path.join(tmp, "admin"), os.path.join(tmp, "bin")
         os.makedirs(conf)
@@ -152,15 +155,18 @@ def test_the_real_binaries_reader_is_refused_where_it_guesses():
         for key, name in (("worker-binary", "worker"), ("gate-binary", "gate")):
             with open(os.path.join(conf, key), "w") as fh:
                 fh.write(os.path.join(bindir, name))
+        with open(os.path.join(conf, "allow-list"), "w") as fh:
+            fh.write("karl\n")
         cfg = dict(CFG, admin_config=conf, admin_bin=os.path.join(bindir, "weaver-admin"))
         saved = base.engine_libraries, base.toolchain
         base.engine_libraries, base.toolchain = (lambda c, s: FIXED), (lambda c: {"rustc": "stub"})
         try:
             try:
                 base.opening_readings(cfg)
-                raise AssertionError("a guessed SPU was read as a reading")
+                raise AssertionError("an SPU admin names none of was read as a reading")
             except ValueError as e:
-                assert "by a guess" in str(e), e
+                assert "is not a reading" in str(e) and "absent, and admin requires it" in str(e), e
+                assert "guess" not in str(e), e
             with open(os.path.join(conf, "spu-binary"), "w") as fh:
                 fh.write(os.path.join(bindir, "weaver-spu"))
             assert set(base.opening_readings(cfg)["weaver_binaries"]) == {"worker-binary", "spu-binary", "gate-binary"}

@@ -12,7 +12,7 @@ logout is the init system, and what the program relies on from it was stated now
 **Document ID:** `weaver-admin-systemd-contract`
 **Parent:** `weaver-agents-PRD`, invariant 5.3
 **Editorial:** Per the Working Rules.
-**Landing PR:** #505
+**Landing PR:** #734
 
 ---
 
@@ -107,7 +107,8 @@ statement rather than as a change.
 **The vector widens nothing this boundary did not already
 carry.** The socket's path derives from the agent name the unit's name and its
 runtime directory already carry, the two organ binary paths are the operator's
-installed values, **the classify binary is a sibling of the worker binary** rather
+installed values, the SPU's chosen per agent among them per `weaver-admin-Spec`
+section 9, **the classify binary is a sibling of the worker binary** rather
 than a value of its own, and the loop file is a path in the operator's validated
 declaration. **The worker binary is the derivation's anchor and is not itself on the
 vector**, being the value the unit starts rather than a value the vector carries, so

@@ -6,7 +6,7 @@
 **Document ID:** `determinism-matrix-Spec`
 **Parent:** `deployment-tuple-PRD`
 **Editorial:** Per the Working Rules.
-**Landing PR:** #731
+**Landing PR:** #734
 
 ---
 
@@ -401,9 +401,19 @@ cell's artifact, the config's `trace`, `gate_socket` and `admin_config`, and eve
 binary the admin configuration names are refused at preflight unless absolute, and a
 library `ldd` names by any other path is unreadable. The paths only the harness opens,
 the declaration file, `admin_bin`, `repo` and the outdir, are its own. A config may not
-name an SPU of its own: the admin launches the one its configuration names,
-`admin_config/spu-binary`, and the run reads it there, so a config carrying `spu_bin` is
-refused.
+name an SPU of its own: the admin launches the one its configuration names for the
+agent, the key `agent-spu` gives it in `spu-implementations` where the agent is named
+there and `spu-binary` otherwise, per `weaver-admin-Spec` section 9, and the run reads
+it there, so a config carrying `spu_bin` is refused. **Each file the run reads there is
+classed as admin's loader classes it.** `allow-list`, `worker-binary`, `spu-binary` and
+`gate-binary` are required, and one absent is an unreadable resolution, admin refusing
+every verb without it. `spu-implementations` and `agent-spu` are optional, and only
+their absence stands the default. A file of either class that stands and does not read,
+a dangling link, a directory or a file this run may not read, is an unreadable
+resolution the exit gates, never the default, since admin launches what the file says
+and not what this run could see. Both maps are judged whole by admin's rules before any
+default is taken, whichever agent they name, and a `spu-binary` naming no path is
+unreadable rather than guessed.
 
 **Every file a run writes is its own.** A run in either mode writes three fixed names
 into its outdir, and its declaration backup beside the declaration.
