@@ -86,7 +86,7 @@ keys=('output_tokens','entropies','surprisals','perplexity')
 for key in keys:
     assert runs[0]['generation']['measurement'][key]==runs[1]['generation']['measurement'][key],key
     assert runs[0]['generation']['measurement'][key]==runs[2]['generation']['measurement'][key],key
-report={'oracle_revision':tomllib.loads(Path('oracle/Cargo.toml').read_text())['dependencies']['weaver-spu']['rev'],
+report={'oracle_revision':tomllib.loads((ROOT/'oracle'/'Cargo.toml').read_text())['dependencies']['weaver-spu']['rev'],
     'deployment':{'host':platform.node(),'python':platform.python_version(),'torch':torch.__version__,
       'transformers':transformers.__version__,'device':args.device,'dtype':DTYPE,
       'cuda_runtime':torch.version.cuda,
