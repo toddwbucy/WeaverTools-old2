@@ -1,0 +1,361 @@
+"""The worker's argument vector, the room judgment and the determinism environment, per
+python-spu-Spec sections 3 and 8, each ported from the Rust SPU."""
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+
+import pytest
+
+from python_spu import engine, server
+from python_spu.client import LocalProcess
+from python_spu.engine import AdmissionError, HEADROOM_BYTES, U64_MAX
+from python_spu.server import BadParameter, parameters
+from python_spu.wire import dump
+
+ROOT = Path(__file__).resolve().parents[1]
+LIFECYCLE = ROOT.parent / "crates" / "weaver-harness" / "src" / "lifecycle.rs"
+
+
+def spu_arguments(headroom_bytes):
+    """weaver-harness lifecycle.rs `OrganParameters::spu_arguments`, mirrored: a stated
+    headroom travels as the named flag and its value, and nothing stated is nothing."""
+    return [] if headroom_bytes is None else ["--headroom-bytes", headroom_bytes]
+
+
+def test_the_mirror_is_the_workers_rule():
+    """The mirror above is checked against the Rust it copies, so a renamed flag on the
+    worker's side fails here rather than at an agent's first load."""
+    source = LIFECYCLE.read_text()
+    assert 'arguments.push("--headroom-bytes".to_string());' in source
+    assert "arguments.push(headroom.clone());" in source
+
+
+def test_the_workers_vector_is_accepted():
+    assert parameters(spu_arguments(None)) == (HEADROOM_BYTES, False, None)
+    assert parameters(spu_arguments("268435456")) == (268435456, False, None)
+    assert HEADROOM_BYTES == 512 * 1024 * 1024
+
+
+def test_the_whole_vector_is_judged():
+    """weaver-spu main.rs `the_whole_vector_is_judged`, case for case, with the refusals'
+    own words. Perturbations: take the first `--headroom-bytes` and return, and the
+    trailing unknown passes. Keep the first of two, and stated twice passes. Accept an
+    unknown parameter, and `--bogus` passes."""
+    def refused(vector, detail):
+        with pytest.raises(BadParameter) as caught:
+            parameters(vector)
+        assert str(caught.value) == detail
+    assert parameters([]) == (HEADROOM_BYTES, False, None)
+    assert parameters(["--headroom-bytes", "1024"])[0] == 1024
+    refused(["--headroom-bytes", "1024", "--bogus"], "unknown parameter --bogus")
+    refused(["--headroom-bytes", "1024", "--headroom-bytes", "2048"],
+            "--headroom-bytes is stated twice")
+    refused(["--headroom-bytes"], "--headroom-bytes takes a value")
+    refused(["--headroom-bytes", "many"], "--headroom-bytes wants a byte count, got many")
+    refused(["--help"], "unknown parameter --help")
+
+
+def test_a_byte_count_is_what_rusts_u64_parse_accepts():
+    """Rust's `u64` parse takes ASCII digits and an optional leading plus sign, up to
+    2^64 - 1. Python's `int` takes more, so the port does not use it alone."""
+    assert parameters(["--headroom-bytes", "+5"])[0] == 5
+    assert parameters(["--headroom-bytes", "007"])[0] == 7
+    assert parameters(["--headroom-bytes", str(U64_MAX)])[0] == U64_MAX
+    for value in (str(U64_MAX + 1), "-1", " 5", "5 ", "5_0", "\u0665", "", "+", "0x10"):
+        with pytest.raises(BadParameter):
+            parameters(["--headroom-bytes", value])
+
+
+def test_python_spus_own_flags_follow_the_same_rules():
+    assert parameters(["--cpu-experiment", "--headroom-bytes", "1"]) == (1, True, None)
+    assert parameters(["--declare-imports", "x", "--cpu-experiment"]) == (HEADROOM_BYTES, True, "x")
+    for vector in (["--cpu-experiment", "--cpu-experiment"], ["--declare-imports"],
+                   ["--declare-imports", "a", "--declare-imports", "b"]):
+        with pytest.raises(BadParameter):
+            parameters(vector)
+
+
+def run_entry(arguments, environment=None):
+    """The server's entry with no channels inherited: a refusal must come before it
+    adopts any, so none are needed to see it."""
+    env = dict(os.environ, PYTHONPATH=str(ROOT / "src"))
+    env.update(environment or {})
+    return subprocess.run([sys.executable, "-m", "python_spu.server", *arguments],
+                          capture_output=True, text=True, timeout=120, env=env)
+
+
+@pytest.mark.parametrize("vector,detail", [
+    (["--headroom-bytes"], "--headroom-bytes takes a value"),
+    (["--headroom-bytes", "many"], "--headroom-bytes wants a byte count, got many"),
+    (["--headroom-bytes", "1", "--headroom-bytes", "2"], "--headroom-bytes is stated twice"),
+    (["--bogus"], "unknown parameter --bogus"),
+])
+def test_a_refused_vector_is_one_line_and_exit_1_before_anything(vector, detail):
+    """As the Rust SPU's main refuses: one JSON line on stderr, nothing on stdout, exit
+    1, before the channels are adopted. The entry here has no descriptors 3 and 4, so
+    reaching adoption would answer a different line."""
+    done = run_entry(vector)
+    assert (done.returncode, done.stdout) == (1, "")
+    assert json.loads(done.stderr) == {"refusal": "bad_parameter", "detail": detail}
+
+
+def test_the_workers_vector_admits_through_the_process(tmp_path, tiny_model, instruction):
+    """The worker's exact vector, with a headroom stated, reaches a served admission."""
+    process = LocalProcess(tmp_path / "stderr.txt",
+                           arguments=["--cpu-experiment", *spu_arguments("268435456")])
+    try:
+        body = dump(instruction)
+        body["decoder"]["model-binding"]["artifact"] = str(tiny_model)
+        answer = process.ask({"kind": "admit", "instruction": body})
+        assert answer["payload"] == {"kind": "answer", "body": {"kind": "admitted"}}, (
+            (tmp_path / "stderr.txt").read_text())
+    finally:
+        assert process.close() == 0, (tmp_path / "stderr.txt").read_text()
+
+
+def test_the_headroom_reaches_the_engine(tiny_model, instruction):
+    seen = {}
+
+    class Engine:
+        max_context = 1 << 20
+
+        def __init__(self, artifact, devices, cpu=False, readout=False, headroom=None):
+            seen["headroom"] = headroom
+
+        def close(self):
+            pass
+
+    service = server.Service(cpu=True, engine_factory=Engine, headroom=12345)
+    try:
+        service.admit(instruction)
+    except Exception:
+        pass
+    assert seen == {"headroom": 12345}
+
+
+# The room judgment, weaver-spu gpu/mod.rs, ported.
+
+def test_room_admits_at_exactly_the_shard_and_headroom_and_refuses_one_byte_under():
+    """Perturbations: `free <= needed` refuses the exact fit, and dropping the headroom
+    admits the byte-short device."""
+    engine.judge_room(0, free=1000 + 24, total=4096, shard_bytes=1000, headroom=24)
+    with pytest.raises(AdmissionError) as caught:
+        engine.judge_room(1, free=1000 + 23, total=4096, shard_bytes=1000, headroom=24)
+    assert caught.value.kind == "device_cannot_admit" and caught.value.fields == {}
+    assert str(caught.value) == "no room on device 1: free 1023, needed 1024, total 4096"
+
+
+def test_the_needed_sum_saturates_as_rusts_does():
+    with pytest.raises(AdmissionError) as caught:
+        engine.judge_room(0, free=U64_MAX - 1, total=U64_MAX, shard_bytes=U64_MAX, headroom=5)
+    assert f"needed {U64_MAX}," in str(caught.value)
+
+
+@pytest.fixture
+def a_device(monkeypatch):
+    """One CUDA device as the engine sees it, with the free memory the test sets and the
+    load replaced by a stop, so no test here touches a card however the judgment is
+    perturbed."""
+    import torch
+    import transformers
+    state = {"free": 0}
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "device_count", lambda: 1)
+    monkeypatch.setattr(torch.cuda, "mem_get_info", lambda device=None: (state["free"], 1 << 40))
+
+    def stop(*args, **kwargs):
+        raise RuntimeError("reached the load")
+    monkeypatch.setattr(transformers.AutoModelForCausalLM, "from_pretrained", stop)
+    return state
+
+
+def test_the_engine_judges_room_before_the_load_with_the_headroom_it_was_given(tiny_model, a_device):
+    """The shard is the container's size, one device. Perturbations: judge after the
+    load, and the refusal never comes, or ignore the headroom, and the short device
+    reaches the load."""
+    shard = os.stat(Path(tiny_model) / "model.safetensors").st_size
+    a_device["free"] = shard + 4096 - 1
+    with pytest.raises(AdmissionError) as caught:
+        engine.HFEngine(tiny_model, [0], headroom=4096)
+    assert caught.value.kind == "device_cannot_admit"
+    assert f"needed {shard + 4096}," in str(caught.value)
+    a_device["free"] = shard + 4096
+    with pytest.raises(AdmissionError) as caught:
+        engine.HFEngine(tiny_model, [0], headroom=4096)
+    assert (caught.value.kind, str(caught.value)) == ("artifact_unreadable", "reached the load")
+
+
+def test_a_cpu_experiment_judges_no_room(tiny_model, monkeypatch):
+    """A CPU experiment has no device, so the driver is never asked. Perturbation: judge
+    in CPU mode too, and the refusing driver refuses it."""
+    import torch
+
+    def refuse(device=None):
+        raise AssertionError("a CPU experiment asked the driver for room")
+    monkeypatch.setattr(torch.cuda, "mem_get_info", refuse)
+    engine.HFEngine(tiny_model, [0], cpu=True, headroom=U64_MAX).close()
+
+
+# The container resolution, weaver-spu artifact.rs, ported.
+
+def directory(tmp_path, names, sizes=None):
+    root = tmp_path / "artifact"
+    root.mkdir()
+    for name in names:
+        (root / name).write_bytes(b"x" * (sizes or {}).get(name, 1))
+    return root
+
+
+def test_one_container_resolves_and_its_size_is_the_shard(tmp_path):
+    root = directory(tmp_path, ["model.safetensors", "config.json", "tokenizer.json"],
+                     {"model.safetensors": 77})
+    assert engine.containers(root) == [root / "model.safetensors"]
+
+
+def test_a_whole_split_resolves_in_shard_order(tmp_path):
+    names = ["model-00002-of-00003.safetensors", "model-00001-of-00003.safetensors",
+             "model-00003-of-00003.safetensors", "model.safetensors.index.json"]
+    root = directory(tmp_path, names)
+    assert [p.name for p in engine.containers(root)] == [
+        "model-00001-of-00003.safetensors", "model-00002-of-00003.safetensors",
+        "model-00003-of-00003.safetensors"]
+
+
+@pytest.mark.parametrize("names,kind", [
+    ([], "artifact_unresolvable"),
+    (["config.json"], "artifact_unresolvable"),
+    (["a.safetensors", "b.safetensors"], "artifact_unresolvable"),
+    (["model.safetensors", "model.gguf"], "artifact_unresolvable"),
+    (["model-00001-of-00003.safetensors", "model-00002-of-00003.safetensors"],
+     "artifact_unresolvable"),
+    (["model-00001-of-00002.safetensors"], "artifact_unresolvable"),
+    (["model-00001-of-00002.safetensors", "other-00002-of-00002.safetensors"],
+     "artifact_unresolvable"),
+    (["model-00000-of-00001.safetensors", "x.safetensors"], "artifact_unresolvable"),
+])
+def test_what_is_not_one_artifact_refuses(tmp_path, names, kind):
+    """Perturbations: take the first container of several, and two artifacts in one
+    directory resolve. Skip the pin's check that every shard is present, and a lone
+    first shard resolves."""
+    root = directory(tmp_path, names)
+    with pytest.raises(AdmissionError) as caught:
+        engine.containers(root)
+    assert caught.value.kind == kind
+
+
+def test_a_linked_container_counts_by_its_target_and_a_named_directory_does_not(tmp_path):
+    target = tmp_path / "blob"
+    target.write_bytes(b"x" * 9)
+    root = tmp_path / "artifact"
+    root.mkdir()
+    (root / "model.safetensors").symlink_to(target)
+    (root / "decoy.gguf").mkdir()
+    assert engine.containers(root) == [root / "model.safetensors"]
+
+
+def test_the_split_pattern_is_rusts(tmp_path):
+    split = engine._split
+    assert split("model-00001-of-00002.safetensors") == ("model", 2, ".safetensors")
+    assert split("m-00003-of-00003.gguf") == ("m", 3, ".gguf")
+    for name in ("model.safetensors", "model-00003-of-00002.safetensors",
+                 "model-00000-of-00002.safetensors", "model-0001-of-00002.safetensors",
+                 "-00001-of-00002.safetensors", "model-00001-of-00000.safetensors",
+                 "model_00001-of-00002.safetensors", "model-0000a-of-00002.safetensors"):
+        assert split(name) is None, name
+
+
+CONTAINER_CASES = [
+    ["model.safetensors", "config.json"],
+    ["model.gguf"],
+    ["model-00002-of-00003.safetensors", "model-00001-of-00003.safetensors",
+     "model-00003-of-00003.safetensors", "model.safetensors.index.json"],
+    ["model-00001-of-00002.safetensors"],
+    ["model-00001-of-00003.safetensors", "model-00002-of-00003.safetensors"],
+    ["model-00001-of-00002.safetensors", "other-00002-of-00002.safetensors"],
+    ["model-00000-of-00001.safetensors", "x.safetensors"],
+    ["a.safetensors", "b.safetensors"],
+    ["model.safetensors", "model.gguf"],
+    [".safetensors"],
+    ["config.json"],
+    [],
+]
+
+
+@pytest.mark.parametrize("names", CONTAINER_CASES)
+def test_the_container_rule_is_the_rust_codes(tmp_path, oracle, names):
+    """The port against the Rust code itself, by execution: weaver-spu's resolve and pin
+    at the oracle's pinned commit, over the same directory. Each file has its own size,
+    so an equal pinned length means the same members. Perturbations of the port, in
+    test_what_is_not_one_artifact_refuses, fail here too."""
+    root = directory(tmp_path, names, {name: 10 * (i + 1) for i, name in enumerate(names)})
+    rust = oracle(op="artifact", path=str(root))
+    try:
+        members = engine.containers(root)
+    except AdmissionError as refused:
+        assert rust == {"error": {"artifact_unresolvable": "ArtifactUnresolvable",
+                                  "artifact_unreadable": "ArtifactUnreadable"}[refused.kind]}, rust
+        return
+    assert rust == {"ok": {"resolved": members[0].name,
+                           "len": sum(os.stat(m).st_size for m in members)}}, (rust, members)
+
+
+def test_a_gguf_resolves_and_python_spu_refuses_it(tmp_path):
+    root = directory(tmp_path, ["model.gguf"])
+    assert engine.containers(root) == [root / "model.gguf"]
+    with pytest.raises(AdmissionError) as caught:
+        engine.HFEngine(root, [0], cpu=True)
+    assert (caught.value.kind, str(caught.value)) == ("artifact_unreadable", "safetensors required")
+
+
+# The determinism environment, python-spu-Spec section 8.
+
+def test_the_package_sets_the_cublas_workspace_where_none_is_set():
+    env = {k: v for k, v in os.environ.items() if k != "CUBLAS_WORKSPACE_CONFIG"}
+    env["PYTHONPATH"] = str(ROOT / "src")
+    done = subprocess.run([sys.executable, "-c", "import os, python_spu; "
+                           "print(os.environ['CUBLAS_WORKSPACE_CONFIG'])"],
+                          capture_output=True, text=True, timeout=120, env=env)
+    assert done.stdout.strip() == ":4096:8", done.stderr
+
+
+def test_a_differing_cublas_workspace_is_refused_by_name_not_overwritten():
+    """Perturbations: overwrite the value, and the entry goes on to adopt. Accept any
+    value, and the same."""
+    done = run_entry([], {"CUBLAS_WORKSPACE_CONFIG": ":16:8"})
+    assert (done.returncode, done.stdout) == (1, "")
+    refusal = json.loads(done.stderr)
+    assert refusal["refusal"] == "bad_environment"
+    assert "CUBLAS_WORKSPACE_CONFIG is ':16:8'" in refusal["detail"]
+    agreed = run_entry([], {"CUBLAS_WORKSPACE_CONFIG": ":4096:8"})
+    assert "bad_environment" not in agreed.stderr and "python_spu_fault" in agreed.stderr
+
+
+def test_a_foreign_cublas_on_the_library_path_is_not_mapped(tmp_path):
+    """karl's /opt/cuda/lib64 holds another cuBLAS. torch preloads its own from the
+    prefix, so a library of that name earlier on LD_LIBRARY_PATH is never mapped. The
+    impostor here is a copy of blake3's extension, a shared object the lock carries on
+    every box, named as cuBLAS: if the loader took it, torch would
+    fail to resolve cuBLAS's symbols, and its path would show in the maps. Perturbation:
+    LD_PRELOAD the impostor, and the maps rule names it foreign."""
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    import blake3
+    impostor = next(Path(blake3.__file__).parent.glob("*.so"))
+    for name in ("libcublas.so.13", "libcublasLt.so.13"):
+        shutil.copy(impostor, lib / name)
+    probe = ("import python_spu, torch\n"
+             "from python_spu.loaded_code import foreign_now\n"
+             "maps = {l.split()[-1] for l in open('/proc/self/maps') if l.split()[-1].startswith('/')}\n"
+             "print(sorted(p for p in maps if 'cublas' in p))\n"
+             "print(foreign_now())\n")
+    env = dict(os.environ, PYTHONPATH=str(ROOT / "src"), LD_LIBRARY_PATH=str(lib),
+               CUDA_VISIBLE_DEVICES="")
+    done = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True,
+                          timeout=300, env=env)
+    assert done.returncode == 0, done.stderr
+    mapped, foreign = done.stdout.strip().splitlines()
+    assert foreign == "[]", foreign
+    assert str(lib) not in mapped and "nvidia/cu13/lib/libcublas.so.13" in mapped, mapped

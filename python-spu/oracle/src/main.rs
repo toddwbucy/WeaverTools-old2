@@ -27,6 +27,16 @@ fn run(v: Value, raw_body: &str) -> Result<Value, String> {
                 "surprisal": weaver_spu::measurement::surprisal_bits(&logits,token),
                 "field": weaver_spu::measurement::field(&logits,token,3)}))
         },
+        // weaver-spu artifact.rs's resolve then pin, over a directory: the file the
+        // directory resolves to and the pinned length, the shard the room judgment
+        // divides, or the refusal either step answers.
+        "artifact" => {
+            let reference = weaver_types::ArtifactRef(v["path"].as_str().ok_or("path")?.into());
+            let resolved = weaver_spu::artifact::resolve(&reference).map_err(|e| format!("{e:?}"))?;
+            let pinned = weaver_spu::artifact::pin(&resolved).map_err(|e| format!("{e:?}"))?;
+            Ok(json!({"resolved": resolved.file_name().and_then(|n| n.to_str()),
+                "len": pinned.len().map_err(|e| format!("{e:?}"))?}))
+        },
         "render" => {
             let messages: Vec<weaver_traits::Message> = serde_json::from_value(body).map_err(|e| e.to_string())?;
             weaver_spu::family::qwen2::renderer().render_identity(&messages)

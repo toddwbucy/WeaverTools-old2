@@ -31,3 +31,14 @@ INHERITED = _open_descriptors()
 # gained triton still serves torch's eager kernels. Set here, at the package's first
 # import, because the registration runs at torch's.
 _os.environ["TORCH_DISABLE_NATIVE_JIT"] = "1"
+
+# **The determinism environment is the SPU's own**, per python-spu-Spec section 8. The
+# engine enables torch's deterministic algorithms, and cuBLAS then needs a fixed
+# workspace, so it is set here, before torch can initialise CUDA, rather than left to a
+# deployment line an admin configuration serving both SPUs may not carry. A value the
+# environment already holds that differs is kept, and the entry refuses it by name: a
+# deployment that set one meant it, and overwriting it silently would serve a
+# determinism nobody wrote.
+CUBLAS_WORKSPACE = ":4096:8"
+CUBLAS_WORKSPACE_PRIOR = _os.environ.get("CUBLAS_WORKSPACE_CONFIG")
+_os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", CUBLAS_WORKSPACE)

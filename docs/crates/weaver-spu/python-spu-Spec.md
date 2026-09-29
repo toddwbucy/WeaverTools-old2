@@ -142,9 +142,13 @@ short of:
   2^32 (`server.py`). The Rust resolution holds it as `u32` and refuses a value at or
   past 2^32 as `NotACount`, where the prototype passes it to the engine and refuses it
   late, or admits it.
-- Section 3.1: its oracle answers five operations, `session`, `seed`, `measure`,
-  `render` and `round`, and a transport test over the oracle's descriptor. Every other
-  operation the walk names is unbuilt.
+- Section 3.1: its oracle answers eleven operations, and runs a transport test over the
+  oracle's descriptor:
+  - `session`, `seed`, `measure`, `render` and `round`.
+  - The sampler's `rng`, `select`, `generation`, `probs` and `weighted`.
+  - `artifact`.
+
+  Every other operation the walk names is unbuilt.
 - Section 5: the sampler is the native engine's, ported and proven as section 5 says,
   and it samples in pure Python at about 120 ms a token over a Qwen2.5 vocabulary on
   thinkpad, the softmax's glibc `expf` over every logit and the partition over every
@@ -174,7 +178,7 @@ check the named contract's Conformance section lists.
 | The two channel ends at descriptors 3 and 4, close-on-exec set on both, the dumpable flag cleared before the engine's runtime is imported | 2 | a process test |
 | The `SOCK_SEQPACKET` envelope and the segmented frame, per `weaver-organ-channel` | 2 | oracle, over a socket pair |
 | Every payload of the two contracts it is party to, accepted and refused, and the instruction's `classify` member accepted and left unread | 2, 9 | oracle, serde round trips both ways |
-| Admission judges each device by the one room inequality, refuses and never evicts, so a second agent's SPU of either implementation is admitted where the card has room, and the weights hash is blake3 at admit | 3 | a process test on a device, oracle for the hash |
+| Admission judges each device by the one room inequality before the weights load: free memory at least the shard, the pinned containers' size over the device count, plus the headroom the worker's `--headroom-bytes` states or the compiled 512 MiB. It refuses `device_cannot_admit` and never evicts, so a second agent's SPU of either implementation is admitted where the card has room, and the weights hash is blake3 at admit | 3 | a process test on a device, `artifact` oracle for the shard, the inequality's mirror per section 3.1, oracle for the hash |
 | The session appends and never rewinds, the identity prefix is permanent, an overflow refuses before any append | 4.2 | contract, decode section 8 |
 | The turn terminator made resident on every path, the stop within a token boundary of the cancel | 4.2, 4.3 | contract, decode section 8 |
 | The flush per resolved entry and the elision's exact removal | 4.4, 4.5 | contract, decode section 8 |
@@ -200,11 +204,12 @@ The table above names behaviours. This one walks the code: every public item of
 `weaver-spu` outside its engines, taken from the crate at the commit the oracle pins,
 with the oracle operation that compares `python-spu` against it or the reason it is
 excluded. Each module is `pub` in the crate's root, so every operation calls the Rust
-code itself from outside the crate, and nothing under `crates/` changes for it. Two rows
-are mirrors rather than calls, and each says why: the item they compare against is
-reachable only through a loaded model. The walk is what closes the conformance class. A
-later finding that names an item is answered by its row, and an item added to the crate
-joins the walk in the act that moves the pin to it.
+code itself from outside the crate, and nothing under `crates/` changes for it. Four
+rows are mirrors rather than calls, and each says why. For two of them, the item they
+compare against is reachable only through a loaded model. For the other two, the item is
+the binary's, or needs a device. The walk is what closes the conformance class. A later
+finding that names an item is answered by its row, and an item added to the crate joins
+the walk in the act that moves the pin to it.
 
 | `weaver-spu` items | Oracle operation, or why excluded |
 | --- | --- |
@@ -230,13 +235,14 @@ joins the walk in the act that moves the pin to it.
 | `readout`: `ReadoutElection`, `judge`, `judge_column_ask`, `ReadoutRefusal`, `TapOutcome` | `registry`: each judgment against a declaration |
 | `readout`: `Tap` | excluded as a trait: the tap reads the engine's hidden states and is the engine's own |
 | `residency`: `promote_stop_conditions`, `StopSet` | `stops`, over supplied stop inputs |
-| `residency`: `Headroom`, `AdmitRefusal` | the wire rows of section 3 for the refusals. The headroom judgment needs a device, per the `gpu` row |
+| `residency`: `Headroom`, `AdmitRefusal` | the wire rows of section 3 for the refusals. The headroom judgment's inequality is a mirror and its driver query needs a device, per the `gpu` row |
 | `residency`: `Residency` and its methods, `Admission` and its accessors, `Resident`'s `model`, `open_session`, `declared_eos` and `stop_set`, `LoadedModel` | excluded from the oracle: each needs a loaded model or a device. The process tests and the contract rows of section 3 |
 | `residency`: `Resident::tokenize`, `Resident::detokenize` | `tokenize`, a mirror. Both reach the native engine's `tokenize` and `detokenize`, which are `pub(crate)` and need a loaded model, so the operation calls `tokenizers` 0.21.4, the version `weaver-spu` links, with the two calls `native.rs` makes, `encode(text, false)` and `decode(ids, false)`, against the served artifact's `tokenizer.json`, and compares both directions on the rendered prefix and every delta. This implementation runs the Python `tokenizers` 0.23.2 the lock pins, which `transformers` 5.17.0 requires, so the two sides run two releases and the operation is the proof of their equivalence on the artifacts served, a divergence being a finding against the engine's version. Section 7's check that each generation's input token identifiers are equal on both sides is the backstop on the prompts a comparison runs |
 | `sampling`: `Disposition`, `is_frozen`, `Knobs`, `EffectiveKnobs`, `SessionParameters`, `EffectiveSessionParameters`, `tunable_names`, `resolve`, `KnobRefusal` | `knobs`: resolution against supplied tunable values, and each refusal |
 | `sampling`: `derived_seed` | `seed`, and section 8.5's test vectors |
 | the native engine's `sample` | `generation`, `probs`, `select`, `weighted` and `rng`, mirrors, per section 5: it needs a loaded model, so the operations run the code it runs at the pinned revisions. `generation` is candle's `LogitsProcessor` with the engine's penalty over a whole generation, `probs` the probability vector's bits, `select` the whole index order `select_nth_unstable_by` leaves, `weighted` rand's `WeightedIndex` over scripted words, and `rng` the generator's words |
-| `decoder::native`, `native_pair`, `gguf`, `gguf_tap`, `gpu` | excluded as a whole: the engines, their taps and the device judgment, which section 4 makes this implementation's own, the native sampler excepted per the row above |
+| `decoder::native`, `native_pair`, `gguf`, `gguf_tap`, `gpu` | excluded as a whole: the engines, their taps and the device query, which section 4 makes this implementation's own. Two parts are excepted. The native sampler is excepted per the row above. `gpu::room_and_reach`'s room inequality is carried identically per section 3's room row: a mirror, since it needs a device, ported as `engine.judge_room`, with the sum saturating and `NoRoom`'s figures in the refusal's detail, since the wire's `device_cannot_admit` carries none |
+| the binary's `main.rs`: `headroom_from`, `HEADROOM_BYTES`, and `main`'s `bad_parameter` refusal | the process's command line, a mirror: a binary's items are not the library's, so no call reaches them. `server.parameters` ports the rule. The whole vector is read, a missing or malformed value is refused, a parameter stated twice is refused, and an unknown one is refused by name. An absent headroom is the compiled default. The entry refuses in `main`'s form: one JSON line, exit 1, before the channels are adopted. The tests hold it to `the_whole_vector_is_judged`'s cases and to the worker's `OrganParameters::spu_arguments`. python-spu's own `--cpu-experiment` and `--declare-imports`, which the worker never sends, follow the same rules |
 
 ## 4. What is its own
 
@@ -576,6 +582,19 @@ before torch is imported, so an environment that gained triton still serves torc
 eager kernels and faults on triton's import rather than compiling. The suite proves the
 rule by perturbation: a shared object copied out of the environment and loaded at
 startup faults the process at admission, naming it.
+
+**The determinism environment is the process's own.** The engine enables torch's
+deterministic algorithms, which require `CUBLAS_WORKSPACE_CONFIG`, so the package sets
+it to `:4096:8` at its first import, before torch can initialise CUDA, rather than
+relying on a deployment line. One admin configuration may serve both SPUs, per
+`weaver-admin-Spec` section 9, and the Rust SPU needs no such line. A value the
+environment already carries that differs is refused at the entry by name: one
+`bad_environment` line, then exit 1, before the channels are adopted. It is never
+overwritten, since a deployment that set one meant it. `LD_LIBRARY_PATH` needs no
+setting. torch loads its CUDA libraries from the prefix by path, so a cuBLAS of the same
+name earlier on the path is never mapped. That was measured on thinkpad at import with
+the Rust stack's `/opt/cuda/lib64` on the path, and a suite test shows the same with an
+impostor library. The loaded-code rule above would fault a process that mapped one.
 
 **The process counts its inherited descriptors before any module opens one of its own.**
 python-build-standalone's `ctypes` opens the interpreter's own executable at import,

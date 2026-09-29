@@ -120,9 +120,13 @@ def test_the_zipapp_is_reproducible_and_launches(tmp_path):
     second = build_zipapp.build(ROOT / "src", tmp_path / "b.pyz", sys.executable)
     assert first.read_bytes() == second.read_bytes()
     assert first.read_bytes().startswith(b"#!" + sys.executable.encode() + b"\n")
+    # The entry runs and reads the worker's vector: python-spu has no help flag, as the
+    # Rust SPU has none, so an unknown parameter is refused by name before anything
+    # else, in the Rust SPU's own form.
     shown = subprocess.run([str(first), "--help"], capture_output=True, text=True, timeout=120)
-    assert shown.returncode == 0, shown.stderr
-    assert "--declare-imports" in shown.stdout
+    assert (shown.returncode, shown.stdout) == (1, ""), shown.stderr
+    assert json.loads(shown.stderr) == {"refusal": "bad_parameter",
+                                        "detail": "unknown parameter --help"}
     import zipfile
     names = zipfile.ZipFile(first).namelist()
     assert {"python_spu/imports-cpu.txt", "python_spu/imports-cuda.txt"} <= set(names)
