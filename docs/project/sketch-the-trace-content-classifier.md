@@ -127,7 +127,7 @@ they name no language.
 training a model to imitate the Services' output, which is what a fine-tune on our
 labels would be. Recorded here so the exclusion is not rediscovered.
 
-## 4. The evaluation
+## 4. The evaluation, a protocol draft
 
 Every candidate is evaluated on the same held-out judgmental positions, side by side.
 **The labeled positions are split by task, never by line or by result set**: every
@@ -151,7 +151,9 @@ id2label head, so each candidate's output is normalised to that decision before 
 scored: for Kev a `noul` question per predicate with its probability thresholded, and
 for ModernBERT one encoder head per predicate or a multi-label head thresholded per
 predicate. **Every threshold is chosen on the training split and never on the held-out
-one.** The candidates are compared per predicate on precision and recall over the
+one**, by one rule for every candidate and every predicate: the threshold that maximises
+F1 on the training split, chosen once per candidate and predicate and recorded in the
+deposit. The candidates are compared per predicate on precision and recall over the
 held-out positions, and a single figure across the three predicates is not reported.
 
 **The label split's size is the case for building a classifier and not evidence for
@@ -167,6 +169,10 @@ observer stays off the decoder's weights and device.
   positions, a measurement.
 - Who labels the judgmental positions. Section 4 requires only that no candidate
   and no model of a candidate's family does.
+- The evaluation's protocol. Section 4 is a draft, and the protocol is settled in
+  its own experiment plan under `experiments/trace-content/`, a plan document
+  reviewed as a plan before any candidate is fitted. A further finding against the
+  protocol is answered there rather than here.
 - The Pumpkin Spice specimen is not an artifact on disk: it names a decision
   point, the moment after a retrieved fact lands, per the operator's word of
   2026-08-31. The template case for the judgmental labels is still to be chosen
