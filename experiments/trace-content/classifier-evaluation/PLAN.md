@@ -94,20 +94,30 @@ probability is at or above the cutoff counts positive. F1 is zero where a cutoff
 predicts no positive, precision being undefined there. The cutoff is recorded, and none
 is chosen on the held-out split.
 
+**Each candidate's fitting record is written before it is fitted** and recorded in the
+deposit: the artifact and its revision, the preprocessing from the window of section 2
+to the model's input, the hyperparameters, the optimiser and its schedule, and the
+training seed. The recipe belongs to the record rather than to this plan, because it
+differs by candidate, and a fitting with no record written before it is not reported.
+
 ## 6. Scoring
 
 The candidates are compared per predicate on precision and recall over the held-out
 positions. No figure pooled across the predicates is reported.
 
 **Every figure carries its uncertainty, by a fixed procedure.** Each candidate's F1 per
-predicate has a percentile bootstrap interval over the held-out sessions: 1,000
-resamples, each drawing as many sessions as were held out, with replacement, from a
-generator seeded with 20260929, the seed recorded in the deposit so two compliant runs
-draw the same resamples. The interval runs from the 2.5th to the 97.5th percentile of
-the resampled F1, and its lower bound is the 2.5th percentile. The unit is the session
-and not the position, for the reason section 4 splits by session: positions of one
-session share inputs, and treating them as independent would draw an interval narrower
-than the data supports.
+predicate has a percentile bootstrap interval over the held-out sessions. The generator
+is Python's `random.Random`, the standard library's Mersenne Twister, one stream seeded
+once with 20260929, with the interpreter's version recorded in the deposit. The held-out
+sessions are listed in order of their names, and the stream draws 1,000 resamples in
+sequence before any candidate is scored, each resample as many draws of `randrange` over
+that list as there are held-out sessions, with replacement. **Every candidate and every
+predicate is scored on those same 1,000 resamples**, so the intervals compare candidates
+on one draw and every compliant run draws the same sessions. The interval runs from the
+2.5th to the 97.5th percentile of the resampled F1, and its lower bound is the 2.5th
+percentile. The unit is the session and not the position, for the reason section 4
+splits by session: positions of one session share inputs, and treating them as
+independent would draw an interval narrower than the data supports.
 
 ## 7. Serving
 
@@ -153,6 +163,8 @@ failed:
    not the preliminary pair, and the per-turn budget is set against that maximum.
 4. **The rubric.** `RUBRIC.md` is merged and the two labelers' agreement meets its floor
    for every predicate.
+5. **The fitting records.** Every candidate's fitting record of section 5 is written
+   before its fitting and stands in the deposit.
 
 **The selection is a procedure over one key.** Among the eligible candidates, those with
 every observed answer under 30,000 ms and a per-turn cost within the budget:
