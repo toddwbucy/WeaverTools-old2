@@ -118,10 +118,9 @@ contract change reaching both parties, on the operator's ruling, and the member
 honouring the seam would be a Python process, which the contracts permit since
 they name no language.
 
-**Jev is ruled out.** TypeSafe's Master Customer Agreement section 2.3(b) forbids
-training a model to imitate the Services' output, breach is an excluded claim
-outside the liability cap, and the clause survives termination. Recorded here so
-the exclusion is not rediscovered.
+**Jev is ruled out.** TypeSafe's Master Customer Agreement, section 2.3(b), forbids
+training a model to imitate the Services' output, which is what a fine-tune on our
+labels would be. Recorded here so the exclusion is not rediscovered.
 
 ## 4. The evaluation
 
