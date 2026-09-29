@@ -128,16 +128,21 @@ def text_of(entry):
     return None, None
 
 
+def normalized(text):
+    """A program's lines as the recipe compares them: the pipeline's own
+    angle-bracket stripping, then each line stripped and blank lines dropped."""
+    text = text.strip()
+    angled = re.match(r"^\s*<\s*(.*?)\s*>\s*$", text, re.S)
+    text = angled.group(1).strip() if angled else text
+    return [line.strip() for line in text.splitlines() if line.strip()]
+
+
 def is_program(block, program):
-    """A fenced block is the program the pipeline ran where its content, with
-    the pipeline's own angle-bracket stripping, is the program, or holds the
-    program's first and last lines."""
-    content = block.strip()
-    angled = re.match(r"^\s*<\s*(.*?)\s*>\s*$", content, re.S)
-    content = angled.group(1).strip() if angled else content
-    lines = [l.strip() for l in program.splitlines() if l.strip()]
-    return bool(lines) and (content == program.strip()
-                            or (lines[0] in content and lines[-1] in content))
+    """A fenced block is the program the pipeline ran only where its
+    normalized content equals that program's, nothing weaker: a block that
+    differs from it in any way is a draft, whatever it contains."""
+    lines = normalized(program)
+    return bool(lines) and normalized(block) == lines
 
 
 def prose_and_drafts(reasoning, answer, program):

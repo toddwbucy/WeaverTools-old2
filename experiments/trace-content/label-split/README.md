@@ -22,8 +22,8 @@ on disk, and the shares are taken over those.
 
 | Weighting | Positions | Computable | Judgmental | Unreached |
 |---|---|---|---|---|
-| every position | 1,472,963 | 51.6% | 44.4% | 4.0% |
-| what the model wrote | 829,731 | 14.0% | 78.8% | 7.2% |
+| every position | 1,473,222 | 51.5% | 44.4% | 4.1% |
+| what the model wrote | 829,990 | 14.0% | 78.8% | 7.2% |
 
 The two weightings answer different questions and neither is the other's correction.
 Every position counts the environment's answers too, and an executed action is a
@@ -45,18 +45,23 @@ whether it recites the dump, states a plan, or contradicts what was recited.
 computed, a statement that calls nothing in the environment, and a line inside a code
 block that is not the final program. A statement is judged by the first environment call
 anywhere in its own expressions, so `print(gather(...))` and `if fight(...)[0] != 200:`
-are calls. The program is the fenced block whose content is the program the pipeline
-ran, found with the pipeline's own fence pattern, every other fence being a draft, and
-where no fence holds it, its lines are taken out of the prose. Each of these corrected a
-first count: reading wrapped calls moved 120 positions from unreached to computable, and
-binding arguments by parameter, reading the fences by content, and labelling slots and
-signatures added 3,678 draft lines that a following markerless program had hidden, moved
-36 steps from unreached to computable as calls that do not fit their signature and 1
-back the other way, a gather whose preceding move no longer binds, and relabelled 6,930
-computable steps, 293 of them calls read as valid that do not fit their signature and
-494 equips naming no slot the character has.
+are calls. **The program is identified by equality with what the pipeline ran, and a
+fenced block that differs from it in any way is a draft, whatever it contains**:
+equality after the pipeline's own angle-bracket stripping and line by line with
+whitespace trimmed and blank lines dropped, the fences found with the pipeline's own
+pattern, and where no fence equals the program, every fence is a draft and the program's
+lines are taken out of the prose. That is the recipe's limit. The first-and-last-line
+match it replaced accepted 307 fences that equality does not, and alone decided which
+fence was the program in 8 completions, whose chosen fences now count as drafts, 259
+lines. Each of these corrected a first count: reading wrapped calls moved 120 positions
+from unreached to computable, and binding arguments by parameter, reading the fences by
+content, and labelling slots and signatures added 3,678 draft lines that a following
+markerless program had hidden, moved 36 steps from unreached to computable as calls that
+do not fit their signature and 1 back the other way, a gather whose preceding move no
+longer binds, and relabelled 6,930 computable steps, 293 of them calls read as valid
+that do not fit their signature and 494 equips naming no slot the character has.
 
-The split holds across the base levels: of what the model wrote, judgmental is 87.1 per
+The split holds across the base levels: of what the model wrote, judgmental is 87.0 per
 cent at level 1 and between 79.2 and 83.6 per cent from level 2 to 9. The hard set reads
 45.1 per cent computable and 41.2 judgmental of what the model wrote, and the difference
 is which models ran rather than the tasks: nine of its fifteen result sets are gpt-5, o3
