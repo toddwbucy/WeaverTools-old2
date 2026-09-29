@@ -203,7 +203,9 @@ observer stays off the decoder's weights and device.
   from, and a candidate that cannot answer inside the harness's classify bound,
   `CLASSIFY_ANSWER_BOUND_MS` in `weaver-harness`, is not selected however it scores,
   since the harness serialises classify asks and retires the classify arm after an
-  answer past it.
+  answer past it. The plan predeclares its selection rule before any candidate is
+  fitted, a rule stated over the per-predicate figures and the serving bound, so the
+  held-out results decide the winner and are not read before the rule is fixed.
 - The Pumpkin Spice specimen is not an artifact on disk: it names a decision
   point, the moment after a retrieved fact lands, per the operator's word of
   2026-08-31. The template case for the judgmental labels is still to be chosen
