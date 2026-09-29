@@ -73,10 +73,10 @@ the evidence named:
 
 **Beside the criteria, nothing belonging to another agent changes.** The following are
 captured before the load and after the unload, and each pair must diff empty:
-- the other agent's unit state and runtime directory.
-- admin's configuration, binaries and libraries for the other agents.
-- the other agent's declaration, and its trace by size and modification time.
-- admin's own log.
+- The other agent's unit state and runtime directory.
+- Admin's configuration, binaries and libraries for the other agents.
+- The other agent's declaration, and its trace by size and modification time.
+- Admin's own log.
 
 The capture time is written to a file of its own, never into a compared file.
 
@@ -94,17 +94,17 @@ of python-spu-Spec section 8 is such evidence for criterion 4.
   diagnostic sink.
 - **`replay.py` exits 0 only when all of these hold:**
   - `replay.closed` reads certified.
-  - the leave is answered `left`.
-  - the worker and the state member exit 0 on their own within the grace after the
+  - The leave is answered `left`.
+  - The worker and the state member exit 0 on their own within the grace after the
     leave.
-  - the temporary directory is removed.
+  - The temporary directory is removed.
 - **Anything else exits 1, each reason named.** That includes:
-  - another closing outcome.
-  - a turn stopped before the close.
-  - a leave refused or unanswered.
-  - a process that had to be signalled.
-  - a process that exited non-zero.
-  - a directory left behind.
+  - Another closing outcome.
+  - A turn stopped before the close.
+  - A leave refused or unanswered.
+  - A process that had to be signalled.
+  - A process that exited non-zero.
+  - A directory left behind.
 - **After a clean leave, a process that does not exit is signalled only when the grace
   runs out.** Otherwise each is signalled at once.
 - **`--stand-only` exits 1 unless** coordination bound and both processes stood.
@@ -114,9 +114,17 @@ of python-spu-Spec section 8 is such evidence for criterion 4.
 **A cell** is one card, serving two agents under one admin configuration. One agent's
 `agent-spu` names python-spu, and the other's names the Rust SPU at its native engine.
 The two are held equal in everything else:
-- the same safetensors directory.
-- the precision python-spu-Spec sections 5 and 7 hold.
-- the same declared seed, knobs and prompts.
+- The same safetensors directory.
+- The precision python-spu-Spec sections 5 and 7 hold.
+- The same declared seed, knobs and prompts.
+
+**The two agents are loaded one at a time during a comparison run, never together.**
+With both resident, the second's allocation changes the first's free device memory, and
+a library that chooses its algorithm by free memory or workspace can then compute
+differently. That would give a difference a second cause, the co-resident agent, where
+python-spu-Spec section 7 claims one. So one agent is loaded, serves its half of the
+cell and is unloaded, and `nvidia-smi` reads no compute process before the other agent
+is loaded. That reading is part of the cell's record.
 
 **The drives, the measures and the lines are python-spu-Spec section 7's.** That
 covers the distribution level along the partner's recorded path, the token level under
@@ -129,8 +137,8 @@ admin's configuration.
 **Its preconditions are #726's items, and a cell runs only once they have landed.**
 Three are named in its checklist:
 - python-spu loading at BF16, the gap python-spu-Spec section 2.1 records.
-- the determinism matrix reading which SPU served from the record.
-- the matrix's readers for both SPUs' provenance.
+- The determinism matrix reading which SPU served from the record.
+- The matrix's readers for both SPUs' provenance.
 
 **The comparison's code is not written.** It lands in `code/` with its own act, and
 this section is revised to state what that code enforces before the code is hardened,
