@@ -81,7 +81,10 @@ tables are in the deposit's `split/tables.md`, produced by `code/tables.py`.
 One model's pair was replayed through the execution path, capturing the server's answer
 at every action: gpt-4.1 on level 1, `5_Cultist Emperor_kill` (won) and
 `14_Cultist Emperor_kill` (lost, score 85.7). Each replay reproduces its recorded run
-exactly, the same log line for line, the same outcome and the same score.
+exactly, the same log line for line, the same outcome and the same score. **The replay
+reproduces recorded programs the pipeline already ran to completion** and bounds them
+with an in-process alarm a program could catch or cancel, unlike `safe_exec`'s process
+join, so it is a reproduction of known runs and not a sandbox for unknown code.
 
 | Position | Lands in, when our agent plays |
 |---|---|

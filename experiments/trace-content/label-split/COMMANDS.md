@@ -49,6 +49,10 @@ cd <upstream-tree> && PYTHONPATH=<herobench>/weaver/bench/shim:<upstream-tree> \
 and the same for `"5_Cultist Emperor_kill"` into `gpt-4.1_1_5.json`. Against the
 fork's server, with `<herobench>` in place of `<upstream-tree>` and port 8000, into
 `<deposit>/replay-fork-server/`. Each prints whether its log matches the recorded one.
+The replay reproduces recorded programs the pipeline already ran to completion and
+bounds them with an in-process alarm a program could catch or cancel, unlike
+`safe_exec`'s process join, so it is a reproduction of known runs and not a sandbox for
+unknown code.
 
 The position table of each, to rerun:
 

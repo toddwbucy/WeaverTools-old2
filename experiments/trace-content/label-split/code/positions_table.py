@@ -26,6 +26,10 @@ import json
 import re
 import sys
 
+# The tag and whitespace of extract_final_code's fence pattern in utils.py,
+# r"```(?:[\w.+-]+)?\s*\n?([\s\S]*?)```", read from the opening fence to the code.
+OPENING = re.compile(r"(?:[\w.+-]+)?\s*")
+
 
 def cut(prompt):
     marks = [("rules", 0),
@@ -42,7 +46,9 @@ def program_start(answer, code):
     """Where the program the pipeline ran begins in the answer: the last place
     the extracted program occurs, or its first line where the fenced text
     differs by whitespace, and the "final answer" phrase only where neither is
-    found. The text before it is the completion's text before the program."""
+    found. The text before it is the completion's text before the program, and
+    an opening fence whose tag and whitespace are all that stand between it and
+    the program is the program's, as the pipeline reads it."""
     code = (code or "").strip()
     at = answer.rfind(code) if code else -1
     if at < 0 and code:
@@ -52,8 +58,10 @@ def program_start(answer, code):
     if at < 0:
         return len(answer)
     fence = answer.rfind("```", 0, at)
-    # A fence opening the program belongs to the program, not to the text.
-    return fence if fence >= 0 and not answer[fence + 3:at].strip("\n\t pythonPY") else at
+    # A fence opening the program belongs to the program, not to the text,
+    # where what lies between them is the pipeline's own opening-fence
+    # pattern: an optional tag of [\w.+-]+ and then whitespace only.
+    return fence if fence >= 0 and OPENING.fullmatch(answer[fence + 3:at]) else at
 
 
 def quote(text, n):
