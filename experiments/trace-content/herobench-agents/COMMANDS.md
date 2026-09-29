@@ -72,8 +72,10 @@ sudo setpriv --reuid=<operator> --regid=<operator> --init-groups env HOME=<opera
   --out <deposit>/<agent>/<label> --level 1 --tasks 1-3 --turn-cap <cap> --label <label>
 ```
 
-It loads the agent, plays each task as one work item through the agent's gate, grades
-each with the benchmark's own functions, and unloads.
+It runs each task as its own run: it loads the agent, plays the task as one work item
+through the agent's gate, grades it with the benchmark's own functions, and unloads.
+The deposited runs were driven by its earlier form, three tasks in one run, which the
+result note describes.
 
 The counted pair ran as session `s-rusty-b` with loop v3, `--turn-cap 8`, labels `run1`
 and `run2`, and the first pair as session `s-rusty` with loop v2. The probes ran as

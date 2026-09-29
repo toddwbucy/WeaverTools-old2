@@ -134,4 +134,12 @@ def drive(seat, text):
         emission = outcome.get("emission", "") if isinstance(outcome, dict) else ""
         unclosed = "<tool_call>" in emission and "</tool_call>" not in emission
         message = (UNCLOSED if unclosed else "") + _not_done(task) + CONTINUE
-    seat.score(f"herobench {task['name']} won", won, turns, cap)
+    # **A refused score is not survived quietly.** The harness takes one score
+    # per run and refuses a second, so a refusal means this task shared its run
+    # with an earlier one and its verdict is not in the record. Raising ends the
+    # crossing with the refusal in the worker's log rather than letting the next
+    # task begin as if it had been scored.
+    if not seat.score(f"herobench {task['name']} won", won, turns, cap):
+        raise RuntimeError(
+            f"the harness refused the score for {task['name']}: one run carries one verdict"
+        )

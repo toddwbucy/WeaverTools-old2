@@ -9,8 +9,9 @@ benchmark's client reaches this arm's server:
     HEROBENCH_PORT=PORT PYTHONPATH=<herobench>/weaver/bench/shim:<herobench> \\
         <herobench>/.venv/bin/python run.py ...
 
-One run is one load and one unload of the agent through its admin. Between them
-each task is one work item on the agent's gate: the task's character is created
+Each task is one run, one load and one unload of the agent through its admin,
+under the declaration's session, because the harness takes one score per run.
+Between them the task is one work item on the agent's gate: the task's character is created
 first, with the benchmark's own `create_character` and the stats the task's
 prompt states, under the agent's name. The work item's first line is a header
 the loop file reads, and the rest is the task's game data and the task, without
@@ -21,9 +22,13 @@ functions: `extract_result`, `compute_episode_reward` and
 `compute_ideal_episode_reward`, the score being reward over ideal times 100 as the
 pipeline computes it. Nothing in the benchmark is modified.
 
+A task with no answer within --task-timeout is not graded and ends the driver:
+the agent is unloaded before anything else, because the relay does not cancel a
+frame it admitted.
+
 Writes, under --out: one `<task>.json` per task with the gate's answer, the
 character's log since creation, the result, the reward and the score, and
-`run.json` with the admin's answers and every task's outcome.
+`run.json` with each task's load, unload and outcome.
 """
 import argparse
 import json
@@ -125,24 +130,31 @@ def main():
     record = {"agent": args.agent, "label": args.label, "port": args.port,
               "level": args.level, "turn_cap": args.turn_cap, "tasks": []}
 
-    record["load"] = admin("load", args.agent)
-    record["load_wall"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
-    if record["load"].get("exit") != 0:
-        record["refused"] = "the load was refused"
-        json.dump(record, open(os.path.join(out, "run.json"), "w"), indent=1)
-        return 1
-    try:
-        if not wait_socket(gate):
-            record["refused"] = "the load stood no gate this process can reach"
-            return 1
-        for number in span(args.tasks):
-            prompt = prompts[args.level][number - 1]
-            task = tasks[args.level][number - 1]
-            kind = get_task_type(prompt)
-            subject = task.get("item") or task.get("monster_name")
-            name = f"{number}_{subject}_{kind}"
-            target = (task.get("monster_name", "") if kind == "kill"
-                      else (task.get("crafting_tree") or {}).get("code", ""))
+    # **Each task is its own run**: load, the task's turns, its score, unload,
+    # all under the declaration's one session. The harness takes one score per
+    # run, so a run of several tasks records only the first task's verdict,
+    # which is how the pairs deposited on 2026-09-29 were driven. One task per
+    # run makes every task's outcome a position of the record, and the shape ask
+    # then counts earlier tasks as earlier runs.
+    for number in span(args.tasks):
+        prompt = prompts[args.level][number - 1]
+        task = tasks[args.level][number - 1]
+        kind = get_task_type(prompt)
+        subject = task.get("item") or task.get("monster_name")
+        name = f"{number}_{subject}_{kind}"
+        target = (task.get("monster_name", "") if kind == "kill"
+                  else (task.get("crafting_tree") or {}).get("code", ""))
+        entry = {"name": name, "load": admin("load", args.agent),
+                 "load_wall": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
+        record["tasks"].append(entry)
+        if entry["load"].get("exit") != 0:
+            entry["refused"] = "the load was refused"
+            break
+        timed_out = False
+        try:
+            if not wait_socket(gate):
+                entry["refused"] = "the load stood no gate this process can reach"
+                break
             create_character(args.agent, prompt)
             header = {"url": f"http://127.0.0.1:{args.port}", "character": args.agent,
                       "kind": kind, "target": target, "name": name,
@@ -151,6 +163,14 @@ def main():
             began = time.time()
             try:
                 answer = gate_turn(gate, text, args.task_timeout)
+            except socket.timeout:
+                # **A timed-out task ends the driver.** The relay does not cancel
+                # a frame it admitted, so the task's turns may still be running:
+                # it is not graded, and no further task starts, until the unload
+                # below has stopped the agent.
+                timed_out = True
+                entry["fault"] = f"no answer within {args.task_timeout} s"
+                break
             except Exception as error:
                 answer = {"fault": repr(error)}
             took = time.time() - began
@@ -164,18 +184,21 @@ def main():
             outcome = {"name": name, "kind": kind, "target": target, "seconds": took,
                        "answer": answer, "result": result, "reward": reward,
                        "ideal_reward": ideal, "score": score,
-                       "actions": sum(1 for e in logs if e.get("action_type") != "create_character"),
+                       "actions": sum(1 for e in logs
+                                      if not e.get("action_type", "").startswith("create")),
                        "logs": logs}
             json.dump(outcome, open(os.path.join(out, f"{name}.json"), "w"), indent=1)
-            record["tasks"].append({k: outcome[k] for k in
-                                    ("name", "result", "reward", "ideal_reward", "score",
-                                     "actions", "seconds")})
+            entry.update({k: outcome[k] for k in
+                          ("result", "reward", "ideal_reward", "score", "actions", "seconds")})
             print(f"{args.agent} {args.label} {name}: {result} score {score:.1f} "
                   f"actions {outcome['actions']} in {took:.0f}s", flush=True)
-    finally:
-        record["unload"] = admin("unload", args.agent)
-        json.dump(record, open(os.path.join(out, "run.json"), "w"), indent=1)
-    return 0
+        finally:
+            entry["unload"] = admin("unload", args.agent)
+            json.dump(record, open(os.path.join(out, "run.json"), "w"), indent=1)
+        if timed_out:
+            break
+    ended = [t for t in record["tasks"] if "refused" in t or "fault" in t]
+    return 1 if ended else 0
 
 
 if __name__ == "__main__":

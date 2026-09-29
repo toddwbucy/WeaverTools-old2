@@ -21,10 +21,22 @@ Base level 1, tasks 1 to 3 of HeroBench's small dataset, three crafting tasks: G
 Spruce Plank and Hardwood Plank. Each task is one work item on the agent's gate. The
 loop file presents the task's game data and the task, runs turns until HeroBench's own
 result rule is met in the character's log or eight turns have passed, and records the
-verdict as a `score` event. Each run is one load and one unload of the agent, three
-tasks in one session context, and a pair of runs shares a session so that the second
-opens with a past. Every task is graded after the fact with the benchmark's own
-functions from the environment's log.
+verdict as a `score` event. As the deposited runs were driven, each run was one load and
+one unload of the agent with three tasks in one session context, and a pair of runs
+shared a session so that the second opened with a past. Every task is graded after the
+fact with the benchmark's own functions from the environment's log.
+
+**The deposited runs carry one score event each.** The harness takes one score per run
+and refuses a second, and the driver as it ran played three tasks in a run, so each
+run's score event is its first task's verdict and the later tasks' scores were refused,
+a refusal the loop did not check. rusty's trace holds 8 loads and 7 score events over
+100 turns, the eighth load being the probe that stood no gate. The per-task outcomes in
+the tables below come from the environment's logs, graded into each run's `run.json` and
+task files, and not from score events. The driver in `code/` now runs each task as its
+own run under the same session, so every task's outcome is a position of the record, and
+the loop raises on a refused score. A task that times out is not graded and ends the
+driver after an unload, and no task timed out in the deposited runs, the longest taking
+724 seconds.
 
 The environment is the fork at `32c1e0f`, two SQLite arms on ports 8030 and 8031, one
 per agent, so the two games share the game table and not their world state. The fork
