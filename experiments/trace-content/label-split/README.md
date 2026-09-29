@@ -22,8 +22,8 @@ on disk, and the shares are taken over those.
 
 | Weighting | Positions | Computable | Judgmental | Unreached |
 |---|---|---|---|---|
-| every position | 1,469,285 | 51.7% | 44.5% | 3.8% |
-| what the model wrote | 826,053 | 14.1% | 79.2% | 6.8% |
+| every position | 1,472,963 | 51.6% | 44.4% | 4.0% |
+| what the model wrote | 829,731 | 14.0% | 78.8% | 7.2% |
 
 The two weightings answer different questions and neither is the other's correction.
 Every position counts the environment's answers too, and an executed action is a
@@ -34,20 +34,30 @@ program's statements, which is what a label about the model's own reasoning is a
 **Computable** is a label that joins to game state by position with no model: an
 executed action accepted or refused and the inventory delta its log line states, the
 task's scored outcome, and a program statement calling the environment with literal
-arguments, labelled by whether its item code exists in the ontology, whether its move
-reaches a tile that exists and what stands there, and whether a gather or a fight is on
-the kind of tile the preceding move reached. **Judgmental** is a label that needs a
-model: each line of prose the model wrote, for whether it recites the dump, states a
-plan, or contradicts what was recited. **Unreached** is what neither reaches here: a
-program statement whose arguments are computed, a statement that calls nothing in the
-environment, and a line inside a code block that is not the final program. A statement
-is judged by the first environment call anywhere in its own expressions, so
-`print(gather(...))` and `if fight(...)[0] != 200:` are calls, which moved 120 positions
-from unreached to computable against a first count that took bare calls alone, and left
-both rows above unchanged at one decimal.
+arguments, bound to the function's parameters as Python binds them and labelled by
+parameter: whether the call fits the signature at all, whether its item code exists in
+the ontology, whether its slot is one the character has, whether its move reaches a tile
+that exists and what stands there, whether a gather or a fight is on the kind of tile
+the preceding move reached, and whether it names the character the task created.
+**Judgmental** is a label that needs a model: each line of prose the model wrote, for
+whether it recites the dump, states a plan, or contradicts what was recited.
+**Unreached** is what neither reaches here: a program statement whose arguments are
+computed, a statement that calls nothing in the environment, and a line inside a code
+block that is not the final program. A statement is judged by the first environment call
+anywhere in its own expressions, so `print(gather(...))` and `if fight(...)[0] != 200:`
+are calls. The program is the fenced block whose content is the program the pipeline
+ran, found with the pipeline's own fence pattern, every other fence being a draft, and
+where no fence holds it, its lines are taken out of the prose. Each of these corrected a
+first count: reading wrapped calls moved 120 positions from unreached to computable, and
+binding arguments by parameter, reading the fences by content, and labelling slots and
+signatures added 3,678 draft lines that a following markerless program had hidden, moved
+36 steps from unreached to computable as calls that do not fit their signature and 1
+back the other way, a gather whose preceding move no longer binds, and relabelled 6,930
+computable steps, 293 of them calls read as valid that do not fit their signature and
+494 equips naming no slot the character has.
 
-The split holds across the base levels: of what the model wrote, judgmental is 87.6 per
-cent at level 1 and between 79.5 and 84.3 per cent from level 2 to 9. The hard set reads
+The split holds across the base levels: of what the model wrote, judgmental is 87.1 per
+cent at level 1 and between 79.2 and 83.6 per cent from level 2 to 9. The hard set reads
 45.1 per cent computable and 41.2 judgmental of what the model wrote, and the difference
 is which models ran rather than the tasks: nine of its fifteen result sets are gpt-5, o3
 and grok-4 variants, whose completions carry 1.3 to 32.0 per cent judgmental positions

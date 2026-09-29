@@ -46,8 +46,25 @@ import os
 import re
 import sys
 
-API = {"move", "fight", "equip", "unequip", "gather", "craft", "buy"}
-FENCE = re.compile(r"```[^\n]*\n(.*?)```", re.S)
+# The seven functions `utils._worker` injects into a program, each with its
+# parameters as `Virtual_Environment/api_calls.py` declares them and how many
+# of them are required. Nothing else the module defines is reachable from a
+# program, so a call to anything else is a NameError at run time.
+SIGNATURES = {
+    "move": (("name", "x", "y"), 3),
+    "fight": (("name",), 1),
+    "gather": (("name", "quantity"), 1),
+    "craft": (("name", "code", "quantity"), 3),
+    "buy": (("name", "code", "quantity"), 2),
+    "equip": (("name", "slot", "code", "quantity"), 3),
+    "unequip": (("name", "slot", "quantity"), 2),
+}
+API = set(SIGNATURES)
+SLOTS = {"weapon", "shield", "helmet", "body_armor", "leg_armor", "boots", "ring1", "ring2",
+         "amulet", "artifact1", "artifact2", "artifact3", "consumable1", "consumable2"}
+# `utils.extract_final_code`'s own fence pattern: any language tag or none,
+# the newline after the fence optional.
+FENCE = re.compile(r"```(?:[\w.+-]+)?\s*\n?([\s\S]*?)```")
 THINK = re.compile(r"<think>(.*?)</think>", re.S)
 # What the model wrote, as against what the environment answered: the second
 # weighting, since executed actions run to thousands a task where a program
@@ -111,15 +128,31 @@ def text_of(entry):
     return None, None
 
 
+def is_program(block, program):
+    """A fenced block is the program the pipeline ran where its content, with
+    the pipeline's own angle-bracket stripping, is the program, or holds the
+    program's first and last lines."""
+    content = block.strip()
+    angled = re.match(r"^\s*<\s*(.*?)\s*>\s*$", content, re.S)
+    content = angled.group(1).strip() if angled else content
+    lines = [l.strip() for l in program.splitlines() if l.strip()]
+    return bool(lines) and (content == program.strip()
+                            or (lines[0] in content and lines[-1] in content))
+
+
 def prose_and_drafts(reasoning, answer, program):
-    """Prose lines and draft-code lines. The final code block is the program,
-    counted as steps, so its lines are neither. Where the answer carries its
-    program without a fence, as `utils.extract_final_code` also accepts after a
-    `<code>` tag or a "final answer" marker, a line of the answer that is a
-    line of the program the pipeline ran is the program's and not prose."""
-    program_lines = {l.strip() for l in (program or "").splitlines() if l.strip()}
+    """Prose lines and draft-code lines. The program the pipeline ran is
+    counted as steps, so its lines are neither: the last fenced block whose
+    content is that program is skipped, and every other fenced block is a
+    draft. Where no fence holds the program, as when `utils.extract_final_code`
+    took it from a `<code>` tag or after a "final answer" marker, every fence is
+    a draft, and a line of the answer that is a line of the program is the
+    program's and not prose."""
+    program = program or ""
+    program_lines = {l.strip() for l in program.splitlines() if l.strip()}
     blocks = list(FENCE.finditer(answer))
-    final = blocks[-1] if blocks else None
+    holding = [b for b in blocks if is_program(b.group(1), program)]
+    final = holding[-1] if holding else None
     prose, drafts = [], []
     outside = answer
     for block in reversed(blocks):
@@ -130,6 +163,30 @@ def prose_and_drafts(reasoning, answer, program):
     prose += [l for l in outside.splitlines() if l.strip() and not l.strip().startswith("```")
               and l.strip() not in program_lines]
     return prose, drafts
+
+
+UNSETTLED = object()
+
+
+def bind(name, call):
+    """A call's arguments bound to its function's parameters, positional then
+    keyword, as Python binds them: {parameter: expression}. None where they do
+    not bind: too many positional arguments, an unknown or repeated keyword, or
+    a required parameter left unbound. `UNSETTLED` where a `*` or `**` argument
+    leaves the binding to run time, which the text does not settle."""
+    params, required = SIGNATURES[name]
+    if any(isinstance(a, ast.Starred) for a in call.args) or any(k.arg is None for k in call.keywords):
+        return UNSETTLED
+    if len(call.args) > len(params):
+        return None
+    bound = dict(zip(params, call.args))
+    for keyword in call.keywords:
+        if keyword.arg not in params or keyword.arg in bound:
+            return None
+        bound[keyword.arg] = keyword.value
+    if any(p not in bound for p in params[:required]):
+        return None
+    return bound
 
 
 def literal(node):
@@ -174,16 +231,31 @@ def steps(code, items, tiles):
             out.append({"kind": "step", "bucket": "unreached", "recipe": "none",
                         "label": type(node).__name__})
             continue
-        values = [literal(a) for a in call.args] + [literal(k.value) for k in call.keywords]
-        if not all(ok for ok, _ in values):
+        bound = bind(name, call)
+        if bound is UNSETTLED:
             out.append({"kind": "step", "bucket": "unreached", "recipe": "computed_args",
                         "label": name})
             if name == "move":
                 at = None
             continue
-        args = [v for _, v in values]
-        if name == "move" and len(args) >= 3:
-            at = (args[1], args[2])
+        if bound is None:
+            # The call does not fit its function's signature: a TypeError when
+            # the program runs, known from the text alone.
+            out.append({"kind": "step", "bucket": "computable", "recipe": "signature",
+                        "label": f"{name}:signature_mismatch"})
+            if name == "move":
+                at = None
+            continue
+        values = {param: literal(node_) for param, node_ in bound.items()}
+        if not all(ok for ok, _ in values.values()):
+            out.append({"kind": "step", "bucket": "unreached", "recipe": "computed_args",
+                        "label": name})
+            if name == "move":
+                at = None
+            continue
+        args = {param: value for param, (_, value) in values.items()}
+        if name == "move":
+            at = (args["x"], args["y"])
             content = tiles.get(at)
             label = ("no_such_tile" if content is None
                      else f"tile:{content.get('type', 'empty')}:{content.get('code', '')}")
@@ -198,14 +270,16 @@ def steps(code, items, tiles):
                 out.append({"kind": "step", "bucket": "unreached", "recipe": "no_literal_tile",
                             "label": name})
                 continue
+        elif name == "unequip":
+            label = "slot_valid" if args["slot"] in SLOTS else "slot_unknown"
+            recipe = "slot_in_ontology"
         else:
-            codes = [a for a in args[1:] if isinstance(a, str)
-                     and a not in ("weapon", "shield", "helmet", "body_armor", "leg_armor",
-                                   "boots", "ring1", "ring2", "amulet", "artifact1",
-                                   "artifact2", "artifact3", "consumable1", "consumable2")]
-            label = ("no_code" if not codes
-                     else "code_exists" if all(c in items for c in codes) else "code_unknown")
+            label = "code_exists" if args["code"] in items else "code_unknown"
+            if name == "equip" and args["slot"] not in SLOTS:
+                label += "+slot_unknown"
             recipe = "item_code_in_ontology"
+        if args["name"] != "Hero":
+            label += "+not_the_character"
         out.append({"kind": "step", "bucket": "computable", "recipe": recipe,
                     "label": f"{name}:{label}"})
     return out
