@@ -49,6 +49,42 @@ def sha256(path):
     return digest.hexdigest()
 
 
+class Lines:
+    """The records of a file another process is still writing, one poll at a time.
+
+    Only newline-terminated lines are parsed. The unterminated tail is carried to the
+    next poll, so a poll that lands mid-write reads the record whole once it is
+    finished. A complete line that is not JSON raises, naming its number, since it is
+    malformed evidence rather than a record still being written."""
+
+    def __init__(self, path):
+        self.path, self.offset, self.tail, self.rows = path, 0, b"", []
+
+    def poll(self):
+        with open(self.path, "rb") as fh:
+            fh.seek(self.offset)
+            data = fh.read()
+        self.offset += len(data)
+        *complete, self.tail = (self.tail + data).split(b"\n")
+        for line in complete:
+            if line.strip():
+                try:
+                    self.rows.append(json.loads(line))
+                except ValueError:
+                    raise ValueError(f"{self.path} line {len(self.rows) + 1} is not "
+                                     f"JSON: {line[:200]!r}") from None
+        return self.rows
+
+
+def receive_one(sock, limit=1 << 20):
+    """One packet from a SOCK_SEQPACKET socket. A packet longer than `limit` is cut
+    silently unless MSG_TRUNC is read, so a cut packet refuses rather than parsing."""
+    data, _, flags, _ = sock.recvmsg(limit)
+    if flags & socket.MSG_TRUNC:
+        raise RuntimeError(f"a coordination answer was longer than {limit} bytes and cut")
+    return data
+
+
 LEFT = {"kind": "answer", "body": {"kind": "left"}}
 GRACE = 10  # seconds each process has to exit on its own after a clean leave
 
@@ -174,7 +210,7 @@ def run(args, teardown):
             ancillary = [] if fds is None else [
                 (socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", fds))]
             c.sendmsg([json.dumps(envelope).encode()], ancillary)
-            answer = json.loads(c.recv(1 << 20))
+            answer = json.loads(receive_one(c))
         with (E / "replay-coordination.ndjson").open("a") as fh:
             fh.write(json.dumps(answer) + "\n")
         return answer
@@ -255,9 +291,9 @@ def run(args, teardown):
         wire.close()
         wire = None
 
-        deadline, last = time.monotonic() + 1800, None
+        deadline, last, sink_lines = time.monotonic() + 1800, None, Lines(sink)
         while True:
-            rows = [json.loads(x) for x in sink.read_text().splitlines() if x.strip()]
+            rows = sink_lines.poll()
             terminal = [x for x in rows if x["kind"] == "replay.closed" or (
                 x["kind"] == "turn.closed" and x.get("payload", {}).get("kind") == "stopped")]
             if terminal:

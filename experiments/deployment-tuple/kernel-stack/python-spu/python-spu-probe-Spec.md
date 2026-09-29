@@ -86,9 +86,9 @@ of python-spu-Spec section 8 is such evidence for criterion 4.
 
 ### 2.3 What the code enforces
 
-- **`turn.py` exits 0 only when the gate's reply is an `answered` line carrying text.**
-  A closed connection, a line that is not JSON, or any other kind exits 1, naming what
-  came back.
+- **`turn.py` exits 0 only when the gate's reply is a newline-terminated `answered`
+  line carrying text.** A closed connection, a line cut before its newline, a line that
+  is not JSON, or any other kind exits 1, naming what came back.
 - **`replay.py` runs inside `unshare -Ur`**, because the preload door admits uid 0
   alone. It refuses a declaration that is not diagnostic, and it never overwrites the
   diagnostic sink.
@@ -105,6 +105,10 @@ of python-spu-Spec section 8 is such evidence for criterion 4.
   - A process that had to be signalled.
   - A process that exited non-zero.
   - A directory left behind.
+- **`replay.py` reads the sink only by its newline-terminated lines** while the
+  harness writes it. The unterminated tail waits for the next poll, and a complete line
+  that is not JSON fails the run, naming its number. A coordination answer longer than
+  the receive buffer refuses rather than parsing what was cut.
 - **After a clean leave, a process that does not exit is signalled only when the grace
   runs out.** Otherwise each is signalled at once.
 - **`--stand-only` exits 1 unless** coordination bound and both processes stood.
