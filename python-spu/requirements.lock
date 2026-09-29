@@ -2,13 +2,16 @@
 # constraints.txt by `uv pip compile requirements.in -c constraints.txt --generate-hashes
 # --python-version 3.14 --python-platform x86_64-manylinux_2_28 --no-header`, this
 # header then restored. Install with
-#   pip install --require-hashes --no-deps -r requirements.lock
-# into a venv of the pinned interpreter:
+#   /opt/weaver/python-spu/bin/python3.14 -m pip install --require-hashes --no-deps -r requirements.lock
+# into the pinned interpreter's own prefix, not a venv:
 #   python-build-standalone 20260924, CPython 3.14.7, x86_64-unknown-linux-gnu, install_only
 #   https://github.com/astral-sh/python-build-standalone/releases/download/20260924/cpython-3.14.7+20260924-x86_64-unknown-linux-gnu-install_only.tar.gz
 #   sha256 5539eaf1de20bd9b5f43ea11c3c1f84cbac74fe927ac050318a9210c022618cb
-# placed at /opt/weaver/python-spu. It links the system glibc dynamically, and
-# tests/test_environment.py reads that its libm is the one the Rust SPU links.
+# placed at /opt/weaver/python-spu. A venv's interpreter is a link to the base one, and
+# scripts/tree_digest.py records a link by its text without following it, so a venv
+# would leave the interpreter binary out of the digest. The interpreter links the
+# system glibc dynamically, and tests/test_environment.py reads that its libm is the
+# one the Rust SPU links.
 #
 # torch 2.14.0 brings its own CUDA runtime (13.0.96), cuBLAS (13.1.1.3) and cuDNN
 # (9.24.0.43) from PyPI, distinct from the CUDA 13.4 the Rust stack builds against,
