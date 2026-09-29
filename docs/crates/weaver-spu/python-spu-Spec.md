@@ -492,9 +492,17 @@ nothing from source, so no package's build code runs as root at the install.
 `requirements-test.lock` is the same set and pytest. One package torch lists is left out
 of both, by `--no-emit-package triton`: triton, which eager serving needs none of, and
 which, where it is installed, has torch compile code at the first forward on a device,
-as the rule below forbids. torch 2.14.0's wheel is PyPI's own, and it brings its own
-CUDA runtime, cuBLAS and cuDNN, distinct from the CUDA the Rust stack builds against,
-which the lock's header records.
+as the rule below forbids. **An install recreates the prefix and then holds it to the
+lock**, because `pip install -r` adds what a lock lists and removes nothing: a prefix
+installed from the lock before triton left it keeps triton, and admission then faults
+on the import set. `scripts/installed_set.py`, run by the prefix's interpreter after
+pip, reads the installed distributions by `importlib.metadata` and refuses by name, exit
+1, one the lock does not pin, one it pins that is absent and one at another version. The
+interpreter's own pip, at the version its `ensurepip` bundles, is the one distribution
+admitted beside the lock. The suite holds its venv to the test lock the same way.
+torch 2.14.0's wheel is PyPI's own, and it brings its own CUDA runtime, cuBLAS and
+cuDNN, distinct from the CUDA the Rust stack builds against, which the lock's header
+records.
 
 **The interpreter is pinned by release and digest.** python-build-standalone 20260924,
 CPython 3.14.7, whose archive URL and sha256 the lock's header names, placed at
