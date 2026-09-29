@@ -163,11 +163,15 @@ turns excluded, a new run whose branch event names the interrupt it resumes from
 way the interview is recorded, since an interview that left no mark on the resumed line
 is still evidence about the agent.
 
-**The lifecycle gains two verbs and one state.** Quiesce and resume-with-interview join
-load, unload and validate in apex section 6, resume-clean composing unload and load
-rather than being a verb of its own, under its rule that no verb auto-chains another,
-and `Quiesced` joins the agent's states, whose case set `weaver-types-Spec` holds as not
-free. That is the operator's ruling at the apex, with `weaver-admin`, `weaver-harness`,
+**The lifecycle gains two verbs and a run-level condition.** Quiesce and
+resume-with-interview join load, unload and validate in apex section 6, resume-clean
+composing unload and load rather than being a verb of its own, under its rule that no
+verb auto-chains another, and **quiescence is a run-level condition orthogonal to the
+lifecycle state, read beside it**. The state stays `Idle` or `Active` as today, because
+`weaver-harness-Spec` section 3 makes `Active` the run's own fact for exactly a turn's
+extent, so a fifth exclusive case of the agent's states could not hold the run quiesced
+through an interview turn. The observation answers the condition beside the state. That
+is the operator's ruling at the apex, with `weaver-admin`, `weaver-harness`,
 `weaver-trace` and `weaver-types` following in one act, contracts included.
 
 ## 4. The frontend
@@ -181,8 +185,10 @@ carries the toggle.
 
 ## 5. What lands where
 
-- The apex, section 6: the two new verbs, quiesce and resume-with-interview, and the
-  state, with resume-clean composing unload and load, the operator's ruling.
+- The apex, section 6: the two new verbs, quiesce and resume-with-interview, with
+  resume-clean composing unload and load, and quiescence as a run-level condition read
+  beside the lifecycle state rather than a case of it, the operator's ruling asked in
+  those terms.
 - `weaver-admin-harness-contract`, `weaver-admin-PRD` and Spec: the quiescence and
   resume exchanges and their refusals.
 - `weaver-harness-PRD` and Spec: the boundary behaviour, the interview marked by the
@@ -202,7 +208,8 @@ carries the toggle.
   and excludes a between-turn edit, and the preload's election is the state contract's.
 - `weaver-trace-Spec` section 3: the quiescence event, the branch event with its world
   disposition, the turn marker, the closing list.
-- `weaver-types-Spec`: the state case.
+- `weaver-types-Spec`: the quiescence condition beside `AgentState` in the observation's
+  answer, the state's cases unchanged.
 - The web contract: the branch lineage as presented, and the fog toggle's agent-side
   map.
 
