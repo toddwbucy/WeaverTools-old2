@@ -82,22 +82,18 @@ score on positions a candidate was fitted on is not reported.
 
 ## 5. Fitting and thresholds
 
-Each candidate is fitted on the training split. Each candidate's output is normalised to
-the three binary decisions: for Kev a `noul` question per predicate with its probability
-thresholded, and for an encoder one head per predicate or a multi-label head thresholded
-per predicate. **Every threshold is the one that maximises F1 on the training split**,
-chosen once per candidate and predicate and recorded, and none is chosen on the held-out
-split.
+Each candidate is fitted on the training split, in the one shape section 7 finds the
+seam can serve: **one softmax head over the eight combinations of the three
+predicates**, each label one combination. A position's probability for a predicate is
+the sum of the probabilities of the combinations that hold it, which gives each
+predicate its own decision out of one forward. **Every threshold is the one that
+maximises F1 on the training split**, chosen once per candidate and predicate and
+recorded, and none is chosen on the held-out split.
 
 ## 6. Scoring
 
 The candidates are compared per predicate on precision and recall over the held-out
 positions. No figure pooled across the predicates is reported.
-
-**Each predicate needs 20 positives and 20 negatives on each side of the split**, the
-plan's floor: below it a single label moves precision or recall by more than five
-points. A predicate short of it on either side is excluded from section 8's selection,
-its shortfall is reported by side, and more labelled sessions are owed before it enters.
 
 **Every figure carries its uncertainty.** Each candidate's F1 per predicate has a 95 per
 cent bootstrap interval over 1,000 resamples, reported beside the point figure. The
@@ -107,44 +103,62 @@ them as independent would draw an interval narrower than the data supports.
 
 ## 7. Serving
 
+**The eligible configurations are the ones the harness can serve as built**: one
+classify arm, one admitted artifact and one head, whose scores are one softmax over the
+artifact's labels, per `weaver-harness-Spec` section 6 and `weaver-spu-Spec` section 11.
+Section 5's head over the eight combinations is that shape. An encoder with one head per
+predicate needs more than one classify arm, a multi-label head needs a score per label
+rather than one softmax, and Kev's questions ride the ask, a contract change, per the
+sketch's section 3. Each is out of the eligible set until the act that serves it lands,
+and the plan budgets nothing for them. Each is measured and reported beside the eligible
+results where it is fitted, since the measurement is what argues for that act.
+
 **Per answer.** Each candidate's latency is measured at the window's bound, on the
-device it would serve from, over the held-out positions, and its maximum is recorded,
-not a percentile. A candidate with any observed answer at or past
-`CLASSIFY_ANSWER_BOUND_MS` in `weaver-harness`, 30,000 ms, is not eligible however it
-scores, because one answer past the bound retires the classify arm for the rest of the
-run, per `weaver-harness-Spec` section 6.
+device it would serve from, and its maximum is recorded, not a percentile. One answer
+past `CLASSIFY_ANSWER_BOUND_MS` in `weaver-harness`, 30,000 ms, retires the classify arm
+for the rest of the run, per `weaver-harness-Spec` section 6.
 
 **Per turn.** The routing stage asks about every position a turn produces, one ask at a
-time, the harness blocking on each, and **the count is the asks a design needs per
-position**: three forwards for an encoder with one head per predicate, since the
-classify path serves one head per admitted artifact per `weaver-spu-Spec` section 11,
-and one for Kev or for a multi-label head. A turn's classify cost is the sum over its
-positions of their asks. In the counted pair the positions per turn run to a median of 4
-and a maximum of 132, and each candidate's per-turn cost is taken over its asks at the
-maximum, the median recorded beside it. The number the per-turn cost is held to is the
-third open cell.
+time, the harness blocking on each, and an eligible configuration asks once per
+position. A turn's classify cost is the sum over its positions of their asks, taken at
+the maximum positions per turn and recorded beside the median. The preliminary pair's
+turns run to a median of 4 and a maximum of 132, and section 8's gates recompute both
+over the fitting corpus. The number the per-turn cost is held to is the third open cell.
 
 The classifier's own deployment tuple is recorded beside its results, and it serves off
 the decoder's weights and off the decoder's device.
 
-## 8. The selection rule, declared before fitting
+## 8. Gates, then the selection rule, declared before fitting
 
-1. A candidate is eligible when every observed answer is under 30,000 ms and its
-   per-turn cost at the maximum positions per turn is within the budget the third cell
-   sets.
-2. Among eligible candidates, one is preferred to another on the worst predicate, over
-   the predicates that meet section 6's floor, only where its F1 interval on that
-   predicate lies wholly above the other's. The candidate preferred to every other is
-   selected. Precision, recall and the intervals are reported beside it for every
-   predicate.
-3. Candidates whose intervals overlap on the worst predicate are tied, and a tie goes to
-   the lower per-turn cost at the maximum.
-4. If no candidate is eligible, or no predicate meets section 6's label support, none is
-   selected, and the report says which bound each candidate missed and which predicates
-   fell short.
+**No selection is made unless every gate holds**, and the report names each gate that
+failed:
 
-The rule stands as merged, and the held-out results are read only after the split, the
-bound, the thresholds and the budget are recorded.
+1. **Label support.** Every predicate has 20 positives and 20 negatives on each side of
+   the split, the plan's floor: below it a single label moves precision or recall by
+   more than five points. A predicate short of it fails the gate, its shortfall reported
+   by side, and more labelled sessions are owed.
+2. **Held-out sessions.** At least 10 sessions are held out. The bootstrap resamples
+   sessions, one session yields an interval of zero width, and fewer than 10 give too
+   few distinct resamples for a 95 per cent interval to mean what it says.
+3. **Serving bounds over the fitting corpus.** The maximum positions per turn and every
+   candidate's maximum answer latency are recomputed over the corpus the fitting uses,
+   not the preliminary pair, and the per-turn budget is set against that maximum.
+4. **The rubric.** `RUBRIC.md` is merged and the two labelers' agreement meets its floor
+   for every predicate.
+
+**The rule is a strict total order.** Among the eligible candidates, those with every
+observed answer under 30,000 ms and a per-turn cost within the budget:
+
+1. Candidates are ranked by the lower bound of the 95 per cent interval on their worst
+   predicate, highest first.
+2. Equal lower bounds are ordered by per-turn cost at the maximum, lowest first.
+3. Equal costs are ordered by the candidate's name, so no three candidates can cycle.
+4. The first candidate is selected. With no eligible candidate, none is selected and the
+   report says which bound each one missed.
+
+Precision, recall and the intervals are reported for every candidate and every
+predicate. The rule stands as merged, and the held-out results are read only after the
+split, the bound, the thresholds, the budget and the gates are recorded.
 
 ## 9. Deposit
 
