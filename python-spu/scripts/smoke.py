@@ -5,7 +5,9 @@ import os
 from pathlib import Path
 import platform
 import socket
+import stat
 import subprocess
+import sys
 import time
 import tomllib
 from python_spu.client import LocalProcess
@@ -15,6 +17,14 @@ parser.add_argument('artifact',type=Path)
 parser.add_argument('--output',type=Path,default=Path('results/trained-smoke.json'))
 parser.add_argument('--device',choices=('cpu','cuda'),default='cpu')
 args=parser.parse_args()
+# The model is read by stat before anything is written, so a missing, misspelled or
+# unreadable artifact refuses by name rather than leaving a report directory behind a
+# refused admission.
+try:
+    if not stat.S_ISDIR(os.stat(args.artifact).st_mode):
+        raise ValueError(f'{args.artifact} is not a directory')
+except (OSError,ValueError) as error:
+    sys.exit(f'smoke: {error}')
 args.output.parent.mkdir(parents=True,exist_ok=True)
 if args.device=='cuda':
     os.environ.setdefault('CUBLAS_WORKSPACE_CONFIG', ':4096:8')
@@ -25,7 +35,7 @@ def gpu_status():
     if args.device!='cuda': return None
     return subprocess.check_output(['nvidia-smi',
         '--query-gpu=index,uuid,name,driver_version,memory.used,memory.total',
-        '--format=csv'],text=True).strip()
+        '--format=csv'],text=True,timeout=60).strip()
 gpu_before=gpu_status()
 identity=[{'role':'system','content':[{'type':'text','text':'You are a concise, helpful assistant.'}]}]
 delta=[{'role':'user','content':[{'type':'text','text':'What is 2 + 2? Answer in one short sentence.'}]}]

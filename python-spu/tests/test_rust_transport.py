@@ -1,9 +1,9 @@
 import fcntl
 import os
 from pathlib import Path
-import signal
 import socket
 import pytest
+from python_spu.client import reap
 from python_spu.transport import Channel,PACKET
 
 @pytest.mark.parametrize('size',[100,PACKET+100,1024*1024])
@@ -20,6 +20,7 @@ def test_python_to_rust_and_back(size):
         assert channel.receive()==value
     finally:
         a.close()
-        # The echo loop observes EOF and exits; no inherited peer remains.
-        _,status=os.waitpid(pid,0)
-    assert os.waitstatus_to_exitcode(status)==0
+        # The echo loop observes EOF and exits, no inherited peer remaining, and is
+        # waited on within a bound either way.
+        code=reap(pid)
+    assert code==0

@@ -9,9 +9,12 @@ from .session import Session,Refusal
 from .engine import HFEngine,AdmissionError
 
 class Service:
-    def __init__(self,cpu=False,engine_factory=HFEngine):
+    def __init__(self,cpu=False,engine_factory=HFEngine,enforce_imports=False,declare_imports=None):
         self.cpu=cpu; self.factory=engine_factory; self.position='before_admit'
         self.engine=None; self.session=None
+        # The import set is judged where main() serves, never in a process that
+        # holds a test runner's modules too, per python-spu-Spec section 8.
+        self.enforce_imports=enforce_imports; self.declare_imports=declare_imports; self.generated=False
     def close(self):
         self.session=None
         if self.engine is not None: self.engine.close(); self.engine=None
@@ -65,6 +68,9 @@ class Service:
         if capacity>self.engine.max_context:
             raise AdmissionError('device_cannot_admit','context exceeds artifact position bound')
         self.session=Session(self.engine,d,capacity,limit,seed)
+        if self.enforce_imports:
+            from .import_set import enforce
+            enforce('admission',self.declare_imports)
     def decode(self,value,channel):
         try: directive=dump(TOKEN_DIRECTIVE.validate_python(value))
         except ValueError as e: raise ChannelFault('malformed decode directive') from e
@@ -85,9 +91,16 @@ class Service:
             channel.send({'kind':'out_of_order'})
             return False
         if kind=='append_and_generate':
-            return s.generate(directive['turn'],directive['delta'],channel.send,cancel)
-        return s.generate(directive['turn'],[],channel.send,cancel,
-                          refeed=(directive['rendered'],directive['path']))
+            answer=s.generate(directive['turn'],directive['delta'],channel.send,cancel)
+        else:
+            answer=s.generate(directive['turn'],[],channel.send,cancel,
+                              refeed=(directive['rendered'],directive['path']))
+        if self.enforce_imports and not self.generated:
+            # torch loads some of its modules only in the first forward.
+            from .import_set import enforce
+            enforce('first generation',self.declare_imports)
+        self.generated=True
+        return answer
     def serve_decode(self,channel):
         while True:
             try: request=channel.receive()
@@ -108,10 +121,12 @@ class Service:
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--cpu-experiment',action='store_true',help='explicit CPU deployment; device ordinal must be 0')
+    parser.add_argument('--declare-imports',metavar='PATH',help='record the modules held at admission and the first generation to PATH, then exit, per python-spu-Spec section 8')
     args=parser.parse_args()
     try:
         lifecycle,decode=adopt()
-        Service(cpu=args.cpu_experiment).serve(lifecycle,decode)
+        Service(cpu=args.cpu_experiment,enforce_imports=True,
+                declare_imports=args.declare_imports).serve(lifecycle,decode)
     except Exception as e:
         print(json.dumps({'python_spu_fault':type(e).__name__,'detail':str(e)}),file=sys.stderr)
         return 1

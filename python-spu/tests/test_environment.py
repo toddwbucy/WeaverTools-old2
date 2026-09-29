@@ -1,0 +1,283 @@
+"""The environment's rules, per python-spu-Spec sections 2, 5 and 8."""
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import pytest
+
+from python_spu.client import LocalProcess
+from python_spu.transport import ChannelFault, Closed
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+import build_zipapp  # noqa: E402
+import declare_imports  # noqa: E402
+import tree_digest  # noqa: E402
+from python_spu import import_set  # noqa: E402
+from python_spu.client import reap  # noqa: E402
+
+
+def rust_spu():
+    """The Rust SPU this box serves, from admin's configuration."""
+    stated = os.environ.get("WEAVER_RUST_SPU")
+    if stated:
+        return stated
+    try:
+        return Path("/etc/weaver/admin/spu-binary").read_text().strip()
+    except OSError:
+        return None
+
+
+def test_expf_resolves_to_the_libm_the_rust_spu_links():
+    """Section 5's bit-for-bit claim rests on the port's expf being the one the Rust
+    SPU's f32::exp calls. The port loads libm through ctypes, and this reads the
+    library the process mapped against the one the Rust binary links."""
+    spu = rust_spu()
+    if not spu or not os.path.exists(spu):
+        pytest.skip("no Rust SPU on this box to compare against")
+    from python_spu import candle_chain
+    assert candle_chain.expf(0.0) == 1.0
+    mapped = {os.path.realpath(line.split()[-1]) for line in open("/proc/self/maps")
+              if re.search(r"/libm[.-][^/]*$", line.strip())}
+    linked = [line for line in subprocess.run(["ldd", spu], capture_output=True, text=True,
+                                              check=True, timeout=60).stdout.splitlines()
+              if line.strip().startswith("libm.so")]
+    assert len(linked) == 1, linked
+    assert mapped == {os.path.realpath(linked[0].split("=>")[1].split()[0])}, (mapped, linked)
+
+
+def serve_once(tmp_path, tiny_model, extra_environment=None):
+    """A real server process through admission and one generation, with the import
+    set judged as main() judges it. Answers the process's exit and stderr where it
+    died or failed an exchange, and None where it answered the generation. The
+    process is closed on every path, its channels first and then a bounded wait, so
+    a failed exchange with the process still serving cannot hang the test."""
+    environment = dict(os.environ, **(extra_environment or {}))
+    saved = dict(os.environ)
+    os.environ.clear()
+    os.environ.update(environment)
+    try:
+        process = LocalProcess(tmp_path / "stderr.txt")
+    finally:
+        os.environ.clear()
+        os.environ.update(saved)
+    identity = [{"role": "system", "content": [{"type": "text", "text": "be precise"}]}]
+    instruction = {"decoder": {
+        "model-binding": {"artifact": str(tiny_model), "devices": [0]},
+        "residual-readout-election": False, "surprisal-election": True, "identity": identity,
+        "tunable-values": {"seed": 11, "context-capacity": 256, "max-tokens-per-turn": 4}}}
+    generated = False
+    try:
+        answer = process.ask({"kind": "admit", "instruction": instruction})
+        assert answer["payload"] == {"kind": "answer", "body": {"kind": "admitted"}}
+        decode = process.channels[1]
+        decode.send({"kind": "open", "session": "import-set", "messages": identity})
+        assert decode.receive() == {"kind": "opened"}
+        decode.send({"kind": "append_and_generate", "turn": "import-set-turn", "delta": [
+            {"role": "user", "content": [{"type": "text", "text": "hello world"}]}]})
+        while not generated:
+            generated = decode.receive()["kind"] == "generated"
+    except (Closed, ChannelFault, ConnectionError, AssertionError, OSError, ValueError):
+        pass
+    finally:
+        code = process.close()
+    if generated:
+        return None
+    return code, (tmp_path / "stderr.txt").read_text()
+
+
+def test_the_import_set_holds_through_admission_and_generation(tmp_path, tiny_model):
+    """The declared set covers a clean serving run on the CPU. Where this fails the
+    CPU half is stale, and scripts/declare_imports.py regenerates it for review."""
+    assert serve_once(tmp_path, tiny_model) is None, (tmp_path / "stderr.txt").read_text()
+
+
+def test_an_extra_import_faults_the_process(tmp_path, tiny_model):
+    """The perturbation section 8 names: a module the list does not declare, here
+    imported at startup through sitecustomize, faults the process at admission,
+    naming the module, and it never answers."""
+    site = tmp_path / "site"
+    site.mkdir()
+    (site / "sitecustomize.py").write_text("import xml.dom.minidom\n")
+    path = os.pathsep.join([str(site), os.environ.get("PYTHONPATH", "")])
+    died = serve_once(tmp_path, tiny_model, {"PYTHONPATH": path})
+    assert died is not None, "the undeclared module was served past"
+    code, stderr = died
+    assert code == 3, (code, stderr)
+    fault = json.loads(stderr.strip().splitlines()[-1])
+    assert fault["import_set_violation"] == "admission"
+    assert "xml.dom.minidom" in fault["undeclared"]
+
+
+def test_the_zipapp_is_reproducible_and_launches(tmp_path):
+    first = build_zipapp.build(ROOT / "src", tmp_path / "a.pyz", sys.executable)
+    second = build_zipapp.build(ROOT / "src", tmp_path / "b.pyz", sys.executable)
+    assert first.read_bytes() == second.read_bytes()
+    assert first.read_bytes().startswith(b"#!" + sys.executable.encode() + b"\n")
+    shown = subprocess.run([str(first), "--help"], capture_output=True, text=True, timeout=120)
+    assert shown.returncode == 0, shown.stderr
+    assert "--declare-imports" in shown.stdout
+    import zipfile
+    names = zipfile.ZipFile(first).namelist()
+    assert {"python_spu/imports-cpu.txt", "python_spu/imports-cuda.txt"} <= set(names)
+    assert "python_spu/classifier.py" not in names
+
+
+def test_the_tree_digest_reads_files_and_links_and_refuses_the_rest(tmp_path):
+    tree = tmp_path / "tree"
+    (tree / "lib").mkdir(parents=True)
+    (tree / "lib" / "a.py").write_text("a\n")
+    outside = tmp_path / "outside.txt"
+    outside.write_text("outside\n")
+    (tree / "bin").mkdir()
+    os.symlink(outside, tree / "bin" / "link")
+    first = tree_digest.digest(tree)
+    assert tree_digest.digest(tree) == first
+    outside.write_text("changed\n")
+    assert tree_digest.digest(tree) == first, "a link is read by its text and never followed"
+    (tree / "lib" / "a.py").write_text("b\n")
+    assert tree_digest.digest(tree) != first
+    os.mkfifo(tree / "lib" / "pipe")
+    with pytest.raises(ValueError):
+        tree_digest.digest(tree)
+
+
+def test_a_regenerated_half_replaces_itself_whole(tmp_path):
+    """A device's regeneration writes its half whole, so a module the new run no
+    longer records is no longer declared, unless the other half still records it.
+    Perturbation: merge the recorded names into what the half held, as the first form
+    did, and the dropped module stays allowed."""
+    cpu, cuda = tmp_path / "imports-cpu.txt", tmp_path / "imports-cuda.txt"
+    (cpu).write_text("# a header\nkept\ndropped\nshared\n")
+    declare_imports.write_half(cuda, "cuda", {"shared", "cuda_only"}, "test")
+    declare_imports.write_half(cpu, "cpu", {"kept", "shared"}, "test")
+    declared = import_set.declared([cpu.read_text(), cuda.read_text()])
+    assert declared == {"kept", "shared", "cuda_only"}, declared
+    assert "dropped" not in declared
+    assert cpu.read_text().startswith("# The modules python-spu may hold on cpu")
+
+
+def test_the_declared_set_is_the_union_of_the_committed_halves():
+    """What the process enforces is both halves and nothing else."""
+    package = ROOT / "src" / "python_spu"
+    halves = [(package / half).read_text() for half in import_set.HALVES]
+    assert import_set.DECLARED == import_set.parse(halves[0]) | import_set.parse(halves[1])
+    assert import_set.parse(halves[0]) and import_set.parse(halves[1])
+
+
+def test_reap_kills_a_child_that_outlives_its_bound():
+    """Perturbation: wait without a bound, and this test hangs."""
+    pid = os.posix_spawn("/bin/sleep", ["/bin/sleep", "60"], dict(os.environ))
+    begin = time.monotonic()
+    assert reap(pid, timeout=0.5) == -9
+    assert time.monotonic() - begin < 5
+
+
+def test_a_failed_exchange_with_the_process_serving_does_not_hang(tmp_path):
+    """An admission refused leaves the process serving, and serve_once's assertion
+    fails while it lives. It closes the channels and waits within a bound. Perturbation:
+    wait unbounded with the channels open, as the first form did, and this test hangs."""
+    begin = time.monotonic()
+    died = serve_once(tmp_path, tmp_path / "no-such-model")
+    assert died is not None, "a missing model was admitted"
+    assert time.monotonic() - begin < 60
+
+
+def refused(command, **kwargs):
+    """Runs a script and answers whether it exited non-zero having printed nothing."""
+    done = subprocess.run(command, capture_output=True, text=True, timeout=120, **kwargs)
+    return done.returncode != 0 and not done.stdout.strip(), done
+
+
+def unreadable(path):
+    """Makes a directory this process may not read, and answers it, where the process
+    is not root, which reads every directory."""
+    if os.geteuid() == 0:
+        pytest.skip("root reads every directory")
+    path.mkdir(parents=True)
+    (path / "inside").write_text("x\n")
+    os.chmod(path, 0o000)
+    return path
+
+
+def test_the_tree_digest_is_never_of_nothing(tmp_path):
+    """Each root that is not a readable tree exits non-zero and prints no digest.
+    Perturbations: drop the lstat check, and the link to a directory is digested; drop
+    the walk's onerror, and the tree with an unreadable subdirectory is digested
+    without it; drop the empty check, and the empty directory is digested."""
+    (tmp_path / "file").write_text("x\n")
+    (tmp_path / "empty").mkdir()
+    (tmp_path / "target").mkdir()
+    (tmp_path / "target" / "a").write_text("a\n")
+    os.symlink(tmp_path / "target", tmp_path / "link")
+    (tmp_path / "partial").mkdir()
+    (tmp_path / "partial" / "a").write_text("a\n")
+    roots = {"absent": tmp_path / "absent", "a file": tmp_path / "file",
+             "empty": tmp_path / "empty", "a link to a directory": tmp_path / "link"}
+    roots["0o000"] = unreadable(tmp_path / "walled")
+    unreadable(tmp_path / "partial" / "walled")
+    roots["an unreadable subdirectory"] = tmp_path / "partial"
+    try:
+        for label, root in roots.items():
+            ok, done = refused([sys.executable, str(ROOT / "scripts" / "tree_digest.py"),
+                                str(root)])
+            assert ok, (label, done.returncode, done.stdout, done.stderr)
+    finally:
+        os.chmod(tmp_path / "walled", 0o700)
+        os.chmod(tmp_path / "partial" / "walled", 0o700)
+
+
+def test_the_zipapp_is_never_built_from_nothing(tmp_path):
+    """A source without the package, a package lacking a file the process cannot
+    start without, and a package with an unreadable subdirectory are each refused.
+    Perturbations: drop the REQUIRED check, and the package without server.py builds;
+    drop the walk's onerror, and the unreadable subdirectory is skipped."""
+    with pytest.raises(OSError):
+        build_zipapp.build(tmp_path / "absent", tmp_path / "a.pyz")
+    lacking = tmp_path / "lacking" / "python_spu"
+    lacking.mkdir(parents=True)
+    for name in build_zipapp.REQUIRED:
+        if name != "server.py":
+            (lacking / name).write_text("\n")
+    with pytest.raises(ValueError, match="server.py"):
+        build_zipapp.build(tmp_path / "lacking", tmp_path / "b.pyz")
+    whole = tmp_path / "whole" / "python_spu"
+    whole.mkdir(parents=True)
+    for name in build_zipapp.REQUIRED:
+        (whole / name).write_text("\n")
+    unreadable(whole / "walled")
+    try:
+        with pytest.raises(PermissionError):
+            build_zipapp.build(tmp_path / "whole", tmp_path / "c.pyz")
+    finally:
+        os.chmod(whole / "walled", 0o700)
+    assert not any((tmp_path / name).exists() for name in ("a.pyz", "b.pyz", "c.pyz"))
+
+
+def test_the_zipapp_requires_both_import_set_halves():
+    assert set(import_set.HALVES) <= set(build_zipapp.REQUIRED)
+
+
+def test_declare_imports_refuses_its_inputs_before_any_launch(tmp_path):
+    """A missing model or a zipapp that is not a file refuses by name, and an empty
+    record writes no half. Perturbations: drop the stat checks, and the missing model
+    reaches a launch, which raises; drop the empty check, and a half declaring nothing
+    is written."""
+    assert declare_imports.main(["--device", "cpu", "--model", str(tmp_path / "absent")]) == 1
+    assert declare_imports.main(["--device", "cpu", "--zipapp", str(tmp_path)]) == 1
+    with pytest.raises(ValueError):
+        declare_imports.write_half(tmp_path / "imports-cpu.txt", "cpu", set(), "test")
+    assert not (tmp_path / "imports-cpu.txt").exists()
+
+
+def test_smoke_refuses_a_missing_model_before_writing(tmp_path):
+    """Perturbation: drop the check, and the report directory is made before the
+    refused admission."""
+    ok, done = refused([sys.executable, str(ROOT / "scripts" / "smoke.py"),
+                        str(tmp_path / "absent"), "--output", str(tmp_path / "out" / "r.json")])
+    assert ok, (done.returncode, done.stdout, done.stderr)
+    assert not (tmp_path / "out").exists()

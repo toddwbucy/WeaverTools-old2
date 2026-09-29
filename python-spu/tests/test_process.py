@@ -3,11 +3,10 @@ import fcntl
 import json
 import os
 from pathlib import Path
-import signal
 import socket
 import sys
-import time
 import pytest
+from python_spu.client import reap,seal_inheritance
 from python_spu.transport import Channel
 from python_spu.wire import dump
 
@@ -19,6 +18,7 @@ def child(tmp_path):
     actions=[(os.POSIX_SPAWN_DUP2,copies[0],3),(os.POSIX_SPAWN_DUP2,copies[1],4),
              (os.POSIX_SPAWN_DUP2,log.fileno(),2)]
     actions += [(os.POSIX_SPAWN_CLOSE,fd) for fd in copies]
+    seal_inheritance()
     pid=os.posix_spawn(sys.executable,[sys.executable,'-m','python_spu.server','--cpu-experiment'],
                        dict(os.environ),file_actions=actions)
     for fd in copies: os.close(fd)
@@ -27,14 +27,9 @@ def child(tmp_path):
     for channel in (lifecycle,decode): channel.sock.settimeout(20)
     yield lifecycle,decode,pid,tmp_path/'stderr.txt'
     for channel in (lifecycle,decode): channel.sock.close()
-    deadline=time.monotonic()+10
-    while time.monotonic()<deadline:
-        done,status=os.waitpid(pid,os.WNOHANG)
-        if done: break
-        time.sleep(.02)
-    else: os.kill(pid,signal.SIGKILL); _,status=os.waitpid(pid,0)
+    code=reap(pid)
     log.close()
-    assert os.waitstatus_to_exitcode(status)==0,(tmp_path/'stderr.txt').read_text()
+    assert code==0,(tmp_path/'stderr.txt').read_text()
 
 def lifecycle_ask(channel,body,ordinal=0):
     channel.send({'exchange':{'opener':'harness','ordinal':ordinal},'position':'open',

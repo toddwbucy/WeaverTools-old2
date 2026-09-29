@@ -58,14 +58,10 @@ class Channel:
         return value
 
 def adopt_channels(expected):
-    # listdir's enumeration descriptor is closed before probing each number.
-    held=[]
-    for name in os.listdir('/proc/self/fd'):
-        fd=int(name)
-        if fd<=2: continue
-        try: os.fstat(fd)
-        except OSError: continue
-        held.append(fd)
+    # The count taken when the package was first imported, before any module opened
+    # a descriptor of its own, so it holds what the process inherited and nothing else.
+    from . import INHERITED
+    held=list(INHERITED)
     if sorted(held)!=list(expected): raise ChannelFault(f'unexpected inherited descriptors: {held}')
     for fd in held: os.set_inheritable(fd,False)
     libc=ctypes.CDLL(None,use_errno=True)
