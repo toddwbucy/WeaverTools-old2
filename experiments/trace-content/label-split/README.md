@@ -63,8 +63,16 @@ exactly, the same log line for line, the same outcome and the same score.
 | prompt: rules, action list, game dump, character stats | `message.system`, the identity prefix |
 | prompt: the task | `message.user` |
 | completion: the provider's reasoning, the text before the program, the program | `message.assistant` |
-| each action: the request | `tool.call.started`, through the gate's shell |
-| each action: the environment's answer | `tool.call.completed`, then `message.tool_result` |
+| each action: the request, playing action by action | `tool.call.started`, through the gate's shell |
+| each action: the environment's answer, playing action by action | `tool.call.completed`, then `message.tool_result` |
+| the whole program, run as one shell call | one `tool.call.started`, one `tool.call.completed` and one `message.tool_result` carrying the whole execution's output |
+
+**The action rows hold only when the agent plays action by action**, each action its own
+shell call, because the harness brackets one shell tool call per invocation. That is
+the shape the state work wants and not the shape HeroBench's published runs used: those
+ran the whole program at once, which our agent would run as one shell call, so the
+trace would carry one bracket and one tool result holding every action's output
+together, and the per-action positions would sit inside that one payload.
 
 The lost task's prompt is 6,914 characters: rules 2,037, the action list 805, the game
 dump 2,385, the character's stats 1,337, and the task 350. Its completion is 5,343

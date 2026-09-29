@@ -84,6 +84,11 @@ python3 <repo>/experiments/trace-content/label-split/code/specimen.py pumpkin \
   /bulk-store/arangodb_dumps/weaver-demo-herobench-gpu1-end-of-run1-2026-04-27
 ```
 
+Each exits 0, every root read and every file opened. A root that does not exist or
+cannot be traversed refuses the run before it searches, and a directory or file the
+walk cannot read is printed and makes the run exit 1, so a count of zero is a count
+and never a place it could not see.
+
 As it ran for the gpu0 dump, whose collections are readable only by the account that
 wrote them, and not rerun as it stands: the same search read as that account, each
 collection decompressed, with no match for either word in any collection.

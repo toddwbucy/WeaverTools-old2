@@ -14,9 +14,13 @@ opening a `{`), the dump to "Character Stats:", the stats to "Your task", and
 the task to the end. The completion is the text before the program and the
 program. When our agent plays, the prompt's standing part is the identity
 prefix (`message.system`) and the task is the turn's input (`message.user`),
-the model's text and program are its answer (`message.assistant`), and each
+the model's text and program are its answer (`message.assistant`), and, where
+the agent plays action by action with each action its own shell call, each
 action is a tool call through the gate's shell (`tool.call.started` and
 `tool.call.completed`) whose answer is the next input (`message.tool_result`).
+The harness brackets one shell tool call per invocation, so a program run as one
+shell call is one bracket and one tool result carrying the whole execution's
+output.
 """
 import json
 import re
