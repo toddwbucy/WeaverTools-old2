@@ -63,7 +63,8 @@ sudo mkdir -p /opt/weaver/python-spu
 sudo tar -xzf $T -C /opt/weaver/python-spu --strip-components=1
 sudo /opt/weaver/python-spu/bin/python3.14 -m pip install --require-hashes --no-deps \
     -r requirements.lock
-sudo python3 scripts/build_zipapp.py --output /opt/weaver/python-spu/python-spu.pyz
+sudo /opt/weaver/python-spu/bin/python3.14 scripts/build_zipapp.py \
+    --output /opt/weaver/python-spu/python-spu.pyz
 python3 scripts/tree_digest.py /opt/weaver/python-spu
 ```
 

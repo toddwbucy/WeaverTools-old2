@@ -281,3 +281,34 @@ def test_smoke_refuses_a_missing_model_before_writing(tmp_path):
                         str(tmp_path / "absent"), "--output", str(tmp_path / "out" / "r.json")])
     assert ok, (done.returncode, done.stdout, done.stderr)
     assert not (tmp_path / "out").exists()
+
+
+def test_an_empty_directory_changes_the_digest(tmp_path):
+    """Every directory is a record, so two trees differing only by an empty directory
+    digest differently. Perturbation: list files and links alone, as the first form
+    did, and the two digests are equal."""
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    (tree / "a").write_text("a\n")
+    before = tree_digest.digest(tree)
+    (tree / "empty").mkdir()
+    assert tree_digest.digest(tree) != before
+    assert "dir  empty" in tree_digest.listing(tree)
+
+
+SYSTEM_PYTHON = "/usr/bin/python3"
+
+
+def test_the_zipapp_is_the_same_bytes_under_any_interpreter(tmp_path):
+    """Stored entries carry no compressor's output, so the pinned interpreter and the
+    system's build one file. Perturbation: deflate the entries, and the stored check
+    fails, and where the two interpreters link different zlib builds so do the bytes."""
+    if not os.path.exists(SYSTEM_PYTHON) or (
+            os.path.realpath(SYSTEM_PYTHON) == os.path.realpath(sys.executable)):
+        pytest.skip("no second interpreter to build with")
+    pinned = build_zipapp.build(ROOT / "src", tmp_path / "pinned.pyz")
+    subprocess.run([SYSTEM_PYTHON, str(ROOT / "scripts" / "build_zipapp.py"),
+                    "--output", str(tmp_path / "system.pyz")], check=True, timeout=120)
+    assert pinned.read_bytes() == (tmp_path / "system.pyz").read_bytes()
+    import zipfile
+    assert {i.compress_type for i in zipfile.ZipFile(pinned).infolist()} == {zipfile.ZIP_STORED}
