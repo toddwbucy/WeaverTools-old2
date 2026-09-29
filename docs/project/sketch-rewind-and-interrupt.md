@@ -13,15 +13,18 @@ operator's ruling.
 
 ## 0. What this document is
 
-The design for stopping a running agent and continuing from any recorded
-position, and for the researcher's interrupt as the first caller of that door.
-It rests on one property the record already has: the trace carries what the
-agent was presented at every position, the rendered prompt on every
-`model.request`, so a state the agent stood in can be stood up again from the
-record rather than reassembled from ingredients. It is written on the operator's
-word of 2026-09-29, in his framing: the trace is the append-only source of
-truth, a reload is a bookkeeping event in it, and the power of a trace this
-detailed is the ability to rewind and try again from a given spot.
+The design for stopping a running agent and continuing from any recorded position, and
+for the researcher's interrupt as the first caller of that door. It rests on one
+property the record already has: the trace determines what the agent was presented at
+every position. `model.request` carries each turn's rendered contribution, and the full
+context is "the accumulation of the recorded contributions under their recorded template
+identities, from the identity prefix the run's opening records", per `weaver-trace-PRD`
+section 3.2, with every recorded flush and elision replayed as section 3.1 requires. So
+a state the agent stood in can be stood up again from the record rather than reassembled
+from ingredients, and an exact rewind rests on the record together with the deployment
+tuple. It is written on the operator's word of 2026-09-29, in his framing: the trace is
+the append-only source of truth, a reload is a bookkeeping event in it, and the power of
+a trace this detailed is the ability to rewind and try again from a given spot.
 
 ## 1. The door: preload to a position
 
@@ -59,10 +62,11 @@ may be the card's. The branch event carries the tuple so the reader can tell whi
 
 **Nothing in the SPU rewinds.** `weaver-spu-Spec` section 4 holds the session
 append-only, `resident_len` and truncation a fault. So the branch is never a cache
-operation on the running session: it is a reload, a fresh admission re-prefilled
-to N from the record, and the running session either continues on its own line
-or is unloaded. That is what keeps the record honest, because the state the new
-run starts from is one the record can show, not one a cache held.
+operation on the running session: it is a reload, a fresh admission re-prefilled with
+the context reconstructed to N from the record by that accumulation, and the running
+session either continues on its own line or is unloaded. That is what keeps the record
+honest, because the state the new run starts from is one the record can show, not one a
+cache held.
 
 ## 2. Rewinding the agent does not rewind the world
 
@@ -90,25 +94,30 @@ letting the question be discovered by a retry that behaves strangely.
 The interrupt is a run-level state transition, not a message, and the back end
 owns it. Its shape, settled against the corpus:
 
-**Quiescence is admitted over admin.** It is administrative control of the run
-rather than work, so it rides `weaver-admin-harness-contract`, which has two
-initiators and one dial per verb already. On receipt the harness stops admitting
-work at the turn boundary: it refuses the next `turn()` its loop asks for as
-quiesced, in-flight forward passes and concurrent organ work finish, nothing is
-cancelled mid-flight, and the harness declares the run quiesced. A half-written
-state is a state that never existed and is not worth interviewing. The trace
-records a quiescence event carrying the position, the wall clock instant and
-what was in flight when the request arrived, so a clean stop reads differently
-from a stop that caught the loop mid-turn.
+**Quiescence is admitted over admin.** It is administrative control of the run rather
+than work, so it rides `weaver-admin-harness-contract`, which has two initiators and one
+dial per verb already. On receipt the harness stops admitting work at the turn boundary:
+it refuses the next `turn()` its loop asks for as quiesced, in-flight forward passes and
+concurrent organ work finish, and nothing is cancelled mid-flight. **Every request
+already queued at the harness is refused as quiesced**, since the gate admits concurrent
+exchanges and the harness serialises them, each refusal returning by the path its
+request line came in on, and the harness declares the run quiesced with an empty queue.
+A half-written state is a state that never existed and is not worth interviewing. The
+trace records a quiescence event carrying the position, the wall clock instant and what
+was in flight when the request arrived, so a clean stop reads differently from a stop
+that caught the loop mid-turn.
 
-**The interview enters through the gate as ordinary traffic.** The gate is the
-sole work ingress and it authenticates the researcher already, so a second
-channel would cost a socket and a contract for nothing. What distinguishes an
-interview turn is the harness's state rather than the channel: a turn admitted
-while the run is quiesced is an interview turn, and `turn.started` carries the
-interrupt's identifier for it. The trace is turn-bracketed, so the turn is the
-unit that is marked, and a replay presents the run with the interview or without
-it by that mark alone, and a count reports both.
+**The interview enters through the gate as ordinary traffic.** The gate is the sole work
+ingress and it authenticates the researcher already, so a second channel would cost a
+socket and a contract for nothing. **An interview turn is marked positively, by its
+request, and timing marks nothing.** The client's request line carries the interrupt's
+identifier. The harness admits a request carrying one only while the run is quiesced and
+refuses it otherwise, and while the run is quiesced it refuses a request carrying none
+as quiesced. `turn.started` carries the identifier for the turn it admits. The field
+that carries it on the request line is a Spec election owed, the line's format being the
+Spec's under `weaver-gate-world-contract`. The trace is turn-bracketed, so the turn is
+the unit that is marked, and a replay presents the run with the interview or without it
+by that mark alone, and a count reports both.
 
 **Cleanliness is read rather than inferred.** The run's closing event carries
 the list of interrupt identifiers it saw, the empty list being the positive
@@ -151,9 +160,9 @@ web contract is the only document it touches.
 
 ## 6. Open cells
 
-- Whether a branch's parent is named by run identifier and sequence alone, or
-  also by the hash of the rendered prompt at N, so a branch against an edited
-  record refuses rather than continues.
+- Whether a branch's parent is named by run identifier and sequence alone, or also by
+  the hash of the context reconstructed at N, so a branch against an edited record
+  refuses rather than continues.
 - What "in flight" enumerates on the quiescence event: the forward pass, a tool
   call, an organ exchange, or any of them.
 - Whether resume-with-interview and a warm-cache continuation after a plain
