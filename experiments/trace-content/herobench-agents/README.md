@@ -1,0 +1,102 @@
+# HeroBench played action by action, 2026-09-29
+
+A dated run, read by no gate, taken for the state-management work: an agent playing
+HeroBench one action per tool call through the gate's shell, so that every action and
+the environment's answer lands in the trace at a position of its own, and the state
+member's typed landing sees real traffic. Two agents were set up on one model,
+`Qwen/Qwen2.5-7B-Instruct`, `rusty` served by the Rust SPU on the first A6000 and
+`pyra` served by python-spu on the second. `rusty` ran. `pyra` was refused at load, and
+its runs are a second act.
+
+The deposit is on the shared bulk store at
+`/bulk-store/weaver-testing/herobench-agents-2026-09-29/`, mounted on the thinkpad under
+`/mnt/bulk-store/weaver-testing/`. It holds rusty's trace and state store, every task's
+character log and grade, the probes, pyra's refusal, the box facts and `SHA256SUMS`, and
+none of it is copied here. The CLI, the loop file, the run script and the identity
+prefix are beside this note in `code/`, and `COMMANDS.md` gives how each step ran.
+
+## What was run
+
+Base level 1, tasks 1 to 3 of HeroBench's small dataset, three crafting tasks: Gold,
+Spruce Plank and Hardwood Plank. Each task is one work item on the agent's gate. The
+loop file presents the task's game data and the task, runs turns until HeroBench's own
+result rule is met in the character's log or eight turns have passed, and records the
+verdict as a `score` event. Each run is one load and one unload of the agent, three
+tasks in one session context, and a pair of runs shares a session so that the second
+opens with a past. Every task is graded after the fact with the benchmark's own
+functions from the environment's log.
+
+The environment is the fork at `32c1e0f`, two SQLite arms on ports 8030 and 8031, one
+per agent, so the two games share the game table and not their world state. The fork
+enforces one-tile moves, a move to any tile further than one step in x or y being
+refused with HTTP 489, and that rule is where most of the model's actions went.
+
+## Results
+
+| Pair | Loop | Run | Gold | Spruce Plank | Hardwood Plank |
+|---|---|---|---|---|---|
+| `s-rusty` | v2 | 1 | lose, 0 actions | lose, 0 | lose, 0 |
+| `s-rusty` | v2 | 2 | lose, 13 | lose, 2 | lose, 4, score 33.3 |
+| `s-rusty-b` | v3 | 1 | lose, 5 | lose, 0 | lose, 0 |
+| `s-rusty-b` | v3 | 2 | lose, 13 | lose, 5 | lose, 2 |
+
+The actions are the accepted actions the environment logged, the character's creation
+excluded. The counted pair is `s-rusty-b` under loop v3, and the `s-rusty` pair under
+loop v2 is kept as its own record. No task was won. The published table tops out at 24
+per cent for open models, and a 7B model at the sampling below was not expected to win
+many, so the run's result is the traces rather than the score.
+
+| Run | Turns | Generations | Tool calls | Answers accepted | Answers refused |
+|---|---|---|---|---|---|
+| `s-rusty` run 1 | 24 | 24 | 0 | 0 | 0 |
+| `s-rusty` run 2 | 24 | 58 | 34 | 16 | 18 |
+| `s-rusty-b` run 1 | 24 | 37 | 13 | 5 | 8 |
+| `s-rusty-b` run 2 | 17 | 196 | 180 | 27 | 153 |
+
+**The session's shape reached the model.** Every second run opened its first task with
+"This session has 1 earlier runs and 24 turns before this task", read through the seat's
+shape ask, and every first run with "This session has no earlier runs."
+
+**The typed landing saw the traffic.** rusty's store holds 757 messages typed, their
+parts 473 text, 277 tool calls and 275 tool results, and 321 measurements, three of them
+with an absent perplexity held as null. 780 measurement readings landed verbatim rather
+than typed, and the cause is measured: `serde_json` parses a float by a fast path that
+is not correctly rounded unless its `float_roundtrip` feature is on, so the typed value
+renders back differently and the landing's exactness rule sends it to `field`. Over
+those 780 values, 0 round-trip under the default parse and 780 under the feature.
+Custody held, since a value that cannot be typed exactly lands as it crossed.
+
+## What the run found
+
+- **Neither SPU renders a tool advertisement**, so the model is taught its one tool by
+  the identity prefix. It carries Qwen2.5's own tools block verbatim, the `# Tools` text
+  with the `bash` function's schema its chat template would render, after a first probe
+  in which prose alone produced bare commands and no call. See #744.
+- **The sampler is frozen and the call format decays under it.** Both SPUs sample at a
+  compiled temperature of 0.7, top-k 40 and top-p 0.95, with a repetition penalty of 1.1
+  over the last 64 tokens, and only the seed is tunable. The model closes a call with a
+  second opening tag, which neither SPU's parse recovers, and as a turn's calls
+  accumulate the opening tag itself is replaced by a stray token, " Ronaldo" under loop
+  v2 and "Let", "It" or "ntl" under v3, after which the model narrates crafts it never
+  made. Loop v2's feedback ended with the tag tokens and made the substitution
+  immediate, which v3's wording removes. The unrecovered call leaves `message.assistant`
+  empty while `model.output` keeps the emission. See #746.
+- **python-spu refuses the harness's SPU arguments.** The worker launches every SPU with
+  `--headroom-bytes` from the installation's configuration, and python-spu's argument
+  parser rejects it and exits before any exchange, so the load rolls back as
+  `no_residency`. See #745 item 3.
+- **The agent territory needs ACLs where the script puts it.** `deploy/create-agent.sh`
+  grants the state member traversal of the operator's home with `setfacl`, which a
+  dataset without ACL support refuses, and it provisions postgres only. The two agents
+  were made by hand to its steps with the territory under a directory the member's group
+  can traverse. See #743.
+- **A loop file needs the pyworker, and the worker is one value for the installation.**
+  The compiled worker refuses `--loop-file`, so the installation ran the pyworker for
+  the act and was restored to the worker after it.
+
+## What python-spu's end-to-end run showed
+
+Nothing past launch. Its smoke test passed on the second A6000, three fresh processes
+exact across runs with the readout neutral, at FP32 as its Spec's section 2.1 records.
+Integration with the harness stopped at the argument above, so the section's "not yet
+shown" items stand as they were.
