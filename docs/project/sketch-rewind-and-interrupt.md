@@ -172,10 +172,12 @@ free. That is the operator's ruling at the apex, with `weaver-admin`, `weaver-ha
 
 ## 4. The frontend
 
-The fog toggle, the full map against the map the agent has been shown, needs no back-end
-work beyond what the record holds: the game dump the agent was given rides the task's
-user turn and the full map is the environment's table, so both are derivable, and the
-web contract is the only document it touches.
+The fog toggle sets the full map against the map the agent has been shown. **The agent's
+map is derivable from the record**, the game dump it was given riding the task's user
+turn. **The full map is not in the record**: it is the environment's table, so showing
+it needs a data path from the environment to the web seam, which today has no party for
+it. That path is section 6's cell rather than a claim that the web contract alone
+carries the toggle.
 
 ## 5. What lands where
 
@@ -186,21 +188,31 @@ web contract is the only document it touches.
 - `weaver-harness-PRD` and Spec: the boundary behaviour, the interview marked by the
   identifier its request carries, and no tool run while quiesced, the two resumptions,
   the branch as a preload with a position.
-- `weaver-harness-Spec`, `weaver-harness-spu-decode-contract` and `weaver-spu-Spec`,
-  every party in one act: the exact re-prefill of section 1, the reconstruction replayed
-  with its recorded flushes and elisions into the open. The decode contract's section 2
-  admits a re-feed of recorded rendered contributions only where the instruction carries
-  a re-feed permission, which admin sets from a diagnostic binding, so a serving harness
-  writes no such ask today.
+- `weaver-gate-Spec` and then `weaver-harness-Spec`: the interrupt identifier on the
+  client's request line. The gate Spec's section 4 holds the line's member list, one
+  required member, `text`, an unknown member refusing the turn, so the field is that
+  Spec's election first and the harness's admission second.
+- `weaver-harness-Spec`, `weaver-harness-spu-decode-contract`, `weaver-spu-Spec`,
+  `weaver-analysis-Spec` and `weaver-harness-state-contract`, every party in one act:
+  the exact re-prefill of section 1, the reconstruction replayed with its recorded
+  flushes and elisions into the open. The decode contract's section 2 admits a re-feed
+  of recorded rendered contributions only where the instruction carries a re-feed
+  permission, which admin sets from a diagnostic binding, so a serving harness writes no
+  such ask today. `weaver-analysis-Spec` section 4's `--through` cuts at a turn's close
+  and excludes a between-turn edit, and the preload's election is the state contract's.
 - `weaver-trace-Spec` section 3: the quiescence event, the branch event with its world
   disposition, the turn marker, the closing list.
 - `weaver-types-Spec`: the state case.
-- The web contract: the branch lineage as presented.
+- The web contract: the branch lineage as presented, and the fog toggle's agent-side
+  map.
 
-**The mechanics beyond this sketch are hardened in the Spec acts listed here, and not in
-this document.**
+**The owners listed are as read on 2026-09-29.** An act's extent is what the act reaches
+when it is written, so this list is a reading and not a claim of completeness, and the
+mechanics are hardened in those acts and not here.
 
 ## 6. Open cells
+- The full map's data path to the web seam, for the fog toggle: the environment's table
+  is not in the record, and today no party carries it to the frontend.
 - The exact re-prefill of section 1, which replays the recorded flushes and elisions
   that the standing restore seats whole: an act reaching the decode contract and
   `weaver-spu-Spec` beside the harness, under the apex ruling with the verbs.
