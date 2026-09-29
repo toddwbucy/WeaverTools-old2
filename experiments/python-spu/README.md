@@ -5,7 +5,7 @@
 **Date filed:** 2026-09-29
 **Document ID:** `python-spu-PRD`
 **Editorial:** Per the Working Rules.
-**Landing PR:** PENDING
+**Landing PR:** #742
 
 ---
 
