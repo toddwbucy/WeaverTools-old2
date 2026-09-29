@@ -38,6 +38,24 @@ def cut(prompt):
             for n, (k, i) in enumerate(marks)}
 
 
+def program_start(answer, code):
+    """Where the program the pipeline ran begins in the answer: the last place
+    the extracted program occurs, or its first line where the fenced text
+    differs by whitespace, and the "final answer" phrase only where neither is
+    found. The text before it is the completion's text before the program."""
+    code = (code or "").strip()
+    at = answer.rfind(code) if code else -1
+    if at < 0 and code:
+        at = answer.rfind(code.splitlines()[0].strip())
+    if at < 0:
+        at = answer.lower().rfind("final answer")
+    if at < 0:
+        return len(answer)
+    fence = answer.rfind("```", 0, at)
+    # A fence opening the program belongs to the program, not to the text.
+    return fence if fence >= 0 and not answer[fence + 3:at].strip("\n\t pythonPY") else at
+
+
 def quote(text, n):
     text = " ".join(str(text).split())
     return text if len(text) <= n else text[:n] + " ..."
@@ -48,8 +66,7 @@ def main():
     n = int(sys.argv[2]) if len(sys.argv) > 2 else 160
     parts = cut(replay["prompt"])
     answer = replay["answer"]
-    program_at = answer.lower().rfind("final answer")
-    before = answer[:program_at] if program_at >= 0 else answer
+    before = answer[:program_start(answer, replay["code"])]
     rows = [
         ("prompt: rules", "message.system", parts.get("rules", "")),
         ("prompt: action list", "message.system", parts.get("actions", "")),

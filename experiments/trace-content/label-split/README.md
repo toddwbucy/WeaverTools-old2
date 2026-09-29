@@ -40,7 +40,11 @@ the kind of tile the preceding move reached. **Judgmental** is a label that need
 model: each line of prose the model wrote, for whether it recites the dump, states a
 plan, or contradicts what was recited. **Unreached** is what neither reaches here: a
 program statement whose arguments are computed, a statement that calls nothing in the
-environment, and a line inside a code block that is not the final program.
+environment, and a line inside a code block that is not the final program. A statement
+is judged by the first environment call anywhere in its own expressions, so
+`print(gather(...))` and `if fight(...)[0] != 200:` are calls, which moved 120 positions
+from unreached to computable against a first count that took bare calls alone, and left
+both rows above unchanged at one decimal.
 
 The split holds across the base levels: of what the model wrote, judgmental is 87.6 per
 cent at level 1 and between 79.5 and 84.3 per cent from level 2 to 9. The hard set reads
@@ -75,11 +79,12 @@ trace would carry one bracket and one tool result holding every action's output
 together, and the per-action positions would sit inside that one payload.
 
 The lost task's prompt is 6,914 characters: rules 2,037, the action list 805, the game
-dump 2,385, the character's stats 1,337, and the task 350. Its completion is 5,343
-characters of text before a 217-character program of nine calls, each answered with the
-full state of what it touched, the move with the destination tile and the whole
-character, the fight with its drops, turns and blocked hits. The deposit's
-`replay/table-*.md` quotes one payload per kind, from `code/positions_table.py`.
+dump 2,385, the character's stats 1,337, and the task 350. Its completion is 5,358
+characters of text before a 217-character program of nine calls, the text cut where the
+program the pipeline ran begins, each answered with the full state of what it touched,
+the move with the destination tile and the whole character, the fight with its drops,
+turns and blocked hits. The deposit's `replay/table-*.md` quotes one payload per kind,
+from `code/positions_table.py`.
 
 ## Where the replay departs from the recording, and how it was held equal
 

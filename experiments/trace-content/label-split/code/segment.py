@@ -139,6 +139,23 @@ def literal(node):
         return False, None
 
 
+def first_call(statement):
+    """The first call to the environment in a statement's own expressions, in
+    source order: `fight(...)` in `if fight(...)[0] != 200:`, `gather(...)` in
+    `print(gather(...))`, `move(...)` in `x = move(...)[1]`. A nested
+    statement's body is its own statement and is not searched here, so a `for`
+    header is judged on its own iterable and an `if` on its own test."""
+    found = []
+    for child in ast.iter_child_nodes(statement):
+        if isinstance(child, (ast.stmt, ast.excepthandler)) or type(child).__name__ == "match_case":
+            continue
+        for sub in ast.walk(child):
+            if (isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name)
+                    and sub.func.id in API):
+                found.append(sub)
+    return min(found, key=lambda c: (c.lineno, c.col_offset)) if found else None
+
+
 def steps(code, items, tiles):
     """Each statement of the program, with its bucket and, for a literal call
     to the environment, the label its recipe gives."""
@@ -151,10 +168,8 @@ def steps(code, items, tiles):
     statements = sorted((n for n in ast.walk(tree) if isinstance(n, ast.stmt)),
                         key=lambda n: (n.lineno, n.col_offset))
     for node in statements:
-        call = node.value if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call) else None
-        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call):
-            call = node.value
-        name = call.func.id if call is not None and isinstance(call.func, ast.Name) else None
+        call = first_call(node)
+        name = call.func.id if call is not None else None
         if name not in API:
             out.append({"kind": "step", "bucket": "unreached", "recipe": "none",
                         "label": type(node).__name__})
