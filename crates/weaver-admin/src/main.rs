@@ -492,7 +492,7 @@ fn take_inventory(
     let identity = inventory::identity_for(agent);
     let source_path = config
         .agent_config_directory
-        .join(format!("{}.yaml", agent.0));
+        .join(format!("{}.toml", agent.0));
     let source =
         std::fs::read_to_string(&source_path).map_err(|_| LifecycleRefusal::NoSuchAgent)?;
     // The home comes from the account database rather than from a constructed
@@ -1650,28 +1650,31 @@ mod tests {
 
         let source = format!(
             concat!(
-                "session: s-1\n",
-                "spu-instruction:\n",
-                "  decoder:\n",
-                "    model-binding:\n",
-                "      artifact: qwen3-4b-instruct\n",
-                "      devices: [0]\n",
-                "    residual-readout-election: false\n",
-                "    identity: []\n",
-                "    tunable-values: {{}}\n",
-                "tool-set: []\n",
-                "permission-mode: ask\n",
-                "gate-instruction:\n",
-                "  access-rule:\n",
-                "    allowed-uids: [0]\n",
-                "    allowed-gids: []\n",
-                "    denied-uids: [1701]\n",
-                "trace-sink:\n",
-                "  kind: file\n",
-                "  path: {}/trace.ndjson\n",
-                "  create: true\n",
-                "state-store:\n",
-                "  engine: sqlite\n",
+                "session = \"s-1\"\n",
+                "tool-set = []\n",
+                "permission-mode = \"ask\"\n",
+                "\n",
+                "[spu-instruction.decoder]\n",
+                "residual-readout-election = false\n",
+                "identity = []\n",
+                "tunable-values = {{}}\n",
+                "\n",
+                "[spu-instruction.decoder.model-binding]\n",
+                "artifact = \"qwen3-4b-instruct\"\n",
+                "devices = [0]\n",
+                "\n",
+                "[gate-instruction.access-rule]\n",
+                "allowed-uids = [0]\n",
+                "allowed-gids = []\n",
+                "denied-uids = [1701]\n",
+                "\n",
+                "[trace-sink]\n",
+                "kind = \"file\"\n",
+                "path = \"{}/trace.ndjson\"\n",
+                "create = true\n",
+                "\n",
+                "[state-store]\n",
+                "engine = \"sqlite\"\n",
             ),
             sink.display()
         );

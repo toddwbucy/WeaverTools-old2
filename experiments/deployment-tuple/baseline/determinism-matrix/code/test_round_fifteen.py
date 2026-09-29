@@ -32,9 +32,9 @@ def stale_then_current(session, expected, tmp):
     trace = os.path.join(tmp, "trace.ndjson")
     with open(trace, "w") as fh:
         fh.write(json.dumps(event("r-older", OTHER)) + "\n")
-    decl = os.path.join(tmp, "karl.yaml")
+    decl = os.path.join(tmp, "karl.toml")
     with open(decl, "w") as fh:
-        fh.write(f"artifact: {MODEL}\nseed: {SEED}\n")
+        fh.write(f'[spu-instruction.decoder.model-binding]\nartifact = "{MODEL}"\n[spu-instruction.decoder.tunable-values]\nseed = {SEED}\n')
     cfg = {"agent": "karl", "declaration": decl, "trace": trace, "gate_socket": "/s",
            "admin_bin": "/bin/true", "admin_config": tmp, "repo": tmp}
 
@@ -69,7 +69,7 @@ def test_a_stale_load_event_does_not_answer_for_the_current_run():
     # than the snapshot's was taken, and a trailing sink handed back the
     # previous load's. Perturbation: read the newest load again, and both
     # modes take the stale event and serve on.
-    standing = f"artifact: {MODEL}\nseed: {SEED}\n"
+    standing = f'[spu-instruction.decoder.model-binding]\nartifact = "{MODEL}"\n[spu-instruction.decoder.tunable-values]\nseed = {SEED}\n'
     want = "the source load served another declaration"
     with tempfile.TemporaryDirectory() as tmp:
         expected = hashlib.sha256(standing.encode()).hexdigest()

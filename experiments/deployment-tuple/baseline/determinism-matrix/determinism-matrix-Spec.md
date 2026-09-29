@@ -6,7 +6,7 @@
 **Document ID:** `determinism-matrix-Spec`
 **Parent:** `deployment-tuple-PRD`
 **Editorial:** Per the Working Rules.
-**Landing PR:** #716
+**Landing PR:** #731
 
 ---
 
@@ -181,21 +181,29 @@ sha256 of its emission.
 ## 4. The seed
 
 **Every session is declared under a seed, the declaration's own where no schedule
-stands.** The declaration's one `seed:` line is read at the start on every path, as a
-YAML scalar, quoted or plain with any comment dropped, and a declaration carrying other
-than exactly one, or a seed that is not a decimal integer within the sampler's u64
-range, 0 to 2^64 - 1, is refused by name before anything loads, and each seed of a
-schedule is held to the same domain. The artifact is read the same way, and `--artifact`
-rewrites only its own line, refusing a path a plain scalar cannot carry unchanged. With
-`--seed-schedule`, a comma-separated list of distinct integers, that line is rewritten
-before each session. Both halves of a session read the same seed and successive sessions
-read different ones. The seed a matrix cell takes rotates by matrix cell and is offset
-by sweep, so over as many sweeps as the schedule has seeds every matrix cell meets every
-seed and no matrix cell keeps one seed from one sweep to the next. A schedule that
-cannot hold both properties with the sweep boundary, one seed or two, is refused. The
-declaration is restored when the run ends, by its clock or by an interrupt, and not by a
-hangup, per section 5. `--artifact` overrides the declaration's artifact for every
-session in the same way and is restored with it.
+stands.** The declaration is parsed as TOML at the start on every path, and its seed is
+the one value at `spu-instruction.decoder.tunable-values.seed`, written inline or on its
+own line. A document that does not parse, a seed that is absent, and a seed that is not
+a TOML integer from 0 to 2^63 - 1, the sampler's u64 narrowed to what a TOML integer
+carries and the stack's parser loads, a quoted number, a boolean or a float among them,
+is refused by name before anything loads, and each seed of a schedule is held to the
+sampler's u64. The artifact is read the same way, as the string at
+`spu-instruction.decoder.model-binding.artifact` holding an absolute path. `--artifact`
+rewrites only that value, as a quoted string, and with `--seed-schedule`, a
+comma-separated list of distinct integers, only the seed's value is rewritten before
+each session, every other byte of the file kept. A rewrite finds its value by the key
+path it sits at, reading the document as TOML reads it so that text inside a string or a
+comment names nothing, and a rewrite that finds other than one value at the path, or
+whose result does not read back the new value with the rest of the document unchanged,
+is refused, as is a scheduled seed past 2^63 - 1, the largest a TOML integer carries,
+before the first session. Both halves of a session read the same seed and successive
+sessions read different ones. The seed a matrix cell takes rotates by matrix cell and is
+offset by sweep, so over as many sweeps as the schedule has seeds every matrix cell
+meets every seed and no matrix cell keeps one seed from one sweep to the next. A
+schedule that cannot hold both properties with the sweep boundary, one seed or two, is
+refused. The declaration is restored when the run ends, by its clock or by an interrupt,
+and not by a hangup, per section 5. `--artifact` overrides the declaration's artifact
+for every session in the same way and is restored with it.
 
 **A session whose seed the record does not bear out is a fault, not a verdict.** The
 source turns must carry one recorded seed, `sampling.seed` on each `model.request`, with

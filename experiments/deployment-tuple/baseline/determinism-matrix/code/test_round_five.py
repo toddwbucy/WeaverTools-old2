@@ -160,17 +160,26 @@ def test_a_cells_run_refuses_an_earlier_runs_deposit_and_backup():
             assert code == 2 and called == [], (stand, code, called)
 
 
-def test_the_artifact_is_read_as_a_yaml_scalar():
-    # Codex round four, thread 3. Perturbation: the old `(\S+)` value, and
-    # the quoted path keeps its quotes and the commented one is not found.
-    for text, want in [('artifact: "/opt/m.gguf"\n', "/opt/m.gguf"),
-                       ("artifact: '/opt/m.gguf'  # the model\n", "/opt/m.gguf"),
-                       ("  artifact: /opt/m.gguf # the model\n", "/opt/m.gguf"),
-                       ("artifact: /opt/m.gguf\n", "/opt/m.gguf")]:
+BINDING = "[spu-instruction.decoder.model-binding]\n"
+TUNABLE = "[spu-instruction.decoder.tunable-values]\n"
+
+
+def test_the_artifact_is_read_as_toml():
+    # Codex round four, thread 3, carried to TOML. Perturbation: take the
+    # value as source text, and the quoted path keeps its quotes and the
+    # commented one reads its comment.
+    for text, want in [(BINDING + 'artifact = "/opt/m.gguf"\n', "/opt/m.gguf"),
+                       (BINDING + "artifact = '/opt/m.gguf'  # the model\n", "/opt/m.gguf"),
+                       (BINDING + '  artifact = "/opt/m.gguf" # the model\n', "/opt/m.gguf"),
+                       (BINDING + 'artifact = "/opt/m\\u0023.gguf"\n', "/opt/m#.gguf"),
+                       ('[spu-instruction.decoder]\nmodel-binding = { artifact = "/opt/m.gguf", devices = [0] }\n',
+                        "/opt/m.gguf")]:
         assert dm.artifact_of(text) == want, (text, dm.artifact_of(text))
-    for text in ('artifact: "/opt/m.gguf\n', 'artifact: "/opt/m\\\\.gguf"\n', "artifact: '/o''m'\n",
-                 'artifact: "/opt/m.gguf" trailing\n', "artifact:\n  - /opt/m.gguf\n", "artifact: [a, b]\n",
-                 "artifact: &x /opt/m.gguf\n", "artifact: a: b\n", "artifact: /a\nartifact: /b\n"):
+    for text in (BINDING + 'artifact = "/opt/m.gguf\n', BINDING + 'artifact = "/opt/m.gguf" trailing\n',
+                 BINDING + "artifact = /opt/m.gguf\n", BINDING + 'artifact = ["/a", "/b"]\n',
+                 BINDING + "artifact = 7\n", BINDING + 'artifact = "m.gguf"\n',
+                 BINDING + 'artifact = "/a"\nartifact = "/b"\n', 'artifact = "/opt/m.gguf"\n',
+                 '[spu-instruction.decoder.other]\nartifact = "/opt/m.gguf"\n'):
         try:
             dm.artifact_of(text)
         except ValueError:
@@ -180,32 +189,58 @@ def test_the_artifact_is_read_as_a_yaml_scalar():
 
 def test_the_artifact_rewrite_stays_on_its_line():
     # The old `(artifact:\s*).*` ran past an empty value into the next key.
-    # Perturbation: the old regex, and `devices` is overwritten.
-    text = "model-binding:\n  artifact: \"/old.gguf\" # was\n  devices: [0]\n"
+    # Perturbation: a value pattern crossing the line end, and `devices` is
+    # overwritten, or drop the reparse, and a site off the path is written.
+    text = BINDING + 'artifact = "/old.gguf" # was\ndevices = [0]\n'
     out = base.with_artifact(text, "/new.gguf")
-    assert out == "model-binding:\n  artifact: /new.gguf\n  devices: [0]\n", out
-    # An empty value: the old `\s*` crossed the line end and the rewrite
-    # swallowed the next key.
-    empty = "model-binding:\n  artifact:\n  devices: [0]\n"
-    assert base.with_artifact(empty, "/new.gguf") == "model-binding:\n  artifact: /new.gguf\n  devices: [0]\n"
-    for path in ("/my model.gguf", "/m#1.gguf", '"/m.gguf"', "&m", ""):
+    assert out == BINDING + 'artifact = "/new.gguf" # was\ndevices = [0]\n', out
+    inline = '[spu-instruction.decoder]\nmodel-binding = { artifact = \'/old.gguf\', devices = [0] }  # was\n'
+    assert base.with_artifact(inline, "/new.gguf") == inline.replace("'/old.gguf'", '"/new.gguf"')
+    # A path a quoted string carries is written and read back whole.
+    for path in ("/my model.gguf", "/m#1.gguf", '/"m".gguf', "/m\\n.gguf", "/m: b"):
+        assert dm.artifact_of(base.with_artifact(text, path)) == path, path
+    # An empty value is not a TOML document, and the rewrite reaches no key.
+    empty = BINDING + "artifact =\ndevices = [0]\n"
+    for bad_text in (empty, BINDING + 'artifact = "/a"\nartifact = "/b"\n',
+                     BINDING + 'devices = [0]\nnote = "x, artifact = \'/y\'"\n',
+                     'artifact = "/old.gguf"\n' + BINDING + "devices = [0]\n"):
+        try:
+            base.with_artifact(bad_text, "/new.gguf")
+        except ValueError:
+            continue
+        raise AssertionError(f"rewrote the artifact in {bad_text!r}")
+    # The same key in another table is another value: TOML says which is
+    # which, so it is left as it stands rather than read as a second site.
+    other = text + '[other]\nartifact = "/old.gguf"\n'
+    assert base.with_artifact(other, "/new.gguf") == other.replace('"/old.gguf" # was', '"/new.gguf" # was')
+    for path in ("&m", "", "m.gguf"):
         try:
             base.with_artifact(text, path)
         except ValueError:
             continue
-        raise AssertionError(f"wrote {path!r} as a plain scalar")
+        raise AssertionError(f"wrote {path!r} as the artifact")
 
 
-def test_the_seed_is_read_as_a_yaml_scalar():
-    # Perturbation: int() on the source text, and the quoted seed refuses.
-    for value, want in [("451234785645", SEED), ('"451234785645"', SEED), ("7 # the seed", 7)]:
-        assert dm.standing_seed(f"    seed: {value}\n") == want, value
-    for value in ("0x10", "-7", "1_000", "7.0", "[7]", ""):
+def test_the_seed_is_read_as_toml():
+    # Perturbation: read the seed as source text, and the commented one
+    # refuses, or take a string for an integer, and the quoted one reads.
+    for text, want in [(TUNABLE + "seed = 451234785645\n", SEED),
+                       (TUNABLE + "seed = 7 # the seed\n", 7),
+                       ("[spu-instruction.decoder]\ntunable-values = { seed = 7, context-capacity = 16 }\n", 7)]:
+        assert dm.standing_seed(text) == want, text
+    for value in ('"451234785645"', "-7", "7.0", "true", "[7]", "", "7 7"):
         try:
-            dm.standing_seed(f"    seed: {value}\n")
-        except ValueError:
+            dm.standing_seed(TUNABLE + f"seed = {value}\n")
+        except ValueError as e:
+            assert "seed" in str(e) or "TOML" in str(e), e
             continue
         raise AssertionError(f"read a seed from {value!r}")
+    for text in (TUNABLE + "seed = 7\nseed = 8\n", "seed = 7\n", "[spu-instruction.decoder.other]\nseed = 7\n"):
+        try:
+            dm.standing_seed(text)
+        except ValueError:
+            continue
+        raise AssertionError(f"read a seed from {text!r}")
 
 
 def test_an_ldd_path_holding_a_space_is_read_whole():
@@ -257,8 +292,8 @@ def drive_cell(agent, tmp, artifact="/m.gguf"):
     """One cell of the matrix's cells mode, run whole by `run_session` on the
     fake agent: the session writes the cell's declaration, loads, serves,
     reloads, reissues and compares, and its record returns."""
-    decl = os.path.join(tmp, "karl.yaml")
-    standing = f"artifact: {artifact}\nseed: {SEED}\n"
+    decl = os.path.join(tmp, "karl.toml")
+    standing = f'[spu-instruction.decoder.model-binding]\nartifact = "{artifact}"\n[spu-instruction.decoder.tunable-values]\nseed = {SEED}\n'
     with open(decl, "w") as fh:
         fh.write(standing)
     cfg = dict(CFG, declaration=decl, trace=os.path.join(tmp, "trace"))
@@ -283,12 +318,12 @@ def test_a_cell_holds_both_loads_to_its_declaration():
     import hashlib
     for served, half in [(("e" * 64, None), "source"), ((None, "e" * 64), "replay")]:
         with tempfile.TemporaryDirectory() as tmp:
-            digest = hashlib.sha256(f"artifact: /m.gguf\nseed: {SEED}\n".encode()).hexdigest()
+            digest = hashlib.sha256(f'[spu-instruction.decoder.model-binding]\nartifact = "/m.gguf"\n[spu-instruction.decoder.tunable-values]\nseed = {SEED}\n'.encode()).hexdigest()
             both = tuple(digest if s is None else s for s in served)
             report = drive_cell(Agent(served=both), tmp)
             assert report["verdict"].startswith(f"the {half} load served another declaration"), report["verdict"]
     with tempfile.TemporaryDirectory() as tmp:
-        digest = hashlib.sha256(f"artifact: /m.gguf\nseed: {SEED}\n".encode()).hexdigest()
+        digest = hashlib.sha256(f'[spu-instruction.decoder.model-binding]\nartifact = "/m.gguf"\n[spu-instruction.decoder.tunable-values]\nseed = {SEED}\n'.encode()).hexdigest()
         assert drive_cell(Agent(served=(digest, digest)), tmp)["verdict"] == "REPRODUCED"
 
 

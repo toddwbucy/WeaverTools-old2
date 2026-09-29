@@ -17,7 +17,7 @@ from test_recorded_seed import CARD, MODEL, SEED, Reloading, cells_main, run_mai
 from test_round_nine import TWO_CELLS, agent_fakes  # noqa: E402
 
 base = dm.base
-DECL = f"artifact: {MODEL}\nseed: {SEED}\n"
+DECL = f'[spu-instruction.decoder.model-binding]\nartifact = "{MODEL}"\n[spu-instruction.decoder.tunable-values]\nseed = {SEED}\n'
 STACK_HELD = {k: {"status": "unchanged", "reading": {}} for k in base.STACK_WINDOW}
 
 
@@ -78,7 +78,7 @@ def cells(agent, change=None, declared=None, fakes=None):
         every = dict(agent_fakes(agent), **(fakes or {}))
         code, _, printed, records, summary = cells_main(
             tmp, dict(dict(cells=TWO_CELLS), **(change or {})), declared=declared, fakes=every)
-        restored = open(os.path.join(tmp, "karl.yaml")).read()
+        restored = open(os.path.join(tmp, "karl.toml")).read()
     return code, printed, records, restored, summary
 
 
@@ -120,7 +120,7 @@ def test_a_cell_artifact_swapped_between_its_loads_fails_the_exit():
             fh.write(b"weights")
         one = [dict(TWO_CELLS[0], artifact=artifact)]
         code, printed, reports, _, summary = cells(SwappingArtifact(artifact), dict(cells=one),
-                                          declared=f"artifact: {artifact}\nseed: {SEED}\n")
+                                          declared=f'[spu-instruction.decoder.model-binding]\nartifact = "{artifact}"\n[spu-instruction.decoder.tunable-values]\nseed = {SEED}\n')
     assert reports[0]["verdict"] == "REPRODUCED", reports[0]["verdict"]
     assert summary["weights"]["status"] == "varied", summary["weights"]
     assert code == 1 and "did not hold: weights" in printed, (code, printed)

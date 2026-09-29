@@ -26,6 +26,34 @@ die() { printf '\nREFUSED: %s\n' "$*" >&2; exit 1; }
 
 read_key() { cat "$ADMIN_CONFIG/$1" 2>/dev/null || true; }
 
+# **One reader for every value this script takes from a declaration**, through
+# python3's tomllib, so the script decodes what admin decodes within the TOML
+# 1.0 grammar declarations are written in, per weaver-types-Spec section 2: a
+# literal string, an escape, a dotted key and an inline table each read as the
+# value they are, where a line-matching reader saw one spelling and missed or
+# mangled the rest. It prints the string at a dotted path, or checks that a
+# table stands there, and answers 3 where the path is absent. A file that does
+# not parse, or a value of another kind than asked, refuses by name.
+declared() {
+  python3 -c '
+import sys, tomllib
+path, key, want = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    with open(path, "rb") as fh:
+        value = tomllib.load(fh)
+except (OSError, tomllib.TOMLDecodeError) as e:
+    sys.exit(f"{path} is not a TOML 1.0 document, the grammar every reader in the suite shares (weaver-types-Spec section 2): {e}")
+for part in key.split("."):
+    if not isinstance(value, dict) or part not in value:
+        sys.exit(3)
+    value = value[part]
+if want == "string" and isinstance(value, str):
+    print(value)
+elif not (want == "table" and isinstance(value, dict)):
+    sys.exit(f"{path}: {key} is not a {want}")
+' "$@"
+}
+
 # Reads a run's new trace lines on stdin and prints what the load event says
 # about the two facts #419 put there. Non-zero where no load event names a
 # composer, which is how the verify step knows the install took.
@@ -59,6 +87,25 @@ ALLOW_LIST=$(read_key allow-list)
 [ -n "$AGENT_DIR" ]     || die "no agent-config-directory in $ADMIN_CONFIG"
 [ -n "$ALLOW_LIST" ]    || die "no allow-list in $ADMIN_CONFIG"
 BIN_DIR=$(dirname "$WORKER_BINARY")
+
+# **A box whose declarations are still YAML refuses before anything is
+# built.** The admin this script installs reads `<agent>.toml`, per
+# weaver-types-Spec section 2, so an allow-listed agent whose directory holds
+# only `<agent>.yaml` would read as having no declaration at all: skipped at
+# the engine check, skipped at reconciliation, and the run rolled back at
+# verification with nothing saying why. It is refused by name here instead,
+# while the installed stack still stands and still reads the YAML, and the
+# answer is to install the TOML declaration beside it first. An agent with
+# neither file is left to the steps below, which already name that case.
+UNMIGRATED=""
+for agent in $ALLOW_LIST; do
+  if [ ! -f "$AGENT_DIR/$agent.toml" ] && [ -f "$AGENT_DIR/$agent.yaml" ]; then
+    UNMIGRATED="$UNMIGRATED $agent"
+  fi
+done
+[ -z "$UNMIGRATED" ] || die "only a YAML declaration stands in $AGENT_DIR for:$UNMIGRATED. \
+The stack this installs reads <agent>.toml. Install each agent's TOML declaration \
+beside its YAML first, then rerun."
 
 # **Where cargo builds is asked rather than assumed.** This box sets
 # `CARGO_TARGET_DIR`, so `target/release` does not exist here, and every
@@ -185,24 +232,18 @@ fi
 # while something compares them, so this is that something: edit one and not
 # the other and the run refuses by name before it spends the build.
 for agent in $ALLOW_LIST; do
-  decl="$AGENT_DIR/$agent.yaml"
+  decl="$AGENT_DIR/$agent.toml"
   [ -f "$decl" ] || continue
-  # The engine under `state-store`, not the first `engine:` in the file, and
-  # an absent election means the crate's own default rather than none.
-  elected=$(sed -n '/^state-store:/,/^[^[:space:]]/p' "$decl" \
-    | sed -n 's/^[[:space:]]*engine:[[:space:]]*//p' | head -1)
-  # **The value is what YAML means by it, not the characters after the colon.**
-  # `engine: "postgres"` is the same election as `engine: postgres`, and taking
-  # the raw run of non-space characters compared `weaver-state/"postgres"`
-  # against the feature list and refused a build that carried it. A trailing
-  # comment goes, then surrounding quotes of either kind, then the space
-  # between. This is not a YAML parser and does not pretend to be one: the
-  # field is a bare scalar on one line, and there is no yaml module on either
-  # seat to do it properly.
-  elected=${elected%%#*}
-  elected=$(printf '%s' "$elected" \
-    | sed -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/")
-  [ -n "$elected" ] || elected=sqlite
+  # The engine at `state-store.engine`, read by `declared` as the string
+  # admin decodes, and an absent election means the crate's own default
+  # rather than none.
+  rc=0
+  elected=$(declared "$decl" state-store.engine string) || rc=$?
+  case $rc in
+    0) ;;
+    3) elected=sqlite ;;
+    *) die "$agent: the declaration's store election does not read, see above" ;;
+  esac
   # **`none` is an election and not an absence.** It is a lawful `StoreEngine`
   # and admin starts no member for it, per `inventory.rs`, which does not even
   # ask for the member binary in that case. There is no `weaver-state/none`
@@ -504,7 +545,7 @@ validate() {
 # -------------------------------------------------------- 8. reconcile agents
 say "reconcile declarations"
 for agent in $ALLOW_LIST; do
-  decl="$AGENT_DIR/$agent.yaml"
+  decl="$AGENT_DIR/$agent.toml"
   if [ ! -f "$decl" ]; then
     printf '  %-12s no declaration at %s\n' "$agent" "$decl"
     continue
@@ -516,16 +557,18 @@ for agent in $ALLOW_LIST; do
   fi
   # The one reconciliation this script knows how to make, and only where the
   # box cannot stand a leg at all. Anything else is the operator's.
-  if [ ! -f "$STATE_BINARY" ] && ! grep -q '^state-store:' "$decl"; then
+  rc=0
+  declared "$decl" state-store table || rc=$?
+  if [ ! -f "$STATE_BINARY" ] && [ "$rc" -eq 3 ]; then
     printf '  %-12s %s\n' "$agent" "$verdict"
     cp -a "$decl" "$decl.pre-$AFTER-bak"
     PATCHED+=("$decl|$decl.pre-$AFTER-bak")
-    printf 'state-store:\n  engine: none\n' >> "$decl"
+    printf '\n[state-store]\nengine = "none"\n' >> "$decl"
     verdict=$(validate "$agent")
     if [ "$verdict" != '{"kind":"validated"}' ]; then
       rollback "$agent still refuses after the declaration: $verdict"
     fi
-    printf '  %-12s declared `state-store: engine: none`, validated (backup %s)\n' \
+    printf '  %-12s declared `[state-store] engine = "none"`, validated (backup %s)\n' \
       "$agent" "$(basename "$decl.pre-$AFTER-bak")"
   else
     rollback "$agent refuses and this script will not guess the fix: $verdict"
@@ -562,13 +605,14 @@ sink_lines() {
 say "verify"
 VERIFIED=0
 for AGENT in $ALLOW_LIST; do
-  decl="$AGENT_DIR/$AGENT.yaml"
+  decl="$AGENT_DIR/$AGENT.toml"
   if [ ! -f "$decl" ]; then
     printf '  %-12s no declaration, not verified\n' "$AGENT"
     continue
   fi
-  SINK=$(sed -n 's/^[[:space:]]*path:[[:space:]]*\(.*\)$/\1/p' "$decl" | head -1)
-  [ -n "$SINK" ] || rollback "cannot find the trace sink for $AGENT"
+  rc=0
+  SINK=$(declared "$decl" trace-sink.path string) || rc=$?
+  [ "$rc" -eq 0 ] && [ -n "$SINK" ] || rollback "cannot find the trace sink for $AGENT"
   printf '  %s\n' "$AGENT"
   LINES=$(sink_lines "$SINK") || rollback "$AGENT: $SINK is not a regular file, and this step reads the load event back out of one"
   sudo -n WEAVER_ADMIN_CONFIG="$ADMIN_CONFIG" "$BIN_DIR/weaver-admin" unload "$AGENT" >/dev/null 2>&1 || true

@@ -296,7 +296,7 @@ fn the_lib_target_stands_and_collects_the_doctests() {
     );
 }
 
-/// **No async runtime, no logging crate, no YAML implementation.** The
+/// **No async runtime, no logging crate, no config-format implementation.** The
 /// lifecycle traffic is two exchanges and the client traffic is deferred, so
 /// nothing here needs an executor, and this crate writes no account of
 /// anything: a logging crate would be a second author's first step.
@@ -315,8 +315,10 @@ fn the_resolved_tree_carries_no_runtime_no_logging_no_yaml() {
         "env_logger",
         "slog",
         "serde_yaml",
+        "serde_yaml_ng",
         "yaml-rust",
         "serde_yml",
+        "toml",
     ] {
         assert!(
             !names.iter().any(|n| n == forbidden),

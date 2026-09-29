@@ -150,8 +150,8 @@ def _drive_cell(composer_digest, served=None):
     # check that read the wrong load would pass on it. The fake load below
     # appends this cell's own load event, the way the harness does.
     trace = _trace(td, [_load("r-old", _file("alpha_loop.py", DECLARED))])
-    decl = os.path.join(td, "k.yaml")
-    standing = "artifact: /a\nseed: 7\n"
+    decl = os.path.join(td, "k.toml")
+    standing = '[spu-instruction.decoder.model-binding]\nartifact = "/a"\n[spu-instruction.decoder.tunable-values]\nseed = 7\n'
     with open(decl, "w") as f:
         f.write(standing)
     cfg = {"agent": "karl", "declaration": decl, "trace": trace,

@@ -1,4 +1,4 @@
-//! conforms: types-config-format-yaml
+//! conforms: types-config-format-toml
 //! conforms: types-config-names-kebab
 //! conforms: types-no-default-derive
 //! conforms: types-trace-sink-discriminated
@@ -7,7 +7,7 @@
 //! The agent config: the declarative document that defines an agent, per
 //! `weaver-types-Spec` section 2. Written by the operator, validated by admin
 //! before a process exists, read by the harness for the elections it carries.
-//! The format is YAML, elected against the charter's writer-audience criterion,
+//! The format is TOML, elected against the charter's writer-audience criterion,
 //! and the parser sits behind the non-default `config` cargo feature: only admin
 //! and the harness parse the file, and the wire types below compile with the
 //! feature off.
@@ -436,7 +436,7 @@ impl std::error::Error for ConfigError {}
 #[cfg(feature = "config")]
 pub fn parse(source: &str) -> Result<AgentConfig, ConfigError> {
     let config: AgentConfig =
-        serde_yaml_ng::from_str(source).map_err(|e| classify_yaml_error(&e.to_string()))?;
+        toml::from_str(source).map_err(|e| classify_toml_error(e.message()))?;
     if config
         .spu_instruction
         .decoder
@@ -452,7 +452,38 @@ pub fn parse(source: &str) -> Result<AgentConfig, ConfigError> {
     check_tunable_values(&config.spu_instruction.decoder.tunable_values)?;
     check_identity_roles(&config.spu_instruction.decoder.identity)?;
     check_trace_sink_surface(source, &config.trace_sink)?;
+    check_declared_paths(&config)?;
     Ok(config)
+}
+
+/// **A path in a declaration carries no control character**, per
+/// `weaver-types-Spec` section 2 and the operator's ruling of 2026-09-28:
+/// every reader in the suite, this parser, the deploy script's shell and the
+/// experiment harness, must agree on what a path is, and a control character
+/// is where they part, a shell's command substitution dropping a trailing
+/// newline this parser keeps. The three path fields are the restore's record,
+/// the loop file and the trace sink's path, each refused by its own name.
+#[cfg(feature = "config")]
+fn check_declared_paths(config: &AgentConfig) -> Result<(), ConfigError> {
+    let sink = match &config.trace_sink {
+        TraceSink::File { path, .. }
+        | TraceSink::Pipe { path, .. }
+        | TraceSink::Socket { path } => path,
+    };
+    let declared = [
+        ("trace-sink.path", Some(sink)),
+        ("loop-file", config.loop_file.as_ref()),
+        ("restore.record", config.restore.as_ref().map(|r| &r.record)),
+    ];
+    for (field, path) in declared {
+        if path.is_some_and(|p| p.to_string_lossy().chars().any(char::is_control)) {
+            return Err(ConfigError {
+                field: Some(FieldName(field.to_string())),
+                kind: ConfigErrorKind::BadValue,
+            });
+        }
+    }
+    Ok(())
 }
 
 /// **The identity prefix is `system` and the parse is where that binds**, per
@@ -563,7 +594,7 @@ fn check_tunable_values(
 /// `deny_unknown_fields` does not compose with an internally tagged enum, so an
 /// unknown key inside `trace-sink` would be silently discarded by the typed
 /// parse alone, which is the vanishing-declaration failure the refusal exists
-/// to prevent. The raw mapping is read back and its keys are judged against the
+/// to prevent. The raw table is read back and its keys are judged against the
 /// selected variant's surface: `file` and `pipe` carry `kind`, `path`, and
 /// `create`, and `socket` carries `kind` and `path`.
 #[cfg(feature = "config")]
@@ -572,19 +603,17 @@ fn check_trace_sink_surface(source: &str, sink: &TraceSink) -> Result<(), Config
         field: None,
         kind: ConfigErrorKind::Malformed,
     };
-    let document: serde_yaml_ng::Value =
-        serde_yaml_ng::from_str(source).map_err(|_| malformed())?;
-    let mapping = document
+    let document: toml::Table = toml::from_str(source).map_err(|_| malformed())?;
+    let table = document
         .get("trace-sink")
-        .and_then(|v| v.as_mapping())
+        .and_then(|v| v.as_table())
         .ok_or_else(malformed)?;
     let allowed: &[&str] = match sink {
         TraceSink::File { .. } | TraceSink::Pipe { .. } => &["kind", "path", "create"],
         TraceSink::Socket { .. } => &["kind", "path"],
     };
-    for key in mapping.keys() {
-        let key = key.as_str().ok_or_else(malformed)?;
-        if !allowed.contains(&key) {
+    for key in table.keys() {
+        if !allowed.contains(&key.as_str()) {
             return Err(ConfigError {
                 field: Some(FieldName(format!("trace-sink.{key}"))),
                 kind: ConfigErrorKind::UnknownField,
@@ -594,11 +623,14 @@ fn check_trace_sink_surface(source: &str, sink: &TraceSink) -> Result<(), Config
     Ok(())
 }
 
-/// Sorts a serde_yaml_ng error message into the typed kinds. The messages are
-/// serde's and their shapes are stable across the 1.x derive: `missing field
-/// `name``, `unknown field `name``, `invalid type`, `unknown variant`.
+/// Sorts a toml error's message into the typed kinds. The message is taken
+/// without the source excerpt the error's display adds, so a backtick in the
+/// operator's own text cannot be read as a field name. Where serde raised it,
+/// its shapes are stable across the 1.x derive: `missing field `name``,
+/// `unknown field `name``, `invalid type`, `unknown variant`. A syntax error is
+/// toml's own and sorts as malformed.
 #[cfg(feature = "config")]
-fn classify_yaml_error(message: &str) -> ConfigError {
+fn classify_toml_error(message: &str) -> ConfigError {
     fn backticked(message: &str, after: &str) -> Option<FieldName> {
         let rest = message.split(after).nth(1)?;
         let name = rest.split('`').nth(1)?;

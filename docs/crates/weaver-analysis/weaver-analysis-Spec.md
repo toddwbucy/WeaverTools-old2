@@ -7,7 +7,7 @@ written against it under the gates of Working Process section 6.
 **Document ID:** `weaver-analysis-Spec`
 **Parent:** `weaver-analysis-PRD`
 **Editorial:** Per the Working Rules.
-**Landing PR:** #668
+**Landing PR:** #731
 
 ---
 
@@ -59,22 +59,25 @@ preflight, and section 5 argues the deposit reader.
 **Edition and toolchain.** Edition 2024 on the pinned nightly, no nightly feature
 used.
 
-**The dependency set is four crates and no internal one.** `serde` with
-`derive`, and `serde_json` with `raw_value`, which sections 2 and 3 elect
-for carrying a payload's elected values as the record spelled them rather
-than re-encoding them, `safetensors`, which section 5's reading elects to
-open the lens artifact and the weights its unembedding needs, and `sha2`,
-which the same section's identity check elects to recompute the digest a
-manifest names. **Neither addition is an engine**: one maps a file and
-answers tensors, the other answers a digest, so what enters this crate is
-a parser for the container section 3 elected and the arithmetic that
-checks an identity, with no inference runtime - which is the whole reason
-that election named a format both sides of the boundary can read.
-`safetensors` is the crate `weaver-spu` links for the native backend's
-weights and `sha2` already stands in this workspace's resolved tree, both
-vetted here rather than newly admitted. **The digest is not hand-rolled**:
-an identity check written here would be this crate's approximation of a
-standard, and a wrong one would refuse good artifacts or admit bad ones.
+**The dependency set is five crates and no internal one.** `serde` with `derive`, and
+`serde_json` with `raw_value`, which sections 2 and 3 elect for carrying a payload's
+elected values as the record spelled them rather than re-encoding them, `safetensors`,
+which section 5's reading elects to open the lens artifact and the weights its
+unembedding needs, `sha2`, which the same section's identity check elects to recompute
+the digest a manifest names, and `toml`, which section 3's derivation elects to write
+the declaration the operator loads. **Neither of the first two additions is an engine**:
+one maps a file and answers tensors, the other answers a digest, so what enters this
+crate is a parser for the container section 3 elected and the arithmetic that checks an
+identity, with no inference runtime - which is the whole reason that election named a
+format both sides of the boundary can read. `safetensors` is the crate `weaver-spu`
+links for the native backend's weights and `sha2` already stands in this workspace's
+resolved tree, both vetted here rather than newly admitted. **The digest is not
+hand-rolled**: an identity check written here would be this crate's approximation of a
+standard, and a wrong one would refuse good artifacts or admit bad ones. **The
+declaration is not hand-written either**: `toml` is the crate `weaver-types` parses the
+declaration with, taken here with its writer and without its parser, so the derivation
+builds a typed value, the crate writes every string's escaping, and no member crosses as
+hand-written text. Its tests take the parser to read a derived declaration back.
 
 **No `weaver-*` dependency at all, and the negative is the boundary in the
 manifest.** This crate stands outside the agent, per the charter's section 1, and
@@ -373,17 +376,22 @@ so the diagnostic run is correct to the run and never to the analyst's memory. E
 derived member names its source: the source session from the envelope, the artifact from
 `model.measurement`'s `model`, the seated identity prefix from the turnless
 `message.system` events at the run's opening in landing order with each payload carried
-verbatim, which since the ruling of 2026-09-04 is the seed the derived declaration
-carries while the preloaded store answers the replayed run's `identity` ask, the two
-agreeing by construction because both are the same record's events, the seed from
-`model.request`'s `sampling.seed`, the per-turn ceiling from that request's
-`stop.max_tokens`, and the context capacity from `model.output`'s `capacity`. **A member
-the record spells two ways refuses the derivation naming the member**, disagreement
-being a question for the operator and never a pick, and **a derived member the record
-does not carry refuses the same way** rather than defaulting: completeness is
-claim-relative here exactly as it is at input identity, and the claim is the whole
-declaration. The rule reaches the derived members alone - the fixed and analyst-supplied
-members below come from no record and refuse on no absence.
+value for value, every string and number the value the record carries, decoded from its
+JSON and written by `toml` as the declaration's TOML, per `weaver-types-Spec` section 2,
+which since the ruling of 2026-09-04 is the seed the derived declaration carries while
+the preloaded store answers the replayed run's `identity` ask, the two agreeing by
+construction because both are the same record's events, the seed from `model.request`'s
+`sampling.seed`, the per-turn ceiling from that request's `stop.max_tokens`, and the
+context capacity from `model.output`'s `capacity`. **A member the record spells two ways
+refuses the derivation naming the member**, disagreement being a question for the
+operator and never a pick, **a derived member the record does not carry refuses the same
+way** rather than defaulting, and **a member the record carries and the declaration
+cannot refuses the same way**: a `null`, which TOML has no spelling for, and a number
+past the declaration's integer, a seed past `i64::MAX` among them per
+`determinism-matrix-Spec` section 4. Completeness is claim-relative here exactly as it
+is at input identity, and the claim is the whole declaration. The rule reaches the
+derived members alone - the fixed and analyst-supplied members below come from no record
+and refuse on no absence.
 
 ```graph
 node: analysis-declaration-derives-from-the-record

@@ -8,10 +8,12 @@ description = "The floor's data definitions: the agent config, the identity pair
 
 # The dependency set is four crates, one of them optional, per weaver-types-Spec
 # section 1: weaver-traits as the one floor-link, serde for the config and wire
-# types both, serde_json for the wire encoding, and a maintained YAML
-# implementation behind the non-default config feature. serde_yaml_ng is the
-# maintained continuation of the archived serde_yaml, confirmed at the moment of
-# writing this manifest, per the Spec's section 6 election.
+# types both, serde_json for the wire encoding, and a TOML implementation behind
+# the non-default config feature, per the Spec's section 2 election. toml is
+# Cargo's own format crate, safe Rust, confirmed maintained at the moment of
+# writing this manifest, per the Spec's section 6. Its default features are off
+# and only parse and serde are taken: the crate reads a declaration and never
+# writes one.
 [dependencies]
 weaver-traits = { path = "../weaver-traits" }
 serde.workspace = true
@@ -19,9 +21,9 @@ serde.workspace = true
 # weaver-types-Spec section 1: pre-serialized JSON written in place, never a
 # quoted string.
 serde_json = { workspace = true, features = ["raw_value"] }
-serde_yaml_ng = { version = "0.10", optional = true }
+toml = { version = "1.1", optional = true, default-features = false, features = ["std", "parse", "serde"] }
 
 [features]
-config = ["dep:serde_yaml_ng"]
+config = ["dep:toml"]
 
 [dev-dependencies]

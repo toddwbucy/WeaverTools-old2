@@ -357,14 +357,13 @@ encoder and reranker families, and the split keeps add and subtract clean.
 
 ## 10. The builder's end state
 
-A builder edits one directory. They write their loop where the scaffolding
-already reaches, point at a model the way any config-driven loader points at
-one, add the state they need, and plug in at the harness. Narrow Rust and a
-recompile is the expected cost today, and pointing at a safetensors file with
-plain YAML configuration is the aim, a framework question the SPU's own charter
-reserves for its Spec with candle as the illustrative candidate rather than a
-commitment. When that level is reached and the visibility inside the model is
-standing, that is where the payoff arrives.
+A builder edits one directory. They write their loop where the scaffolding already
+reaches, point at a model the way any config-driven loader points at one, add the state
+they need, and plug in at the harness. Narrow Rust and a recompile is the expected cost
+today, and pointing at a safetensors file with a plain declaration is the aim, a
+framework question the SPU's own charter reserves for its Spec with candle as the
+illustrative candidate rather than a commitment. When that level is reached and the
+visibility inside the model is standing, that is where the payoff arrives.
 
 Every knob in the builder's assembly carries a disposition, and the disposition
 is the builder's election at the composition root: frozen, the value baked into

@@ -40,7 +40,7 @@ path = "src/main.rs"
 # No `uio`: this crate sends and receives whole
 # datagrams and passes no control message, so the scatter-gather surface the
 # harness needs for descriptor passing is weight it does not carry. No async
-# runtime, no logging crate, no YAML - this
+# runtime, no logging crate, no config-format parser - this
 # crate writes no account of anything, a logging crate being a second author's
 # first step.
 [dependencies]

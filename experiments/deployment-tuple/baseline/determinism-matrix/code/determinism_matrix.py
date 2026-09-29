@@ -70,9 +70,9 @@ import confirm_cells as base
 # one. The rotation offsets by sweep so that no probe is wedded to one seed:
 # the matrix has as many prompts as the schedule has seeds, and a rotation
 # by cell alone would hand each prompt the same seed in every sweep.
-# Horizontal whitespace only: `\s` would carry the match across a newline
-# and rewrite the next line's value under a `seed:` that names nothing.
-SEED_LINE = re.compile(r"^([ \t]*seed:[ \t]*)\S+", re.M)
+# The site is the one value at spu-instruction.decoder.tunable-values.seed,
+# found by where it sits in the document rather than by the text around it,
+# per `base.value_sites`.
 
 
 def parse_seed_schedule(text):
@@ -115,12 +115,17 @@ def sweep_step(n, cells):
 
 
 def with_declared_seed(declaration, seed):
-    """The declaration text with its one `seed:` line rewritten. Exactly one
-    line, or the declaration is not the shape this override understands."""
-    swapped, n = SEED_LINE.subn(lambda m: f"{m.group(1)}{seed}", declaration, count=2)
-    if n != 1:
-        raise ValueError(f"the declaration carries {n} seed lines, not one")
-    return swapped
+    """The declaration text with its one `seed = <integer>` site rewritten
+    and every other byte kept. Exactly one site, reading back as the seed at
+    spu-instruction.decoder.tunable-values.seed with the rest of the document
+    unchanged, or the declaration is not the shape this override
+    understands. A seed a TOML integer cannot carry, one past the signed
+    64-bit range, is refused by name, since the stack's parser refuses the
+    file it would make."""
+    if isinstance(seed, bool) or not isinstance(seed, int) or not 0 <= seed <= base.I64_MAX:
+        raise ValueError(f"the seed {seed!r} is not an integer a TOML declaration carries,"
+                         f" 0 to {base.I64_MAX}")
+    return base.rewrite_site(declaration, base.SEED_PATH, seed, str(seed), "seed")
 
 
 def seed_for(schedule, iteration, cell_index):
@@ -141,7 +146,7 @@ def seed_for(schedule, iteration, cell_index):
 # verified: the record carries nothing a second caller would change.
 
 
-# The declaration's seed, read as a scalar within the sampler's u64 by the
+# The declaration's seed, read as a TOML integer within the sampler's u64 by the
 # one reader every session's seed is read by (#716 round eight).
 standing_seed = base.declaration_seed
 
@@ -163,7 +168,7 @@ def session_seed(schedule, standing, iteration, cell_index):
 
 
 def artifact_of(declaration):
-    """The one artifact the declaration binds, read as the YAML scalar it is
+    """The one artifact the declaration binds, read as the TOML string it is
     (#716 round five), whose bytes the run reads at both ends as the weights
     field."""
     return base.declared_artifact(declaration)
@@ -427,10 +432,13 @@ def main():
         standing = original
         if args.artifact is not None:
             standing = base.with_artifact(original, args.artifact)
-        # A declaration without exactly one seed line is not one the
+        # A declaration without exactly one seed site is not one the
         # schedule can vary, refused with the operator's file untouched.
+        # Every scheduled seed is written once here, so a seed the TOML
+        # integer cannot carry is refused before the first session.
         if schedule is not None:
-            with_declared_seed(standing, schedule[0])
+            for scheduled in schedule:
+                with_declared_seed(standing, scheduled)
         # The declaration's own seed and artifact, read on every path so a
         # run without a schedule holds them too.
         seed = standing_seed(standing)

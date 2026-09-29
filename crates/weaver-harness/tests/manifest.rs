@@ -72,8 +72,8 @@ fn internal_dependency_set_is_the_floor_and_the_trace_seam() {
 fn types_is_taken_without_the_config_feature() {
     let names = crate_names(&resolved_tree("normal"));
     assert!(
-        !names.iter().any(|n| n == "serde_yaml_ng"),
-        "no YAML parser reaches this crate through the floor link"
+        !names.iter().any(|n| n == "toml"),
+        "no config parser reaches this crate through the floor link"
     );
 }
 

@@ -13,7 +13,7 @@ conforms to.
 **Parent:** `weaver-agents-PRD`
 **Depends on:** `weaver-traits`
 **Editorial:** Per the Working Rules.
-**Landing PR:** #627
+**Landing PR:** #731
 
 ---
 
@@ -471,15 +471,19 @@ so the config file is already a declared dependency of a contract this crate is 
 party to. That is the normal shape: this crate supplies vocabulary that agreements
 between other crates are written in.
 
-**The file's reader is a human writing it, and that is a requirement rather than
-a preference.** The operator hand-authors this declaration, often on a box under
-load and often while diagnosing why a load refused, and the fields it carries nest
-by nature: a binding with its settings, a set that is a list, elections, an
-instruction, a sink. So the format this crate elects for it answers to a writer
-rather than to a parser, carrying nesting without ceremony and surviving the
-comments an operator leaves for the next reader. That criterion is stated here
-because it is a fact about who uses the artifact, and the Spec elects against it
-rather than inventing the ground it elects on.
+**The file's reader is a human writing it, and that is a requirement rather than a
+preference.** The operator hand-authors this declaration, often on a box under load and
+often while diagnosing why a load refused, and the fields it carries nest by nature: a
+binding with its settings, a set that is a list, elections, an instruction, a sink. So
+the format this crate elects for it answers to a writer rather than to a parser, carries
+the declaration's nesting, and survives the comments an operator leaves for the next
+reader. **The parser's surface in the binary that runs as root is part of the
+criterion**, on the operator's ruling of 2026-09-28: admin parses this file with root's
+authority, so a parser that is unsafe code, or C translated into Rust, is surface the
+writer's convenience does not buy, and ceremony in the file is accepted where that
+safety is bought. That criterion is stated here because it is a fact about who uses the
+artifact and who reads it, and the Spec elects against it rather than inventing the
+ground it elects on.
 
 **A field takes effect at load and is fixed for the life of the run.** A session
 whose configuration changed mid-run is one every consumer afterward has to reason

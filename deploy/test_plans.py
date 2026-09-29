@@ -124,7 +124,7 @@ class PlanTests(unittest.TestCase):
         (self.config / "agent-config-directory").write_text(str(self.agents))
         (self.config / "worker-binary").write_text(str(self.root / "installed" / "pyworker"))
         (self.config / "allow-list").write_text("existing\n")
-        (self.agents / "existing.yaml").write_text("state-store:\n  engine: none\n")
+        (self.agents / "existing.toml").write_text("[state-store]\nengine = \"none\"\n")
         self.home = self.root / "home"
         (self.home / "fixture-no-home" / ".weaveragents").mkdir(parents=True)
         self.hba = self.root / "pg_hba.conf"
@@ -182,7 +182,7 @@ test() { fixture_args "$@"; builtin test "${fixture_mapped[@]}"; }
         before = {p: p.read_bytes() for p in self.root.rglob("*") if p.is_file()}
         result = self.create()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn(str(self.agents / "m1.yaml"), result.stdout)
+        self.assertIn(str(self.agents / "m1.toml"), result.stdout)
         self.assertIn("PENDING --apply", result.stdout)
         self.assertNotIn("nothing of this agent exists", result.stdout)
         self.assert_unprivileged()
@@ -213,10 +213,10 @@ test() { fixture_args "$@"; builtin test "${fixture_mapped[@]}"; }
         for collision in ("account", "declaration", "allow-list"):
             with self.subTest(collision=collision):
                 self.env.pop("COLLISION", None)
-                (self.agents / "m1.yaml").unlink(missing_ok=True)
+                (self.agents / "m1.toml").unlink(missing_ok=True)
                 (self.config / "allow-list").write_text("existing\n")
                 if collision == "account": self.env["COLLISION"] = "weaver-m1-state"
-                elif collision == "declaration": (self.agents / "m1.yaml").touch()
+                elif collision == "declaration": (self.agents / "m1.toml").touch()
                 else: (self.config / "allow-list").write_text("m1\n")
                 result = self.create()
                 self.assertNotEqual(result.returncode, 0)
@@ -299,13 +299,36 @@ test() { fixture_args "$@"; builtin test "${fixture_mapped[@]}"; }
                 self.assertIn("declaration directory", result.stderr)
                 self.assert_no_provisioning()
 
+    def test_a_value_the_toml_string_cannot_carry_refuses_before_anything(self):
+        # `--session 'trial"2'` would write `session = "trial"2"`. Each value
+        # refuses at argument parsing, in both modes, before any command.
+        # Perturbation: drop the character check and the plan runs.
+        for flag, value in (("--session", 'trial"2'), ("--session", "a\\b"),
+                            ("--session", "two\nlines"), ("--artifact", '/m/x"y.gguf'),
+                            ("--artifact", "/m/x\\y.gguf"), ("--artifact", "/m/x\ty.gguf")):
+            for mode in ((), ("--apply",)):
+                with self.subTest(flag=flag, value=value, mode=mode):
+                    self.log.unlink(missing_ok=True)
+                    args = ["m1", "--artifact", str(self.artifact)] if flag == "--session" else ["m1"]
+                    result = self.run_script("create-agent.sh", *args, flag, value, *mode)
+                    self.assertEqual(result.returncode, 1, result.stderr)
+                    self.assertIn("cannot hold as written", result.stderr)
+                    self.assertEqual(self.calls(), [])
+
+    def test_the_rendered_declaration_is_toml_before_anything_is_made(self):
+        # The plan renders and parse-checks the declaration it would write.
+        # Perturbation: break the heredoc's quoting and the plan refuses here.
+        result = self.create("--session", "s-m1-1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("does not parse as TOML", result.stderr)
+
     def test_invalid_engine_does_not_prompt_for_sudo(self):
         result = self.create("--apply", "--engine", "invalid")
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(any(c[0] == "sudo" for c in self.calls()))
 
     def test_apply_uses_privileged_collision_reads(self):
-        for path in (self.agents / "m1.yaml", self.home / "weaver-m1",
+        for path in (self.agents / "m1.toml", self.home / "weaver-m1",
                      self.home / "fixture-no-home" / ".weaveragents" / "weaver-m1"):
             with self.subTest(path=path):
                 self.log.unlink(missing_ok=True)
@@ -328,7 +351,7 @@ test() { fixture_args "$@"; builtin test "${fixture_mapped[@]}"; }
                 result = self.create(*(["--apply"] if apply else []))
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("m1 is already in", result.stderr)
-                self.assertIn(str(self.agents / "m1.yaml"), result.stdout)
+                self.assertIn(str(self.agents / "m1.toml"), result.stdout)
                 self.assert_no_provisioning()
 
     def test_present_unreadable_allow_list_refuses_in_both_modes(self):
@@ -353,7 +376,7 @@ test() { fixture_args "$@"; builtin test "${fixture_mapped[@]}"; }
                 self.assert_no_provisioning()
 
     def test_failed_privileged_path_inspection_is_not_absence(self):
-        self.env.update(ALLOW_APPLY_CHECKS="1", PATH_FAIL=str(self.agents / "m1.yaml"))
+        self.env.update(ALLOW_APPLY_CHECKS="1", PATH_FAIL=str(self.agents / "m1.toml"))
         result = self.create("--apply")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("cannot inspect", result.stderr)
@@ -365,7 +388,7 @@ test() { fixture_args "$@"; builtin test "${fixture_mapped[@]}"; }
         result = self.create("--apply")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("== made", result.stdout)
-        self.assertTrue((self.agents / "m1.yaml").is_file())
+        self.assertTrue((self.agents / "m1.toml").is_file())
         self.assertIn("m1", (self.config / "allow-list").read_text().splitlines())
         self.assertIn("local   weaver_m1", self.hba.read_text())
         self.assertIn("weaver-m1-state", self.ident.read_text())
@@ -389,6 +412,23 @@ test() { fixture_args "$@"; builtin test "${fixture_mapped[@]}"; }
         self.assert_unprivileged()
         cargo_actions = [c[1] for c in self.calls() if c[0] == "cargo"]
         self.assertEqual(cargo_actions, ["metadata", "test", "build"])
+
+    def test_stack_refuses_an_agent_whose_declaration_is_still_yaml(self):
+        # The admin this installs reads `<agent>.toml`, so an agent with only
+        # `<agent>.yaml` refuses by name before cargo runs. Perturbation:
+        # remove the check and the run plans, reaching the build.
+        (self.agents / "existing.toml").unlink(missing_ok=True)
+        (self.agents / "existing.yaml").write_text("state-store:\n  engine: none\n")
+        result = self.run_script("update-stack.sh")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("only a YAML declaration stands", result.stderr)
+        self.assertIn("existing", result.stderr)
+        self.assertIn("Install each agent's TOML declaration", result.stderr)
+        self.assertFalse(any(c[0] == "cargo" for c in self.calls()))
+        # Beside its TOML, the YAML is inert and the run plans.
+        (self.agents / "existing.toml").write_text("[state-store]\nengine = \"none\"\n")
+        result = self.run_script("update-stack.sh")
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_stack_build_failure_cannot_claim_a_plan(self):
         self.env["BUILD_FAIL"] = "1"
@@ -418,6 +458,61 @@ def admin_answer_definition(script):
     start = lines.index("admin_answer() {")
     end = next(i for i in range(start, len(lines)) if lines[i] == "}")
     return "\n".join(lines[start:end + 1]) + "\n"
+
+
+def declared_definition(script):
+    """The `declared` reader exactly as the deploy script defines it, read out
+    of the script's own text so the test runs the code that ships."""
+    lines = script.splitlines()
+    start = lines.index("declared() {")
+    end = next(i for i in range(start, len(lines)) if lines[i] == "}")
+    return "\n".join(lines[start:end + 1]) + "\n"
+
+
+class DeclaredTests(unittest.TestCase):
+    """The one reader update-stack.sh takes a declaration's values through.
+    Perturbation: put back the line-matching sed readers and the literal and
+    escaped sink paths, the dotted engine and the inline store fail here."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.script = (Path(__file__).resolve().parent / "update-stack.sh").read_text()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def read(self, text, key, want):
+        decl = Path(self.tmp.name) / "a.toml"
+        decl.write_text(text)
+        run = subprocess.run(["bash", "-c", declared_definition(self.script) + 'declared "$@"', "x",
+                              str(decl), key, want], text=True, capture_output=True)
+        return run.returncode, run.stdout.rstrip("\n"), run.stderr
+
+    def test_the_sink_path_is_the_decoded_string(self):
+        for text, path in (('[trace-sink]\npath = \'/srv/a\\b "c".ndjson\'\n', '/srv/a\\b "c".ndjson'),
+                           ('[trace-sink]\npath = "/srv/x\\u0041y.ndjson"\n', "/srv/xAy.ndjson"),
+                           ('[trace-sink]\npath = "/srv/t.ndjson" # the sink\n', "/srv/t.ndjson"),
+                           ('trace-sink = { kind = "file", path = "/srv/i.ndjson", create = true }\n',
+                            "/srv/i.ndjson")):
+            with self.subTest(text=text):
+                self.assertEqual(self.read(text, "trace-sink.path", "string")[:2], (0, path))
+
+    def test_the_store_election_reads_in_every_spelling(self):
+        for text in ('[state-store]\nengine = "postgres"\n', "[state-store]\nengine = 'postgres'\n",
+                     'state-store.engine = "postgres"\n', 'state-store = { engine = "postgres" }\n'):
+            with self.subTest(text=text):
+                self.assertEqual(self.read(text, "state-store.engine", "string")[:2], (0, "postgres"))
+                self.assertEqual(self.read(text, "state-store", "table")[0], 0)
+
+    def test_absence_and_a_bad_file_answer_apart(self):
+        self.assertEqual(self.read('session = "s"\n', "state-store.engine", "string")[0], 3)
+        self.assertEqual(self.read('session = "s"\n', "state-store", "table")[0], 3)
+        code, _, err = self.read('session = "s\n', "state-store", "table")
+        self.assertEqual(code, 1)
+        self.assertIn("is not a TOML 1.0 document", err)
+        code, _, err = self.read('[state-store]\nengine = 3\n', "state-store.engine", "string")
+        self.assertEqual(code, 1)
+        self.assertIn("is not a string", err)
 
 
 class AdminAnswerTests(unittest.TestCase):

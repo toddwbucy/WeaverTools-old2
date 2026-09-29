@@ -14,6 +14,7 @@ artifact at one precision per cell, is the matrix's `--cells` mode, with
 one main, one session loop and one exit, and the matrix's README gives the
 config.
 """
+import copy
 import hashlib
 import json
 import os
@@ -22,6 +23,7 @@ import socket
 import stat
 import subprocess
 import time
+import tomllib
 
 # Pinned across every box and every cell. Do not edit per box.
 CHECKS = [
@@ -244,12 +246,170 @@ def _device_groups(cfg, since, invocation=None):
     return {"groups": [], "complete": []}
 
 
-# **The declaration's artifact is read as the YAML scalar it is** (#716 round
-# five). The value was taken as source text, so a quoted path kept its
-# quotes and an inline comment hid the key. Stdlib only, so the reading
-# covers the scalar shapes a path takes and refuses every other by name.
-ARTIFACT_KEY = re.compile(r"^([ \t]*)artifact:(.*)$", re.M)
-PLAIN_START = re.compile(r"[\[\]{}&*!|>'\"%@`,#?:-]")
+# **The declaration is read as the TOML document it is** (#716 round five,
+# carried to TOML with weaver-types-Spec section 2's ruling of 2026-09-28).
+# The value was once taken as source text, so a quoted path kept its quotes
+# and an inline comment hid the key. The stdlib's `tomllib` reads the whole
+# document, and each value is taken at its one path: a key of the same name
+# in another table is not it, and a document that does not parse is refused
+# by name.
+SEED_PATH = ("spu-instruction", "decoder", "tunable-values", "seed")
+ARTIFACT_PATH = ("spu-instruction", "decoder", "model-binding", "artifact")
+# **A rewrite touches one value's text and nothing else**, so the comments
+# and the layout of the operator's file survive byte for byte. The value is
+# found by where it sits in the document, not by what the text around it looks
+# like: `value_sites` reads the declaration token by token, skipping every
+# string and every comment, follows the table headers, the dotted keys, the
+# inline tables and the arrays, and names each scalar value by its full key
+# path. Text shaped like `artifact = "..."` inside an identity string, or
+# `seed = 9` inside a comment, is part of a string or a comment and names
+# nothing. A site found this way is still not trusted to be the value at the
+# path: the rewrite is reparsed and must differ from the original document at
+# that path alone.
+ARRAY = "[]"
+
+
+def toml_tokens(text):
+    """The declaration's tokens, each (kind, start, end): `str` for any of the
+    four string forms, `word` for a run a bare key, number, boolean or date
+    is spelled with, `nl` for a line end, and the punctuation `[ ] { } , =`
+    as itself. Comments and horizontal whitespace are skipped. A string that
+    does not close raises, since the document then does not parse either."""
+    tokens, i, n = [], 0, len(text)
+    while i < n:
+        c = text[i]
+        if c in " \t\r":
+            i += 1
+        elif c == "\n":
+            tokens.append(("nl", i, i + 1))
+            i += 1
+        elif c == "#":
+            while i < n and text[i] != "\n":
+                i += 1
+        elif c in "[]{},=":
+            tokens.append((c, i, i + 1))
+            i += 1
+        elif c in "\"'":
+            quote, start = c, i
+            if text.startswith(quote * 3, i):
+                i += 3
+                while True:
+                    j = text.find(quote * 3, i)
+                    if j < 0:
+                        raise ValueError("a multiline string in the declaration does not close")
+                    backslashes = len(text[i:j]) - len(text[i:j].rstrip("\\")) if quote == '"' else 0
+                    if backslashes % 2:
+                        i = j + 1
+                        continue
+                    i = j + 3
+                    while i < n and text[i] == quote and i < j + 5:
+                        i += 1
+                    break
+            else:
+                i += 1
+                while i < n and text[i] != quote and text[i] != "\n":
+                    i += 2 if quote == '"' and text[i] == "\\" else 1
+                if i >= n or text[i] != quote:
+                    raise ValueError("a string in the declaration does not close on its line")
+                i += 1
+            tokens.append(("str", start, i))
+        else:
+            start = i
+            while i < n and text[i] not in " \t\r\n#[]{},=\"'":
+                i += 1
+            tokens.append(("word", start, i))
+    return tokens
+
+
+def value_sites(text):
+    """Every scalar value in the declaration, as {key path: [(start, end)]},
+    the path a tuple of keys with `ARRAY` for an array's element. The
+    document is read as TOML reads it, strings and comments included, so
+    only a value names a site."""
+    tokens = toml_tokens(text)
+    sites, i = {}, 0
+
+    def peek(skip_nl=False):
+        j = i
+        while skip_nl and j < len(tokens) and tokens[j][0] == "nl":
+            j += 1
+        return j
+
+    def key_part(kind, start, end):
+        raw = text[start:end]
+        return tomllib.loads(f"k = {raw}")["k"] if kind == "str" else raw
+
+    def parse_key():
+        nonlocal i
+        parts = []
+        while i < len(tokens) and tokens[i][0] in ("word", "str"):
+            kind, start, end = tokens[i]
+            if kind == "word":
+                parts += [p for p in text[start:end].split(".") if p]
+            else:
+                parts.append(key_part(kind, start, end))
+            i += 1
+        if not parts:
+            raise ValueError("the declaration has a key this reader cannot follow")
+        return tuple(parts)
+
+    def parse_value(path):
+        nonlocal i
+        i = peek(skip_nl=True) if tokens[i][0] == "nl" else i
+        kind, start, end = tokens[i]
+        if kind == "{":
+            i += 1
+            while True:
+                i = peek(skip_nl=True)
+                if tokens[i][0] == "}":
+                    i += 1
+                    return
+                key = parse_key()
+                if tokens[i][0] != "=":
+                    raise ValueError("the declaration has an inline table this reader cannot follow")
+                i += 1
+                parse_value(path + key)
+                i = peek(skip_nl=True)
+                if tokens[i][0] == ",":
+                    i += 1
+        elif kind == "[":
+            i += 1
+            while True:
+                i = peek(skip_nl=True)
+                if tokens[i][0] == "]":
+                    i += 1
+                    return
+                parse_value(path + (ARRAY,))
+                i = peek(skip_nl=True)
+                if tokens[i][0] == ",":
+                    i += 1
+        elif kind in ("str", "word"):
+            i += 1
+            # A date and time spelled with a space is one value in two words.
+            while i < len(tokens) and tokens[i][0] == "word":
+                end = tokens[i][2]
+                i += 1
+            sites.setdefault(path, []).append((start, end))
+        else:
+            raise ValueError("the declaration has a value this reader cannot follow")
+
+    table = ()
+    while i < len(tokens):
+        kind = tokens[i][0]
+        if kind == "nl":
+            i += 1
+        elif kind == "[":
+            array_table = i + 1 < len(tokens) and tokens[i + 1][0] == "["
+            i += 2 if array_table else 1
+            table = parse_key() + ((ARRAY,) if array_table else ())
+            i += 2 if array_table else 1
+        else:
+            key = parse_key()
+            if i >= len(tokens) or tokens[i][0] != "=":
+                raise ValueError("the declaration has a line this reader cannot follow")
+            i += 1
+            parse_value(table + key)
+    return sites
 
 
 # **Every value a run takes is checked against its consumer's domain before
@@ -257,6 +417,11 @@ PLAIN_START = re.compile(r"[\[\]{}&*!|>'\"%@`,#?:-]")
 # otherwise starts a run that fails every session.
 # The sampler's seed is a u64 (weaver-spu/src/sampling.rs).
 U64_MAX = 2 ** 64 - 1
+# A TOML integer is a signed 64-bit value, so the largest seed a declaration
+# can carry is below the sampler's range. `tomllib` reads a larger integer
+# without complaint where the stack's parser refuses it, so the rewrite holds
+# the bound itself.
+I64_MAX = 2 ** 63 - 1
 SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
 
@@ -291,20 +456,79 @@ def canonical(value):
     return json.dumps(value, sort_keys=True)
 
 
-SEED_KEY = re.compile(r"^[ \t]*seed:(.*)$", re.M)
+def declaration_document(declaration, what="declaration"):
+    """The declaration parsed as TOML 1.0, or the refusal naming why not.
+    Declarations are written in the TOML 1.0 grammar, the subset every reader
+    in the suite shares, per weaver-types-Spec section 2, and tomllib reads
+    exactly that, so a file using TOML 1.1 syntax admin's parser also takes is
+    diagnosed here rather than refused without a reason."""
+    try:
+        return tomllib.loads(declaration)
+    except tomllib.TOMLDecodeError as e:
+        raise ValueError(f"the {what} is not a TOML 1.0 document, the grammar every"
+                         f" reader in the suite shares (weaver-types-Spec section 2): {e}") from None
+
+
+def declared_value(document, path):
+    """The value at `path` in a parsed declaration, or the refusal naming the
+    first key it lacks."""
+    node = document
+    for depth, key in enumerate(path):
+        if not isinstance(node, dict):
+            raise ValueError(f"the declaration's {'.'.join(path[:depth])} is not a table")
+        if key not in node:
+            raise ValueError(f"the declaration carries no {'.'.join(path[:depth + 1])}")
+        node = node[key]
+    return node
 
 
 def declaration_seed(declaration):
-    """The one seed the declaration holds, read as a YAML scalar and held to
-    the sampler's u64, whichever caller reads it (#716 round eight)."""
-    values = SEED_KEY.findall(declaration)
-    if len(values) != 1:
-        raise ValueError(f"the declaration carries {len(values)} seed lines, not one")
+    """The one seed the declaration holds, at spu-instruction.decoder.
+    tunable-values.seed, read as a TOML integer and held to the range a
+    declaration carries, whichever caller reads it (#716 round eight). A boolean, a float or
+    a string is refused by name, a quoted number included."""
+    value = declared_value(declaration_document(declaration), SEED_PATH)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"the declaration's seed {value!r} is a TOML"
+                         f" {type(value).__name__}, not an integer")
+    # The sampler takes a u64, and the declaration's TOML integer is an i64
+    # that the stack's own parser refuses past, so the seed a declaration can
+    # carry is the narrower of the two. Python's tomllib reads past i64 where
+    # the stack does not, and this reader holds to what the stack loads.
+    if not 0 <= value <= I64_MAX:
+        raise ValueError(f"the declaration's seed {value} is outside what the declaration"
+                         f" carries, 0 to {I64_MAX}, the sampler's u64 narrowed by TOML's i64")
+    return value
+
+
+def rewrite_site(declaration, path, value, text, what):
+    """The declaration with the one value at `path` replaced by `text`, every
+    other byte kept. Refused by name where the declaration does not parse,
+    where it carries other than one value at the path, or where the rewrite
+    does not read back `value` at `path` with the rest of the document
+    unchanged."""
+    before = declaration_document(declaration)
+    found = value_sites(declaration).get(tuple(path), [])
+    if len(found) != 1:
+        raise ValueError(f"the declaration carries {len(found)} {what} sites, not one")
+    start, end = found[0]
+    swapped = declaration[:start] + text + declaration[end:]
+    after = declaration_document(swapped, f"declaration rewritten with {what} {text}")
     try:
-        value = yaml_scalar(values[0])
+        declared_value(before, path)
+        read = declared_value(after, path)
     except ValueError as e:
-        raise ValueError(f"the declaration's seed: {e}") from None
-    return seed_value(value, "the declaration's seed")
+        raise ValueError(f"the {what} site the rewrite found is not the declared {what}: {e}") from None
+    expected = copy.deepcopy(before)
+    node = expected
+    for key in path[:-1]:
+        node = node[key]
+    node[path[-1]] = value
+    if (type(read) is not type(value) or read != value
+            or after != expected):
+        raise ValueError(f"the rewritten declaration does not read back {what} {value!r}"
+                         " with the rest of the document unchanged")
+    return swapped
 
 
 # The config keys a run reads, and the optional ones. A key is a value or
@@ -447,7 +671,9 @@ def run_files(cfg, rewrites):
     if not os.path.isdir(cfg["repo"]):
         raise ValueError(f"the config's repo {cfg['repo']} is not a directory")
     with open(decl, "rb") as f:
-        return f.read()
+        held = f.read()
+    declaration_document(held.decode("utf-8", "replace"), f"declaration {decl}")
+    return held
 
 
 def held_declaration(cfg, held):
@@ -480,61 +706,27 @@ def opening_readings(cfg):
     return readings
 
 
-def yaml_scalar(raw):
-    """One YAML scalar from a key's value text: double or single quoted with
-    no escapes, or plain, each optionally followed by a comment. Anything
-    else raises, naming what it met."""
-    s = raw.strip()
-    if not s:
-        raise ValueError("the value is empty or a block, not a scalar")
-    if s[0] in "\"'":
-        q = s[0]
-        end = s.find(q, 1)
-        if end < 0:
-            raise ValueError(f"the quoted value {s!r} is not closed")
-        inner, rest = s[1:end], s[end + 1:].strip()
-        if (q == '"' and "\\" in inner) or (q == "'" and s[end:end + 2] == "''"):
-            raise ValueError(f"the quoted value {s!r} carries an escape this reader does not take")
-        if rest and not rest.startswith("#"):
-            raise ValueError(f"the quoted value {s!r} is followed by {rest!r}")
-        if not inner:
-            raise ValueError("the quoted value is empty")
-        return inner
-    value = re.split(r"\s#", s, maxsplit=1)[0].strip()
-    if PLAIN_START.match(value) or ": " in value or value.endswith(":"):
-        raise ValueError(f"the value {value!r} is not a plain scalar this reader takes")
-    return value
-
-
 def declared_artifact(declaration):
-    """The one artifact the declaration binds, read as a scalar and held to
-    an absolute path, since the worker resolves it."""
-    found = ARTIFACT_KEY.findall(declaration)
-    if len(found) != 1:
-        raise ValueError(f"the declaration names {len(found)} artifacts, not one")
-    try:
-        return stack_path(yaml_scalar(found[0][1]), "declaration's artifact")
-    except ValueError as e:
-        raise ValueError(f"the declaration's artifact: {e}") from None
+    """The one artifact the declaration binds, at spu-instruction.decoder.
+    model-binding.artifact, read as a TOML string and held to an absolute
+    path, since the worker resolves it."""
+    value = declared_value(declaration_document(declaration), ARTIFACT_PATH)
+    if not isinstance(value, str):
+        raise ValueError(f"the declaration's artifact {value!r} is a TOML"
+                         f" {type(value).__name__}, not a string")
+    return stack_path(value, "declaration's artifact")
 
 
 def with_artifact(declaration, path):
     """The declaration with its one artifact line set to `path`, written as a
-    plain scalar. A path a plain scalar cannot carry unchanged is refused,
-    as is a declaration without exactly one artifact line: the old rewrite's
-    `\\s*` could run past a line end into the next key. The path is absolute,
-    since the worker resolves it."""
+    TOML basic string, which a JSON string literal is. A declaration without
+    exactly one artifact site is refused, the old rewrite's `\\s*` having
+    once run past a line end into the next key, as is a rewrite that does not
+    read back `path` with the rest unchanged. The path is absolute, since the
+    worker resolves it."""
     stack_path(path, "artifact path")
-    if (not path or any(c.isspace() for c in path) or "#" in path
-            or PLAIN_START.match(path) or ": " in path or path.endswith(":")):
-        raise ValueError(f"the artifact path {path!r} is not one a plain YAML scalar carries unchanged")
-    found = ARTIFACT_KEY.findall(declaration)
-    if len(found) != 1:
-        raise ValueError(f"the declaration names {len(found)} artifacts, not one")
-    swapped = ARTIFACT_KEY.sub(lambda m: f"{m.group(1)}artifact: {path}", declaration, count=1)
-    if declared_artifact(swapped) != path:
-        raise ValueError(f"the rewritten declaration does not read back {path!r}")
-    return swapped
+    return rewrite_site(declaration, ARTIFACT_PATH, path,
+                        json.dumps(path, ensure_ascii=False), "artifact")
 
 
 def spu_binary(cfg):

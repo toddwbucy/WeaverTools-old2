@@ -17,7 +17,7 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import determinism_matrix as dm  # noqa: E402
-from test_recorded_seed import CFG, FIXED, MODEL, SEED, Agent, Reloading, cells_main, run_main, session  # noqa: E402
+from test_recorded_seed import CFG, FIXED, MODEL, SEED, Agent, Reloading, cells_main, declaration, run_main, session  # noqa: E402
 from test_round_nine import TWO_CELLS, agent_fakes, cells_run  # noqa: E402
 
 base = dm.base
@@ -53,12 +53,12 @@ def cells_deposit(agent):
     """Two cells through the matrix's cells mode, and its deposit read
     back: the exit code, what it printed, the records, the summary, and the
     declaration and its backup after the run."""
-    digest = hashlib.sha256(f"artifact: {MODEL}\nseed: {SEED}\n".encode()).hexdigest()
+    digest = hashlib.sha256(f'[spu-instruction.decoder.model-binding]\nartifact = "{MODEL}"\n[spu-instruction.decoder.tunable-values]\nseed = {SEED}\n'.encode()).hexdigest()
     agent.served = (digest, digest)
     with tempfile.TemporaryDirectory() as tmp:
         code, _, printed, records, summary = cells_main(tmp, dict(cells=TWO_CELLS), fakes=agent_fakes(agent))
-        restored = open(os.path.join(tmp, "karl.yaml")).read()
-        backup = os.path.lexists(os.path.join(tmp, "karl.yaml.pre-matrix"))
+        restored = open(os.path.join(tmp, "karl.toml")).read()
+        backup = os.path.lexists(os.path.join(tmp, "karl.toml.pre-matrix"))
     return code, printed, records, summary, (restored, backup)
 
 
@@ -75,7 +75,7 @@ def test_a_raising_session_is_one_fault_in_both_modes():
     code, printed, reports, summary, (restored, backup) = cells_deposit(Truncating())
     assert code == 1 and [r["verdict"] for r in reports] == [WANT, WANT], (code, reports)
     assert all(summary[k]["status"] == "unchanged" for k in base.REQUIRED_WINDOWS)
-    assert restored == f"artifact: {MODEL}\nseed: {SEED}\n" and not backup
+    assert restored == f'[spu-instruction.decoder.model-binding]\nartifact = "{MODEL}"\n[spu-instruction.decoder.tunable-values]\nseed = {SEED}\n' and not backup
 
 
 def test_the_session_function_converts_no_raise_of_its_own():
@@ -103,7 +103,7 @@ def test_an_interrupt_records_its_session_and_closes_the_run_in_both_modes():
     code, printed, reports, summary, (restored, backup) = cells_deposit(InterruptedFirst())
     assert code == 1 and [r["verdict"] for r in reports] == ["interrupted"], (code, reports)
     assert summary["engine_libraries"]["status"] == "unchanged" and "interrupted - not a reproduction result" in printed
-    assert restored == f"artifact: {MODEL}\nseed: {SEED}\n" and not backup
+    assert restored == f'[spu-instruction.decoder.model-binding]\nartifact = "{MODEL}"\n[spu-instruction.decoder.tunable-values]\nseed = {SEED}\n' and not backup
     assert base.run_verdict([{"verdict": "REPRODUCED", "devices": [{}]}], {}, interrupted=True)[0] is False
 
 
@@ -114,7 +114,7 @@ def test_the_session_declaration_is_written_inside_the_shared_path():
     with tempfile.TemporaryDirectory() as tmp:
         rec = session(Agent(), declared_seed=SEED, cfg=dict(CFG, declaration=tmp))
         rec2 = {}
-        base.verify_session(dict(CFG, declaration=tmp), ["x"], rec2, SEED, None, declaration="seed: 1\n",
+        base.verify_session(dict(CFG, declaration=tmp), ["x"], rec2, SEED, None, declaration="[spu-instruction.decoder.tunable-values]\nseed = 1\n",
                             step=lambda verb: {"kind": "state"})
     assert rec["verdict"] == "REPRODUCED", rec["verdict"]
     assert rec2["verdict"].startswith("error: IsADirectoryError"), rec2["verdict"]
@@ -127,19 +127,21 @@ def test_every_stack_path_is_absolute_or_refused():
     # the harness's directory while the worker served its own. Perturbation:
     # drop stack_path from declared_artifact, with_artifact or config_values,
     # and a case here is taken.
-    assert refused(base.declared_artifact, "artifact: m.gguf\n")
-    assert "the artifact path 'm.gguf' is not an absolute path" in refused(base.with_artifact, "artifact: /m.gguf\n", "m.gguf")
-    assert base.declared_artifact("artifact: /m.gguf\n") == "/m.gguf"
+    binding = "[spu-instruction.decoder.model-binding]\n"
+    assert refused(base.declared_artifact, binding + 'artifact = "m.gguf"\n')
+    assert "the artifact path 'm.gguf' is not an absolute path" in refused(
+        base.with_artifact, binding + 'artifact = "/m.gguf"\n', "m.gguf")
+    assert base.declared_artifact(binding + 'artifact = "/m.gguf"\n') == "/m.gguf"
     for key in base.STACK_PATH_KEYS:
-        why = refused(base.config_values, dict(CFG, declaration="/k.yaml", **{key: "relative/" + key}))
+        why = refused(base.config_values, dict(CFG, declaration="/k.toml", **{key: "relative/" + key}))
         assert why and "is not an absolute path" in why, (key, why)
-    assert base.config_values(dict(CFG, declaration="/k.yaml", loop_sha256="a" * 64)) is not None
+    assert base.config_values(dict(CFG, declaration="/k.toml", loop_sha256="a" * 64)) is not None
 
 
 def test_both_modes_refuse_a_relative_path_before_writing():
     def relative_artifact(tmp, decl):
         with open(decl, "w") as fh:
-            fh.write(f"model-binding:\n  artifact: model.gguf\ntunable-values:\n  seed: {SEED}\n")
+            fh.write(declaration("model.gguf", SEED))
     err = io.StringIO()
     agent = Reloading()
     with contextlib.redirect_stderr(err):
@@ -208,7 +210,7 @@ def test_two_cells_of_one_name_are_refused_before_anything_is_written():
     with tempfile.TemporaryDirectory() as tmp, contextlib.redirect_stderr(err):
         code, called, *_ = cells_main(tmp, dict(cells=same))
         assert code == 2 and called == [] and not os.path.exists(os.path.join(tmp, "out")) \
-            and not os.path.exists(os.path.join(tmp, "karl.yaml.pre-matrix")), (code, called)
+            and not os.path.exists(os.path.join(tmp, "karl.toml.pre-matrix")), (code, called)
     assert "the cell names ['q8'] repeat" in err.getvalue(), err.getvalue()
     assert cells_run(Reloading())[0] == 0
 

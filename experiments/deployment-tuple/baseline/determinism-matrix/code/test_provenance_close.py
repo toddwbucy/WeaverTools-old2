@@ -102,7 +102,7 @@ def _drive_main(die_second_cell=False, swap_libs=False):
             c["artifact"] = artifact
         try:
             code, _, _, records, summary = cells_main(
-                td, dict(cells=cells), declared=f"artifact: {artifact}\nseed: 7\n",
+                td, dict(cells=cells), declared=f'[spu-instruction.decoder.model-binding]\nartifact = "{artifact}"\n[spu-instruction.decoder.tunable-values]\nseed = 7\n',
                 fakes=fakes, dm_fakes={"run_session": fake_run_session})
         except RuntimeError as e:
             code, summary = f"raised:{e}", None

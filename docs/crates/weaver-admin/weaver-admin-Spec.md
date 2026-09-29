@@ -7,7 +7,7 @@ agent. Code is written against it under the gates of Working Process section 6.
 **Document ID:** `weaver-admin-Spec`
 **Parent:** `weaver-admin-PRD`
 **Editorial:** Per the Working Rules.
-**Landing PR:** #677
+**Landing PR:** #731
 
 ---
 
@@ -894,14 +894,14 @@ designed behaviour unless the two are made to agree.
 the inventory refuses a declaration whose `allowed-uids` name a uid outside
 the agent's group, before any unit starts.
 
-**It refuses as `BoundaryUnverified` and not as `ConfigInvalid`.** The
-declaration is well formed and the fault is the box's: the operator wrote a
-uid that ought to reach the socket and the provisioning has not put it in the
-agent's group. `ConfigInvalid` names the YAML, and a deployer reading it that
-way deletes the uid - which makes validate pass and breaks the connector for
-good, the credential check then denying it at `accept` with nothing saying
-why. This is the same fault an unprovisioned home or sink is, and it answers
-as they do, naming the group on the way out.
+**It refuses as `BoundaryUnverified` and not as `ConfigInvalid`.** The declaration is
+well formed and the fault is the box's: the operator wrote a uid that ought to reach the
+socket and the provisioning has not put it in the agent's group. `ConfigInvalid` names
+the declaration's TOML, the format `weaver-types-Spec` section 2 elects, and a deployer
+reading it that way deletes the uid - which makes validate pass and breaks the connector
+for good, the credential check then denying it at `accept` with nothing saying why. This
+is the same fault an unprovisioned home or sink is, and it answers as they do, naming
+the group on the way out. 
 
 **A user without its group is named too.** `Group={identity}` is a hard
 start-time requirement, so a box that provisioned the agent user and not its
@@ -1173,8 +1173,8 @@ box where the namespace cannot be entered prints a skip naming why and has no wa
 **The territory is the member's own room and a load closes it rather than
 opening it.** It is one subdirectory of the operator-side directory the sink
 already stands in, made if absent and repaired if present, `0700` and owned by
-the member's account. **The repair is unconditional and that is the half issue
-#545 found second**: the preparation ran on every load and rewrote the room to
+the member's account. **The repair is unconditional and that is the half
+issue #545 found second**: the preparation ran on every load and rewrote the room to
 this crate's uid, the parent's group, and `0750`, so a member-owned room did not
 survive one load and the ownership could not be held by provisioning alone. The
 agent's uid is walled out twice over and neither wall rests on the other, the
@@ -1707,14 +1707,16 @@ election alone. The operator socket's path left this list with the socket on 202
 and the coordination name stayed but changed hands: the operator places it, the harness
 binds it, and admin dials it, so one value reaches two crates and the operator's file is
 where they agree. They are not the agent config and no seam carries them, which is why
-the file takes no contract of its own. **The file and its values part company at the
-start ask, and the distinction is worth holding.** This crate is the only one that reads
-the file. Three of the values do not stay in it: the coordination socket's name and the
-two organ binary paths reach the worker in section 6's argument vector, over the
-external boundary `weaver-admin-systemd-contract` holds rather than over any seam. The
-shape is a satellite of section 11: what is fixed here is that these values exist, that
-they are the operator's to place, and that none of them is discovered at runtime by
-searching.
+the file takes no contract of its own. **The agent config directory holds one
+declaration per agent, `<agent>.toml`**, which this crate resolves by the agent's name
+and the format's extension, per `weaver-types-Spec` section 2, and a name that resolves
+to no file answers `NoSuchAgent`. **The file and its values part company at the start
+ask, and the distinction is worth holding.** This crate is the only one that reads the
+file. Three of the values do not stay in it: the coordination socket's name and the two
+organ binary paths reach the worker in section 6's argument vector, over the external
+boundary `weaver-admin-systemd-contract` holds rather than over any seam. The shape is a
+satellite of section 11: what is fixed here is that these values exist, that they are
+the operator's to place, and that none of them is discovered at runtime by searching.
 
 **The organ binaries are on this list and not in the agent's declaration, and
 the placement is the ruling rather than a convenience.** They are one

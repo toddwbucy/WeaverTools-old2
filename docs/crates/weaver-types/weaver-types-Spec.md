@@ -8,7 +8,7 @@ one's Spec pass. Code is written against it under the gates of Working Process s
 **Document ID:** `weaver-types-Spec`
 **Parent:** `weaver-types-PRD`
 **Editorial:** Per the Working Rules.
-**Landing PR:** #647
+**Landing PR:** #731
 
 ---
 
@@ -65,16 +65,15 @@ used, for the reason `weaver-traits-Spec` section 1 gives: a nightly requirement
 on the floor is a nightly requirement everywhere.
 
 **The dependency set is four crates, one of them optional, and each is argued.**
-`weaver-traits`, the one internal dependency, declared as the `floor-link` the
-charter carries and required because the config's permission mode and tool set
-elect from that crate's vocabulary. `serde` with `derive`, for the config and the
-wire types both. `serde_json` for the wire encoding, per section 4.3, with its
-`raw_value` feature on, because section 4.4's measurement is spliced JSON and
-the splicing type is what that feature gates. A
-maintained YAML implementation for the config file, per the election of section
-2, **behind a non-default `config` cargo feature**. Nothing else, and specifically
-no socket crate, no async runtime, and no logging: this crate defines what crosses
-a boundary and crossing it is somebody else's crate, per charter section 3.
+`weaver-traits`, the one internal dependency, declared as the `floor-link` the charter
+carries and required because the config's permission mode and tool set elect from that
+crate's vocabulary. `serde` with `derive`, for the config and the wire types both.
+`serde_json` for the wire encoding, per section 4.3, with its `raw_value` feature on,
+because section 4.4's measurement is spliced JSON and the splicing type is what that
+feature gates. A TOML implementation for the config file, per the election of section 2,
+**behind a non-default `config` cargo feature**. Nothing else, and specifically no
+socket crate, no async runtime, and no logging: this crate defines what crosses a
+boundary and crossing it is somebody else's crate, per charter section 3.
 
 ```graph
 node: types-one-floor-link
@@ -102,13 +101,13 @@ from: types-no-socket-no-runtime-no-io
 to: axiom-floor-is-vocabulary-behavior-is-socket
 ```
 
-**The feature gate is thinness applied where the floor is widest.** Every crate in
-the program links this one, and only admin and the harness parse the config file,
-per charter section 2.1. Without the gate the gate crate and the SPU carry a YAML
-parser they never call, into processes whose whole argument is that they hold
-little. `weaver-traits-PRD` section 5 states the doctrine this follows: thin is
-the point, and a floor that accumulates stops meaning anything. The wire types and
-the identity pair are unconditional, because more than one crate draws each.
+**The feature gate is thinness applied where the floor is widest.** Every crate in the
+program links this one, and only admin and the harness parse the config file, per
+charter section 2.1. Without the gate the gate crate and the SPU carry a config parser
+they never call, into processes whose whole argument is that they hold little.
+`weaver-traits-PRD` section 5 states the doctrine this follows: thin is the point, and a
+floor that accumulates stops meaning anything. The wire types and the identity pair are
+unconditional, because more than one crate draws each.
 
 **Two format crates rather than one is a deliberate cost.** The config is written
 by a human and the wire is written by a program, and the two audiences want
@@ -122,34 +121,49 @@ The declarative document that defines an agent, per charter section 2.1: written
 by the operator, validated by admin before a process exists, read by the harness
 for the elections it carries.
 
-**The format is YAML, elected against the charter's criterion, and the
-maintenance fact is part of the argument rather than a discovery a builder
-makes.** `weaver-types-PRD` section 2.1 states the ground: the file's reader is a
-human writing it, so the format answers to a writer rather than a parser, carries
-nesting without ceremony, and survives an operator's comments. YAML meets that
-criterion, being what a system administrator already reads. TOML was the alternative
-and is the Rust-native choice, and it loses on deep nesting for a reader who is
-not a Rust programmer. JSON was never a candidate: no comments, and a
-trailing-comma error at three in the morning on a file that gates a load is a bad
-way to learn about JSON.
+**The format is TOML, on the operator's ruling of 2026-09-28, which reverses the YAML
+election that stood here on a ground that election did not weigh.** `weaver-types-PRD`
+section 2.1 states the criterion, as amended on the same ruling: the file's reader is a
+human writing it, so the format answers to a writer rather than a parser, carries the
+declaration's nesting, and survives an operator's comments, and the parser's surface in
+the binary that runs as root is part of the criterion, ceremony accepted where that
+safety is bought. TOML meets it: it is a writer's format, its `#` comments survive every
+edit an operator makes, and it carries the nesting the declaration uses, at the cost of
+ceremony on the deeper tables, a section header where YAML would indent. The ground the
+YAML election did not weigh is its parser. `serde_yaml_ng` sits on `unsafe-libyaml`, the
+C library `libyaml` translated into Rust under `unsafe`, compiled into the binary that
+runs as root for one purpose, parsing a declaration, and the shipped-dependency audit of
+pull request #725 measured it at six crates compiled for every binary that links this
+crate under the deploy's unified build. The `toml` crate, Cargo's own format, is safe
+Rust, and five crates compiled where the YAML parser was six. **Declarations are written
+in the TOML 1.0 grammar**, the subset every reader in the suite shares: admin's `toml`
+crate reads TOML 1.1, the deploy script and the experiment harness read with Python's
+`tomllib`, which reads 1.0, and a declaration only one of them can read is one the
+others refuse. Admin's parser is the authority on what a declaration says, and syntax
+only 1.1 has, a multiline inline table or a `\e` escape among it, is outside what the
+program guarantees. **A path in a declaration carries no control character**, on the
+operator's ruling of 2026-09-28: the restore's `record`, the `loop-file` and the trace
+sink's `path` are refused by name where one does, because every reader in the suite,
+admin's parser, the deploy script's shell and the harness, must agree on what a path is,
+and a control character is where they part. JSON stays rejected on the criterion's
+comments clause: it has none, and a trailing-comma error at three in the morning on a
+file that gates a load is a bad way to learn about JSON.
 
 ```graph
-node: types-config-format-yaml
+node: types-config-format-toml
 kind: assertion
 tag: review
 
 edge: asserts
 from: weaver-types
-to: types-config-format-yaml
+to: types-config-format-toml
 ```
 
-**What this election must survive is that `serde_yaml`
-was archived and deprecated by its author in 2024**, so the implementation is a
-maintained one and the Spec pass names that as a requirement rather than a
-preference. A builder confirms maintenance status at the moment of writing the
-manifest, and if no maintained implementation exists then the YAML conclusion
-falls with its premise and the TOML comparison re-runs on the writer-audience
-grounds above.
+**What this election must survive is the implementation's maintenance**, so the
+implementation is a maintained one and the Spec names that as a requirement rather than
+a preference. A builder confirms maintenance status at the moment of writing the
+manifest, and the `toml` crate being the one Cargo itself reads is why the requirement
+is expected to hold.
 
 **The session is declared and the run is minted.** `session` joins the
 declaration because a session spans runs and an agent outlives a session, per
@@ -162,12 +176,13 @@ are identifiers rather than numbers, which is what lets a run reference carry a
 stamp that distinguishes without anything being remembered between invocations,
 per the identity ruling of 2026-08-14.
 
-**One file per agent, named for the agent, in a directory the operator owns.**
-This Spec fixes neither the directory nor the naming convention, which are
-operator provisioning and outside what this program governs, per
-`weaver-admin-PRD` section 1. What it fixes is that admin resolves an agent name
-to exactly one config file and refuses a load where it resolves to none or to
-more than one.
+**One file per agent, named for the agent, in a directory the operator owns.** Admin
+resolves an agent's declaration as `<agent>.toml` in the agent-config directory its own
+configuration names, per `weaver-admin-Spec` section 9: the name is the agent's and the
+extension is the format's, and the operator provisions the file at that name. The
+directory's place stays operator provisioning, outside what this program governs, per
+`weaver-admin-PRD` section 1. Admin resolves an agent name to exactly one config file
+and refuses a load where it resolves to none.
 
 ```rust
 pub struct AgentConfig {
@@ -619,18 +634,17 @@ collapsing to a bare rule, on the same pattern `spu_instruction` takes, so a
 field the gate workflow adds later has somewhere to land.
 
 **`SpuInstruction` and `GateInstruction` are defined here and are the same types the
-wire carries, and the feature gate never reaches them.** The `config` feature
-gates the parser and the `parse` surface alone, and never a type: the two are
-wire types the loop 0 directives carry, so they compile with the feature off,
-which the harness's featureless link constructs directives against, per
-`weaver-harness-Spec` section 1. A build with the feature off holds every type
-of this crate and no YAML dependency, which is section 1's unconditional-wire
-sentence stated as the gate's mechanical scope. Both travel two paths, into the
-config from the operator and
-across a seam inside a directive, and one type for both is what keeps admin from
-re-encoding what it validated. `ToolName` is a name today and gains its element
-type with the tool workflow, because it elects from `tool-trait`, which
-`weaver-traits-PRD` section 3.1 holds blocked.
+wire carries, and the feature gate never reaches them.** The `config` feature gates the
+parser and the `parse` surface alone, and never a type: the two are wire types the loop
+0 directives carry, so they compile with the feature off, which the harness's
+featureless link constructs directives against, per `weaver-harness-Spec` section 1. A
+build with the feature off holds every type of this crate and no config-format
+dependency, which is section 1's unconditional-wire sentence stated as the gate's
+mechanical scope. Both travel two paths, into the config from the operator and across a
+seam inside a directive, and one type for both is what keeps admin from re-encoding what
+it validated. `ToolName` is a name today and gains its element type with the tool
+workflow, because it elects from `tool-trait`, which `weaver-traits-PRD` section 3.1
+holds blocked.
 
 **Validation is a total parse into a typed value, and admin performs it.** The
 crate exposes `parse` and nothing partial: no builder, no field-by-field accessor
@@ -1240,8 +1254,8 @@ which closed the corpus-wide set across all three organs for the seams that
 exist. A twelfth case is a charter act before it is a code change, and the
 charter has widened twice under that rule rather than the enum widening
 first: the code act that typed these found the harness one short of its own
-crate's standing practice, the assembly fault, and the act answering issue
-#369 found it one short again, the seated prefix the record cannot account
+crate's standing practice, the assembly fault, and the act answering
+issue #369 found it one short again, the seated prefix the record cannot account
 for, which is the further-case rule exercised in the acts that stated it
 rather than a rule waiting for its first test. And the
 harness's own five ride the same shape although they cross no socket, because
@@ -2036,23 +2050,21 @@ overwritten: an unenforced rule that no section admits is indistinguishable
 from an enforced one, and the corpus is better served by a reader being able
 to see that the gap was known and named while it stood.
 
-**Which invariant each claim serves, and why most serve none.** Seven of the
-twenty carry a `grounds` edge, five to
-`axiom-floor-is-vocabulary-behavior-is-socket` and two to
-`axiom-contract-is-a-complete-interface`. The other three axioms take nothing from this
-crate. The floor states no claim about a turn key, it is not an organ, and it is not
-integrated: the fifth invariant binds what crosses between domains and the floor crosses
-nothing, being linked rather than reached. **A crate can be drawn by every domain and
-still be the subject of none of the invariants about domains**, which is the floor's
-whole character stated from the graph's side. **The test applied is whether the axiom is
-the reason the claim exists.** Remove the socket invariant and this crate has no reason
-to elect a socket type, no reason to bound an envelope, and no reason to withhold a
-deserializer from a credential, so those three ground in it. Remove it and the config
-format is still YAML, the names are still kebab-case, and the parse is still total, so
-those three ground in nothing. **Thirteen claims grounding in no invariant is
-the expected result and not a gap**, per Document Format section 4: a floor
-crate is mostly representation, and representation is what the invariants are
-not about.
+**Which invariant each claim serves, and why most serve none.** Seven of the twenty
+carry a `grounds` edge, five to `axiom-floor-is-vocabulary-behavior-is-socket` and two
+to `axiom-contract-is-a-complete-interface`. The other three axioms take nothing from
+this crate. The floor states no claim about a turn key, it is not an organ, and it is
+not integrated: the fifth invariant binds what crosses between domains and the floor
+crosses nothing, being linked rather than reached. **A crate can be drawn by every
+domain and still be the subject of none of the invariants about domains**, which is the
+floor's whole character stated from the graph's side. **The test applied is whether the
+axiom is the reason the claim exists.** Remove the socket invariant and this crate has
+no reason to elect a socket type, no reason to bound an envelope, and no reason to
+withhold a deserializer from a credential, so those three ground in it. Remove it and
+the config format is still TOML, the names are still kebab-case, and the parse is still
+total, so those three ground in nothing. **Thirteen claims grounding in no invariant is
+the expected result and not a gap**, per Document Format section 4: a floor crate is
+mostly representation, and representation is what the invariants are not about.
 
 The two edges to the contract invariant are the ones worth stating rather than
 leaving to be read. The wire enums are exhaustive so that every case a contract
@@ -2158,12 +2170,10 @@ the claim divides are both open and section 6 carries them together.
   first measurement crosses rather than carried as an open election. It is filed
   against `weaver-spu` rather than here, this crate no longer having a stake in
   it.
-- **The config file's directory and naming convention.** Operator provisioning,
-  outside what this program governs, per section 2. What this Spec fixes is that
-  admin resolves one file or refuses.
-- **The YAML implementation.** A maintained one, confirmed at the moment the
-  manifest is written, per section 2. If none exists the format election re-runs
-  against TOML on the writer-audience grounds.
+- **The config file's directory.** Operator provisioning, outside what this program
+  governs, per section 2. The file's name within it is fixed there, `<agent>.toml`.
+- **The TOML implementation.** The `toml` crate, confirmed maintained at the moment the
+  manifest is written, per section 2.
 - **The decode seam's encoding.** The token workflow's, with the hot-path
   measurement, per section 4.3, the channel question having closed with the
   decoder-cut ruling, decode on its own socket. **The trio's representation

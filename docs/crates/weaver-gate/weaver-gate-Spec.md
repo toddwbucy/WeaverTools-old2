@@ -8,7 +8,7 @@ workflow. Code is written against it under the gates of Working Process section 
 **Document ID:** `weaver-gate-Spec`
 **Parent:** `weaver-gate-PRD`
 **Editorial:** Per the Working Rules.
-**Landing PR:** #647
+**Landing PR:** #731
 
 ---
 
@@ -956,20 +956,19 @@ overclaim this corpus refuses in prose and has no reason to admit in a graph.
 The load-bearing absence this crate relies on, `PeerIdentity` deriving no
 `Deserialize`, is the floor's pin, per `weaver-types-Spec` section 3.
 
-**Enforced by the manifest.** Four claims, all of them section 1's. One
-`[[bin]]` and no organ anywhere in the resolved tree, which is the linkage
-half of the socket invariant read off the manifest. The internal dependency
-is exactly `weaver-types` without the `config` feature, read against the
-graph's floor links under gate H2, `weaver-traits` having left with the tool
-boundary ruling of 2026-08-18. No async runtime, no logging crate, and no
-YAML implementation in the resolved tree, by the build-time `cargo tree`
-assertion the floor Specs share. And the package has a lib target **carrying
-`doctest = true`**, both read from `cargo metadata`, which is the precondition
-of the compile-fail bullet above rather than a fact about the crate's shape.
-The two are one instrument because either removal has the same effect: with no
-target, and equally with the target kept and its doctests disabled, cargo
-collects no doctest and the two pinned bind shapes go unenforced with this
-section still claiming them.
+**Enforced by the manifest.** Four claims, all of them section 1's. One `[[bin]]` and no
+organ anywhere in the resolved tree, which is the linkage half of the socket invariant
+read off the manifest. The internal dependency is exactly `weaver-types` without the
+`config` feature, read against the graph's floor links under gate H2, `weaver-traits`
+having left with the tool boundary ruling of 2026-08-18. No async runtime, no logging
+crate, and no config-format implementation, YAML or TOML, in the resolved tree, by the
+build-time `cargo tree` assertion the floor Specs share. And the package has a lib
+target **carrying `doctest = true`**, both read from `cargo metadata`, which is the
+precondition of the compile-fail bullet above rather than a fact about the crate's
+shape. The two are one instrument because either removal has the same effect: with no
+target, and equally with the target kept and its doctests disabled, cargo collects no
+doctest and the two pinned bind shapes go unenforced with this section still claiming
+them.
 
 **Which invariant each claim serves, and why twenty-two serve none.** Seventeen
 `grounds` edges run from sixteen of the thirty-eight, nine to
