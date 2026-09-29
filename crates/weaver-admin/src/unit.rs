@@ -134,21 +134,60 @@ pub fn runtime_directory_name(agent: &str) -> String {
 /// successor. The manager creates the directory at start and destroys it with
 /// the unit, so the pathname cannot outlive the worker.
 pub fn start(
-    template: &UnitTemplate,
+    unit: &AgentUnit,
     identity: &str,
-    agent: &str,
     coordination_socket: &std::path::Path,
     loop_file: Option<&std::path::Path>,
 ) -> std::io::Result<std::process::ExitStatus> {
-    Command::new(&template.run_tool)
-        .args(start_arguments(
+    Command::new(&unit.template.run_tool)
+        .args(unit.arguments(identity, coordination_socket, loop_file))
+        .status()
+}
+
+/// **The unit one agent's load starts, and the only thing `start` takes**, per
+/// `weaver-admin-Spec` sections 6 and 9. It pairs the installation's template,
+/// its SPU replaced by the one section 9's map chose for the agent, with that
+/// agent's name, and its one constructor is `for_agent`, which applies the map.
+/// So the installation's own template, whose SPU is only the default, has no
+/// route to a start, and a template chosen for one agent cannot be started under
+/// another's name. A type property, and the compiler holds it: `start` taking a
+/// `UnitTemplate` does not type-check, and the field is private to this module.
+#[derive(Debug, Clone)]
+pub struct AgentUnit {
+    template: UnitTemplate,
+    agent: String,
+}
+
+impl AgentUnit {
+    /// The agent's unit: the installation's template with the agent's SPU.
+    pub fn for_agent(
+        template: &UnitTemplate,
+        choice: &crate::spu_choice::SpuChoice,
+        agent: &str,
+    ) -> Self {
+        let mut template = template.clone();
+        template.spu = choice.for_agent(agent, &template.spu).path;
+        AgentUnit {
             template,
+            agent: agent.to_string(),
+        }
+    }
+
+    /// The argument vector `start` runs for this agent.
+    pub(crate) fn arguments(
+        &self,
+        identity: &str,
+        coordination_socket: &std::path::Path,
+        loop_file: Option<&std::path::Path>,
+    ) -> Vec<String> {
+        start_arguments(
+            &self.template,
             identity,
-            agent,
+            &self.agent,
             coordination_socket,
             loop_file,
-        ))
-        .status()
+        )
+    }
 }
 
 /// The argument vector `start` runs, built here so nothing reads a copy of it.
@@ -199,7 +238,7 @@ const ELECTED_KEYS: &[&str] = &[
     "RuntimeDirectoryMode",
 ];
 
-pub(crate) fn start_arguments(
+fn start_arguments(
     template: &UnitTemplate,
     identity: &str,
     agent: &str,

@@ -100,13 +100,11 @@ impl ServiceConfig {
         self.spu_choice.for_agent(agent, &self.unit.spu)
     }
 
-    /// The unit template a load of this agent starts: the installation's, its
-    /// SPU replaced by the agent's own, so the vector section 6 builds carries
-    /// the path section 9 chose and no other.
-    fn template_for(&self, agent: &str) -> unit::UnitTemplate {
-        let mut template = self.unit.clone();
-        template.spu = self.spu_for(agent).path;
-        template
+    /// The unit a load of this agent starts, per Spec sections 6 and 9: the
+    /// installation's template with the agent's own SPU, and the only value
+    /// `unit::start` takes.
+    fn agent_unit(&self, agent: &str) -> unit::AgentUnit {
+        unit::AgentUnit::for_agent(&self.unit, &self.spu_choice, agent)
     }
 
     /// The per-agent socket the harness binds inside the unit's runtime
@@ -756,9 +754,8 @@ fn run_load(
     // agree by construction rather than by two readings of one convention.
     let socket_path = config.coordination_socket(&agent.0);
     started(unit::start(
-        &config.template_for(&agent.0),
+        &config.agent_unit(&agent.0),
         &inventory.identity,
-        &agent.0,
         &socket_path,
         inventory.config.loop_file.as_deref(),
     ))
@@ -1447,19 +1444,15 @@ mod tests {
     }
 
     /// **The vector carries the agent's SPU and no other**, per Spec sections 6
-    /// and 9. Perturbation: start the installation's template instead of the
-    /// agent's and the first assertion fails.
+    /// and 9. `unit::start` takes an `AgentUnit` alone, so a load cannot start
+    /// the installation's template, and this watches the one constructor.
+    /// Perturbation: `for_agent` leaving the template's SPU as it found it, and
+    /// the first assertion fails.
     #[test]
     fn the_agents_spu_reaches_the_vector() {
         let config = unread_config();
         let socket = std::path::Path::new("/run/weaver/alpha/coordination.sock");
-        let alpha = unit::start_arguments(
-            &config.template_for("alpha"),
-            "alpha",
-            "alpha",
-            socket,
-            None,
-        );
+        let alpha = config.agent_unit("alpha").arguments("alpha", socket, None);
         assert!(
             alpha
                 .iter()
@@ -1470,13 +1463,7 @@ mod tests {
             !alpha.iter().any(|a| a == "/nonexistent/bin/weaver-spu"),
             "{alpha:?}"
         );
-        let gamma = unit::start_arguments(
-            &config.template_for("gamma"),
-            "gamma",
-            "gamma",
-            socket,
-            None,
-        );
+        let gamma = config.agent_unit("gamma").arguments("gamma", socket, None);
         assert!(
             gamma.iter().any(|a| a == "/nonexistent/bin/weaver-spu"),
             "{gamma:?}"
