@@ -145,8 +145,8 @@ restated here.
 admin's configuration.
 
 **Its preconditions are #726's items, and a cell runs only once they have landed.**
-Three are named in its checklist:
-- python-spu loading at BF16, the gap python-spu-Spec section 2.1 records.
+One has: python-spu loads at BF16, as python-spu-Spec sections 4 and 9 state. Two are
+open in the checklist:
 - The determinism matrix reading which SPU served from the record.
 - The matrix's readers for both SPUs' provenance.
 
