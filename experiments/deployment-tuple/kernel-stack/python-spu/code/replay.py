@@ -8,8 +8,10 @@ It stands the worker and a sqlite state member on throwaway sockets, preloads
 the source trace through the member's door as the operator principal, enters a
 diagnostic binding, and waits for the replay's closing event. The preload door
 admits uid 0 alone, so this runs inside `unshare -Ur`, where the operator's own
-uid reads as 0, and needs no sudo. Nothing is written but the diagnostic sink
-and the logs beside it in the deposit.
+uid reads as 0, and needs no sudo. Nothing is written but the diagnostic sink, the
+declaration it serves (`replay-declaration.toml`) and the logs beside it in the
+deposit. The enter records that declaration's sha256, since it is the one that
+produced the instruction served.
 
 Usage, after `weaver-analysis derive ... --out <deposit>/derived.toml`:
 
@@ -74,6 +76,42 @@ class Lines:
                     raise ValueError(f"{self.path} line {len(self.rows) + 1} is not "
                                      f"JSON: {line[:200]!r}") from None
         return self.rows
+
+
+PERMISSIONS = ("refeed-permission", "column-permission")
+DECODER = "[spu-instruction.decoder]\n"
+
+
+def effective_declaration(derived, destination):
+    """Writes the declaration the replay serves, and answers its sha256 and its parsed
+    form, both read from the written file.
+
+    The replay needs the decoder's re-feed and column permissions, which the derived
+    declaration does not carry. So the served declaration is the derived text with
+    those two keys set under its decoder table. The written file is parsed back and must
+    equal the derived declaration with exactly those two keys set, which is what makes a
+    text edit safe. A derived declaration that already carries either key, or has no
+    decoder table, refuses. The digest the enter records is this file's, so it names
+    the declaration that produced the instruction served."""
+    text = pathlib.Path(derived).read_text()
+    if text.count("\n" + DECODER) != 1:
+        raise SystemExit(f"{derived} does not hold one {DECODER.strip()} table")
+    expected = tomllib.loads(text)
+    decoder = expected["spu-instruction"]["decoder"]
+    if any(key in decoder for key in PERMISSIONS):
+        raise SystemExit(f"{derived} already sets a permission the replay sets")
+    for key in PERMISSIONS:
+        decoder[key] = True
+    written = text.replace("\n" + DECODER, "\n" + DECODER
+                           + "".join(f"{key} = true\n" for key in PERMISSIONS), 1)
+    with open(destination, "x") as fh:
+        fh.write(written)
+    with open(destination, "rb") as fh:
+        served = tomllib.load(fh)
+    if served != expected:
+        raise SystemExit(f"{destination} does not parse to the declaration the replay "
+                         f"serves: the derived one with {', '.join(PERMISSIONS)} set")
+    return sha256(destination), served
 
 
 def receive_one(sock, limit=1 << 20):
@@ -186,6 +224,9 @@ def run(args, teardown):
     sink = pathlib.Path(config["trace-sink"]["path"])
     if sink.exists() and not args.stand_only:
         raise SystemExit(f"the diagnostic sink {sink} already exists, and nothing is overwritten")
+    declaration = args.deposit / "replay-declaration.toml"
+    if declaration.exists() and not args.stand_only:
+        raise SystemExit(f"{declaration} already exists, and nothing is overwritten")
 
     E = args.deposit
     directory = pathlib.Path(tempfile.mkdtemp(prefix="stageb-replay-"))
@@ -243,18 +284,19 @@ def run(args, teardown):
             print(json.dumps(standing), flush=True)
             return {"standing": standing}
 
-        instruction = config["spu-instruction"]
-        instruction["decoder"]["refeed-permission"] = True
-        instruction["decoder"]["column-permission"] = True
+        # The instruction served is the written declaration's, and the digest the
+        # enter records is that file's, never the derived file's.
+        digest, served = effective_declaration(args.derived, declaration)
+        instruction = served["spu-instruction"]
         # The stack as admin's stack_digests keys it, by file name, so the
         # diagnostic record names what served as a serving record does.
         stack = {p.name: sha256(p) for p in (args.bin / "worker", args.bin / "weaver-state",
                                              args.spu, args.bin / "weaver-gate")}
-        payload = {"session": config["session"], "run": "stageb-diagnostic-karl2",
+        payload = {"session": served["session"], "run": "stageb-diagnostic-karl2",
                    "spu-instruction": instruction, "binding": {"kind": "diagnostic"},
                    "state-election": {"all-kinds": True, "keys": []},
                    "state-store": {"engine": "sqlite"},
-                   "declaration": sha256(args.derived), "stack": stack}
+                   "declaration": digest, "stack": stack}
 
         preload_errors, cancel = [], threading.Event()
 

@@ -92,6 +92,12 @@ of python-spu-Spec section 8 is such evidence for criterion 4.
 - **`replay.py` runs inside `unshare -Ur`**, because the preload door admits uid 0
   alone. It refuses a declaration that is not diagnostic, and it never overwrites the
   diagnostic sink.
+- **`replay.py` serves and records one declaration.** It writes the derived
+  declaration with the decoder's re-feed and column permissions set to
+  `replay-declaration.toml` in the deposit. It parses that file back, and refuses it
+  unless it equals the derived declaration with exactly those two keys set. It serves
+  the instruction from that parse, and records that file's sha256 as the enter's
+  declaration, never the derived file's.
 - **`replay.py` exits 0 only when all of these hold:**
   - `replay.closed` reads certified.
   - The leave is answered `left`.

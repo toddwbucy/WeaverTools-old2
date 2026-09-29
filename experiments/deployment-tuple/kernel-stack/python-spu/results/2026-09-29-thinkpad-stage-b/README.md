@@ -104,6 +104,13 @@ $ diff attempt2-2026-09-29/karl-before.txt attempt2-2026-09-29/karl-after.txt
 Attempt 1's karl pair differs the same way, 10:38:02 against 10:40:10. From attempt 3
 on, the capture time is written to a file of its own.
 
+**The replay's recorded declaration.** Attempt 2's replay enter carried `derived.toml`'s
+sha256 as its declaration, not the declaration it served, which added the re-feed and
+column permissions. No record in the deposit carries that digest, because the
+diagnostic trace records none. No criterion rests on it: criterion 2 reads the served
+run's load event, and criterion 6 reads `replay.closed`. The probe's code now hashes
+the declaration it serves.
+
 **The recreated prefix:**
 - `installed_set.py` exits 0 against the lock (9aa7e037);
 - its tree digest is 1dce454a.
