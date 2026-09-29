@@ -119,11 +119,13 @@ memory it takes to serve, its licence, and how it meets the seam.
     open-jev         DeBERTa-v3-large encoder                     (owed)     (owed)      one head
     Kev-0.8B / 4B    Qwen3.5-Base, LoRA r=16, pointer head        4G / 9-17G Apache-2.0  contract change
 
-**The classify seam serves one head as built.** The SPU's classify submodule admits
-one artifact and applies one softmax over its one `id2label` head, per
-`weaver-spu-Spec` section 11, so ModernBERT and open-jev meet the seam as built with
-one head only. Serving a decision per judgmental predicate takes three admitted
-classifiers or a multi-label head, and either is an act on the SPU's Spec.
+**The classify seam serves one head as built.** The SPU's classify submodule admits one
+artifact and applies one softmax over its one `id2label` head, per `weaver-spu-Spec`
+section 11, so ModernBERT and open-jev meet the seam as built with one head only.
+Serving a decision per judgmental predicate takes three admitted classifiers or a
+multi-label head, and either is a Spec act in the SPU and in the harness alike, since
+the harness's lifecycle module holds one optional classify arm and its engine one
+classify port today, per `weaver-harness-Spec` section 6.
 
 **ModernBERT is the first classify family the SPU carries**, per
 `weaver-spu-Spec` section 11, and `ModernBERT-base-zeroshot-v2.0` is on olympus
