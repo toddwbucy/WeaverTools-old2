@@ -72,6 +72,14 @@ session either continues on its own line or is unloaded. That is what keeps the 
 honest, because the state the new run starts from is one the record can show, not one a
 cache held.
 
+**What the standing door reproduces, and its limit.** The restore of
+`weaver-harness-Spec` section 6.1 recalls every message through the cut and seats the
+recalled conversation beside the identity as one prefix in the open. So it is exact only
+for a run with no flush and no elision recorded before N, since it seats the
+conversation whole rather than replaying the edits that shaped what the model held. The
+exact re-prefill, the reconstruction of section 0 with the recorded flushes and elisions
+replayed, is a capability this feature owes the harness, and section 5 lists it.
+
 ## 2. Rewinding the agent does not rewind the world
 
 The record restores what the agent was presented. The world the agent's tools touched
@@ -165,8 +173,10 @@ web contract is the only document it touches.
 - The apex, section 6: the two verbs and the state, the operator's ruling.
 - `weaver-admin-harness-contract`, `weaver-admin-PRD` and Spec: the quiescence
   and resume exchanges and their refusals.
-- `weaver-harness-PRD` and Spec: the boundary behaviour, the interview marking by
-  state, the two resumptions, the branch as a preload with a position.
+- `weaver-harness-PRD` and Spec: the boundary behaviour, the interview marked by the
+  identifier its request carries, and no tool run while quiesced, the two resumptions,
+  the branch as a preload with a position, and the exact re-prefill of section 1, the
+  reconstruction replayed with its recorded flushes and elisions into the open.
 - `weaver-trace-Spec` section 3: the quiescence event, the branch event, the
   turn marker, the closing list.
 - `weaver-types-Spec`: the state case.
@@ -174,6 +184,8 @@ web contract is the only document it touches.
 
 ## 6. Open cells
 
+- The exact re-prefill of section 1, which replays the recorded flushes and elisions
+  that the standing restore seats whole, under the apex ruling with the verbs.
 - Continuation from a position inside a turn, which the door of section 1 does not
   take: a capability of its own, and the operator's.
 - Whether a branch's parent is named by run identifier and sequence alone, or also by
