@@ -1742,14 +1742,23 @@ that departs from the default and no other. The three values are read where ever
 of this section is read, before any verb, and they are judged there: a line that is not
 two fields, a key outside lowercase letters, digits and hyphens, a relative path, a key
 or an agent named twice, an agent that is not on the allow-list, a key
-`spu-implementations` does not hold, or an SPU whose file name the worker, the state
-member or the gate already has fails the invocation as an unreadable configuration fails
-it today, before any unit is asked, because each is the operator's file contradicting
-itself and no load could stand on it. The last is refused rather than keyed around
-because the stack below is keyed by file name and `weaver-analysis` carries it into a
-run's code identity by those names, so records written before this act stay comparable
-with those written after. No new refusal names any of them, the configuration's failure
-having no lifecycle case to be.
+`spu-implementations` does not hold, or a file name two of the binaries the stack
+records share fails the invocation as an unreadable configuration fails it today, before
+any unit is asked, because each is the operator's file contradicting itself and no load
+could stand on it. The names are the worker's, the state member's, the gate's and each
+SPU's, pairwise among the first three and each SPU against those, SPUs not differing
+among themselves since one record carries one agent's SPU. They are held distinct rather
+than keyed around because the stack below is keyed by file name and `weaver-analysis`
+carries it into a run's code identity by those names, so records written before this act
+stay comparable with those written after. No new refusal names any of them, the
+configuration's failure having no lifecycle case to be.
+
+**An optional value is absent only where nothing stands at its path.** Every optional
+value of this section, the two above, `unit-properties`, `headroom-bytes` and
+`state-store-socket`, reads as absent only where the file is not found. A directory,
+bytes that are not UTF-8, or a read the kernel refuses is the operator's file failing to
+read, and fails the invocation before any verb rather than standing a default the
+operator did not choose.
 
 **What the SPU binary is, this crate does not judge.** It passes the agent's path on
 section 6's vector as it passed the installation's, and the worker forks it at enter as

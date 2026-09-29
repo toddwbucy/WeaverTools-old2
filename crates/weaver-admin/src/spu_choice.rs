@@ -98,14 +98,31 @@ impl SpuChoice {
                 ));
             }
         }
-        let others = [file_name(worker), STATE_MEMBER.to_string(), file_name(gate)];
+        // **Every name the stack records differs from every other**, the stack
+        // being keyed by file name: the worker, the state member and the gate
+        // pairwise, and each SPU from those three. SPUs need not differ among
+        // themselves, one record carrying one agent's SPU.
+        let fixed = [
+            ("the worker", file_name(worker)),
+            ("the state member", STATE_MEMBER.to_string()),
+            ("the gate", file_name(gate)),
+        ];
+        for (i, (one, name)) in fixed.iter().enumerate() {
+            for (other, other_name) in &fixed[i + 1..] {
+                if name == other_name {
+                    return Err(format!(
+                        "{one} and {other} share the file name {name:?}, which the stack keys by"
+                    ));
+                }
+            }
+        }
         for spu in std::iter::once(default_spu)
             .chain(choice.implementations.values().map(PathBuf::as_path))
         {
             let name = file_name(spu);
-            if others.contains(&name) {
+            if let Some((other, _)) = fixed.iter().find(|(_, n)| *n == name) {
                 return Err(format!(
-                    "the SPU binary {} shares its file name with another binary the stack names, which keys it by file name",
+                    "the SPU binary {} shares its file name with {other}, which the stack keys by",
                     spu.display()
                 ));
             }
@@ -234,6 +251,28 @@ mod tests {
 
     /// Each of section 9's failures, each one asserted by its own message, so a
     /// case refused for the wrong reason fails.
+    /// The fixed names differ pairwise, a gate named like the worker or like the
+    /// state member overwriting a digest otherwise. Perturbation: check the SPUs
+    /// alone, as the first form did, and both cases are accepted.
+    #[test]
+    fn the_worker_the_member_and_the_gate_differ_pairwise() {
+        for gate in ["/opt/other/worker", "/opt/other/weaver-state"] {
+            let failure = SpuChoice::read(
+                None,
+                None,
+                &[],
+                Path::new(DEFAULT),
+                Path::new(WORKER),
+                Path::new(gate),
+            )
+            .expect_err(gate);
+            assert!(
+                failure.contains("share the file name"),
+                "{gate}: {failure:?}"
+            );
+        }
+    }
+
     #[test]
     fn every_contradiction_fails_naming_itself() {
         let cases: &[(Option<&str>, Option<&str>, &str, &str)] = &[

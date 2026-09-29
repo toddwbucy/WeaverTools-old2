@@ -1160,6 +1160,20 @@ fn load_service_config_from(root: &std::path::Path) -> Result<ServiceConfig, Str
             .map(|s| s.trim().to_string())
             .map_err(|_| format!("the service configuration has no {name}"))
     };
+    // **An optional value is absent only where nothing stands at its path.** Any
+    // other failure - a directory, bytes that are not UTF-8, a read the kernel
+    // refuses - is the operator's file failing to read, and it fails the
+    // invocation before any verb rather than reading as absent and standing a
+    // default the operator did not choose, per Spec section 9.
+    let optional = |name: &str| -> Result<Option<String>, String> {
+        match std::fs::read_to_string(root.join(name)) {
+            Ok(s) => Ok(Some(s.trim().to_string())),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(format!(
+                "the service configuration's {name} does not read: {e}"
+            )),
+        }
+    };
     let allow = read("allow-list")?;
     // An interior blank line would otherwise provision an agent named the
     // empty string, which every downstream check would then have to refuse.
@@ -1176,8 +1190,8 @@ fn load_service_config_from(root: &std::path::Path) -> Result<ServiceConfig, Str
     let spu = PathBuf::from(read("spu-binary")?);
     let gate = PathBuf::from(read("gate-binary")?);
     let spu_choice = spu_choice::SpuChoice::read(
-        read("spu-implementations").ok().as_deref(),
-        read("agent-spu").ok().as_deref(),
+        optional("spu-implementations")?.as_deref(),
+        optional("agent-spu")?.as_deref(),
         &provisioned,
         &spu,
         &worker,
@@ -1190,7 +1204,7 @@ fn load_service_config_from(root: &std::path::Path) -> Result<ServiceConfig, Str
         unit: unit::UnitTemplate {
             run_tool: read("run-tool")?,
             control_tool: read("control-tool")?,
-            properties: read("unit-properties")
+            properties: optional("unit-properties")?
                 .unwrap_or_default()
                 .lines()
                 .map(|l| l.trim().to_string())
@@ -1201,10 +1215,9 @@ fn load_service_config_from(root: &std::path::Path) -> Result<ServiceConfig, Str
             gate,
             // Optional, unlike the binaries above: an installation that states
             // no headroom leaves the organ's compiled default standing.
-            headroom_bytes: read("headroom-bytes").ok().filter(|v| !v.is_empty()),
+            headroom_bytes: optional("headroom-bytes")?.filter(|v| !v.is_empty()),
         },
-        state_store_socket: read("state-store-socket")
-            .ok()
+        state_store_socket: optional("state-store-socket")?
             .filter(|v| !v.is_empty())
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(inventory::STORE_SOCKET_DIRECTORY)),
@@ -1511,6 +1524,52 @@ mod tests {
         write("agent-spu", "alpha python\n");
         let config = load_service_config_from(&root).unwrap();
         assert_eq!(config.spu_for("alpha").key.as_deref(), Some("python"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **An optional value is absent only where nothing stands at its path**,
+    /// per Spec section 9: at each optional path a directory and bytes that are
+    /// not UTF-8 fail the read, naming the value, and an absent file leaves the
+    /// read standing. Perturbation: read every error as absent, as the first form
+    /// of this loader did, and each failing case is accepted.
+    #[test]
+    fn an_optional_value_that_does_not_read_fails_the_read() {
+        let root =
+            std::env::temp_dir().join(format!("weaver-admin-optional-{}", std::process::id()));
+        let fresh = || {
+            let _ = std::fs::remove_dir_all(&root);
+            std::fs::create_dir_all(&root).unwrap();
+            for (name, text) in [
+                ("allow-list", "alpha\n"),
+                ("coordination-root", "/run/weaver"),
+                ("log-path", "/var/log/weaver/admin.log"),
+                ("agent-config-directory", "/etc/weaver/agents"),
+                ("run-tool", "/usr/bin/systemd-run"),
+                ("control-tool", "/usr/bin/systemctl"),
+                ("worker-binary", "/opt/weaver/bin/worker"),
+                ("spu-binary", "/opt/weaver/bin/weaver-spu"),
+                ("gate-binary", "/opt/weaver/bin/weaver-gate"),
+            ] {
+                std::fs::write(root.join(name), text).unwrap();
+            }
+        };
+        for name in [
+            "spu-implementations",
+            "agent-spu",
+            "unit-properties",
+            "headroom-bytes",
+            "state-store-socket",
+        ] {
+            fresh();
+            assert!(load_service_config_from(&root).is_ok(), "{name} absent");
+            std::fs::create_dir(root.join(name)).unwrap();
+            let failure = load_service_config_from(&root).err().unwrap_or_default();
+            assert!(failure.contains(name), "{name} as a directory: {failure:?}");
+            fresh();
+            std::fs::write(root.join(name), [0xff, 0xfe, 0x00]).unwrap();
+            let failure = load_service_config_from(&root).err().unwrap_or_default();
+            assert!(failure.contains(name), "{name} not UTF-8: {failure:?}");
+        }
         let _ = std::fs::remove_dir_all(&root);
     }
 
