@@ -185,4 +185,3 @@ def test_a_failed_exchange_with_the_process_serving_does_not_hang(tmp_path):
     died = serve_once(tmp_path, tmp_path / "no-such-model")
     assert died is not None, "a missing model was admitted"
     assert time.monotonic() - begin < 60
-
