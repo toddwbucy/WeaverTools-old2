@@ -15,9 +15,11 @@ per tool call and the benchmark's published results are single-shot programs. Th
 are the rusty runs of `herobench-agents-2026-09-29` on the shared bulk store,
 Qwen2.5-7B-Instruct on the Rust SPU playing HeroBench's level-1 crafting tasks. Its
 counted pair, session `s-rusty-b`, holds 978 positions of the kinds section 2 names over
-40 turns. That is one session of two runs, which admits no hold-out under section 4, so
-several more sessions are owed before any fitting, each named by its deposit when it
-lands. The single-shot corpus of the label split is not used to fit or to score.
+40 turns. That is one session of two runs. Section 4 cuts by session into three splits
+and section 8 requires at least 10 sessions in each of the two held out, so the corpus
+needs at least 50 sessions before any fitting, at least 49 more than the one in hand,
+each named by its deposit when it lands. The single-shot corpus of the label split is
+not used to fit or to score.
 
 ## 2. Positions and the input at each
 
@@ -72,13 +74,24 @@ Until the rubric is written it is the fourth open cell.
 
 ## 4. The split
 
-**By session, never by task, run, line or result set.** Every session falls whole on one
-side, because the input at a position accumulates the session's earlier contributions,
+**By session, never by task, run, line or result set.** Every session falls whole in one
+split, because the input at a position accumulates the session's earlier contributions,
 per section 2 and `weaver-trace-PRD` section 3.2, so two tasks of one run or of one
-session share inputs and cannot sit on different sides. Today's corpus is one session of
-two runs and admits no hold-out, and the sessions owed in section 1 land before any
-fitting. The split is recorded in the deposit before any candidate is fitted, and a
-score on positions a candidate was fitted on is not reported.
+session share inputs and cannot sit in different splits.
+
+**Three splits, each with one use.** The training split fits each candidate and chooses
+its cutoffs. The selection split computes every candidate's key and the order of section
+8. The test split is read once, for the selected candidate alone, to report its interval
+and apply section 8's floor.
+
+**The allocation is a procedure.** The sessions are listed in order of their names and
+shuffled by `random.shuffle` of Python's `random.Random`, a stream of its own seeded
+once with 20260930, distinct from section 6's. Of the n sessions, the first floor(0.2 n)
+in the shuffled list are the selection split, the next floor(0.2 n) the test split, and
+the remainder the training split, which takes whatever the rounding leaves. The
+allocation, the seed and the interpreter's version are recorded in the deposit before
+any candidate is fitted, and a score on positions a candidate was fitted on is not
+reported.
 
 ## 5. Fitting and thresholds
 
@@ -92,7 +105,7 @@ that maximises F1 on the training split, over the distinct probabilities the tra
 positions take. A tie between cutoffs goes to the largest, and a position whose
 probability is at or above the cutoff counts positive. F1 is zero where a cutoff
 predicts no positive, precision being undefined there. The cutoff is recorded, and none
-is chosen on the held-out split.
+is chosen on the selection or test splits.
 
 **Each candidate's fitting record is written before it is fitted** and recorded in the
 deposit: the artifact and its revision, the preprocessing from the window of section 2
@@ -102,19 +115,20 @@ differs by candidate, and a fitting with no record written before it is not repo
 
 ## 6. Scoring
 
-The candidates are compared per predicate on precision and recall over the held-out
-positions. No figure pooled across the predicates is reported.
+The candidates are compared per predicate on precision and recall over the selection
+split's positions. No figure pooled across the predicates is reported.
 
-**Every figure carries its uncertainty, by a fixed procedure.** Each candidate's F1 per
-predicate has a percentile bootstrap interval over the held-out sessions. The generator
-is Python's `random.Random`, the standard library's Mersenne Twister, one stream seeded
-once with 20260929, with the interpreter's version recorded in the deposit. The held-out
-sessions are listed in order of their names, and the stream draws 1,000 resamples in
-sequence before any candidate is scored, each resample as many draws of `randrange` over
-that list as there are held-out sessions, with replacement. **Every candidate and every
-predicate is scored on those same 1,000 resamples**, so the intervals compare candidates
-on one draw and every compliant run draws the same sessions. The interval runs from the
-2.5th to the 97.5th percentile of the resampled F1, and its lower bound is the 2.5th
+**Every figure carries its uncertainty, by a fixed procedure.** Each F1 per predicate
+has a percentile bootstrap interval over the sessions of the split it is read on. The
+generator is Python's `random.Random`, the standard library's Mersenne Twister, one
+stream seeded once with 20260929, with the interpreter's version recorded in the
+deposit. A split's sessions are listed in order of their names, and a resample is as
+many draws of `randrange` over that list as the split holds sessions, with replacement.
+The stream draws 1,000 resamples of the selection split in sequence, then 1,000 of the
+test split, before any candidate is scored. **Every candidate and every predicate is
+scored on the same resamples of a split**, so the intervals compare candidates on one
+draw and every compliant run draws the same sessions. The interval runs from the 2.5th
+to the 97.5th percentile of the resampled F1, and its lower bound is the 2.5th
 percentile. The unit is the session and not the position, for the reason section 4
 splits by session: positions of one session share inputs, and treating them as
 independent would draw an interval narrower than the data supports.
@@ -151,13 +165,14 @@ the decoder's weights and off the decoder's device.
 **No selection is made unless every gate holds**, and the report names each gate that
 failed:
 
-1. **Label support.** Every predicate has 20 positives and 20 negatives on each side of
-   the split, the plan's floor: below it a single label moves precision or recall by
+1. **Label support.** Every predicate has 20 positives and 20 negatives in each of the
+   three splits, the plan's floor: below it a single label moves precision or recall by
    more than five points. A predicate short of it fails the gate, its shortfall reported
-   by side, and more labelled sessions are owed.
-2. **Held-out sessions.** At least 10 sessions are held out. The bootstrap resamples
-   sessions, one session yields an interval of zero width, and fewer than 10 give too
-   few distinct resamples for a 95 per cent interval to mean what it says.
+   by split, and more labelled sessions are owed.
+2. **Sessions held out.** The selection split and the test split each hold at least 10
+   sessions. The bootstrap resamples sessions, one session yields an interval of zero
+   width, and fewer than 10 give too few distinct resamples for a 95 per cent interval
+   to mean what it says.
 3. **Serving bounds over the fitting corpus.** The maximum positions per turn and every
    candidate's maximum answer latency are recomputed over the corpus the fitting uses,
    not the preliminary pair, and the per-turn budget is set against that maximum.
@@ -170,30 +185,36 @@ failed:
 every observed answer under 30,000 ms and a per-turn cost within the budget:
 
 1. **The key.** For each candidate, the key is the minimum over the three predicates of
-   the lower bound of its F1 interval, section 6's 2.5th percentile.
-2. **The floor.** A candidate whose key is under 0.5 is not selected. F1 is a harmonic
-   mean and never falls below the smaller of precision and recall, so a key under 0.5
-   means that on some predicate, at the interval's low end, one of the two is under one
-   half: the classifier is wrong more often than right on that predicate's positives or
-   on its positive calls.
-3. **The order.** Candidates at or above the floor are ordered by key, highest first,
-   then by per-turn cost at the maximum positions per turn, lowest first, then by name.
-   The order is total, so no set of candidates can cycle.
-4. **The selection.** The first candidate in the order is selected. With none eligible
-   or none at the floor, none is selected, and the report says where each candidate
-   fell: which bound it missed or which key it reached.
+   the lower bound of its F1 interval on the selection split, section 6's 2.5th
+   percentile.
+2. **The order.** Candidates are ordered by key, highest first, then by per-turn cost at
+   the maximum positions per turn, lowest first, then by name. The order is total, so no
+   set of candidates can cycle, and the first is the selected candidate.
+3. **The test.** The test split is read once, for the selected candidate alone: its
+   interval per predicate, and its key computed the same way on the test split.
+4. **The floor.** The selected candidate is adopted only if its test key is at least
+   0.5. F1 is a harmonic mean and never falls below the smaller of precision and recall,
+   so a key under 0.5 means that on some predicate, at the interval's low end, one of
+   the two is under one half: the classifier is wrong more often than right on that
+   predicate's positives or on its positive calls. Under the floor none is adopted, and
+   no other candidate is read on the test split in its place.
+5. **None.** With no eligible candidate, none is selected, and the report says which
+   bound each one missed.
 
 Precision, recall, F1 and the intervals are reported for every candidate and every
-predicate. The held-out results are read only after the split, the bound, the cutoffs,
-the budget and the gates are recorded. **This procedure stands as merged and changes
-only by an act of its own.**
+predicate on the selection split, and for the selected candidate on the test split. The
+selection split's results are read only after the allocation, the bound, the cutoffs,
+the budget and the gates are recorded, and the test split only after the order has named
+its candidate. **This procedure stands as merged and changes only by an act of its
+own.**
 
 ## 9. Deposit
 
 A deposit under `weaver-testing/` on the shared bulk store, named for the date the
 fitting starts. It holds the positions with their inputs' sizes, the labels and their
-source, the split, each candidate's thresholds, held-out predictions and latencies, the
-tuples, and `SHA256SUMS`. The result note goes beside this plan and in the deposit.
+source, the allocation, each candidate's thresholds, its selection-split predictions and
+latencies, the selected candidate's test predictions, the tuples, and `SHA256SUMS`. The
+result note goes beside this plan and in the deposit.
 
 ## 10. Open cells
 
