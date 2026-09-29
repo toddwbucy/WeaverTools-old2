@@ -56,6 +56,20 @@ hold more than one. **The labels come from outside every candidate**: no candida
 no model of a candidate's family, labels a position it is scored on, and the labels'
 source is recorded beside them. Who labels is the first open cell.
 
+**Labeling follows a rubric merged before any position is labeled**,
+`experiments/trace-content/classifier-evaluation/RUBRIC.md` beside this plan and its own
+act. It holds:
+
+- The three predicates' definitions, with their boundary cases enumerated: a recited
+  fact that is wrong, a plan phrased as a question, a contradiction of an earlier plan
+  rather than of the dump, and an action narrated as done.
+- A second labeler over a fifth of the positions, drawn at random by session and
+  recorded.
+- A minimum agreement, Cohen's kappa per predicate between the two labelers of at least
+  0.6, below which labeling stops and the rubric is revised before it resumes.
+
+Until the rubric is written it is the fourth open cell.
+
 ## 4. The split
 
 **By session, never by task, run, line or result set.** Every session falls whole on one
@@ -81,10 +95,15 @@ The candidates are compared per predicate on precision and recall over the held-
 positions. No figure pooled across the predicates is reported.
 
 **Each predicate needs 20 positives and 20 negatives on each side of the split**, the
-plan's number: below it a single label moves precision or recall by more than five
-points, which is larger than the differences the comparison is for. A predicate short of
-it on either side is excluded from section 8's worst-predicate selection, its shortfall
-is reported by side, and more labelled sessions are owed before it enters.
+plan's floor: below it a single label moves precision or recall by more than five
+points. A predicate short of it on either side is excluded from section 8's selection,
+its shortfall is reported by side, and more labelled sessions are owed before it enters.
+
+**Every figure carries its uncertainty.** Each candidate's F1 per predicate has a 95 per
+cent bootstrap interval over 1,000 resamples, reported beside the point figure. The
+resampling unit is the held-out session and not the position, for the reason section 4
+splits by session: positions of one session share inputs, and a bootstrap that treated
+them as independent would draw an interval narrower than the data supports.
 
 ## 7. Serving
 
@@ -96,11 +115,14 @@ scores, because one answer past the bound retires the classify arm for the rest 
 run, per `weaver-harness-Spec` section 6.
 
 **Per turn.** The routing stage asks about every position a turn produces, one ask at a
-time, the harness blocking on each, so a turn's classify cost is the sum over its
-positions. In the counted pair the positions per turn run to a median of 4 and a maximum
-of 132, and each candidate's per-turn cost is taken at the maximum positions per turn
-the traces show, the median recorded beside it. The number the per-turn cost is held to
-is the third open cell.
+time, the harness blocking on each, and **the count is the asks a design needs per
+position**: three forwards for an encoder with one head per predicate, since the
+classify path serves one head per admitted artifact per `weaver-spu-Spec` section 11,
+and one for Kev or for a multi-label head. A turn's classify cost is the sum over its
+positions of their asks. In the counted pair the positions per turn run to a median of 4
+and a maximum of 132, and each candidate's per-turn cost is taken over its asks at the
+maximum, the median recorded beside it. The number the per-turn cost is held to is the
+third open cell.
 
 The classifier's own deployment tuple is recorded beside its results, and it serves off
 the decoder's weights and off the decoder's device.
@@ -110,10 +132,13 @@ the decoder's weights and off the decoder's device.
 1. A candidate is eligible when every observed answer is under 30,000 ms and its
    per-turn cost at the maximum positions per turn is within the budget the third cell
    sets.
-2. Among eligible candidates, the one selected has the highest held-out F1 on its worst
-   predicate, over the predicates that meet section 6's label support. Precision and
-   recall are reported beside it for every predicate.
-3. A tie on that figure goes to the lower per-turn cost at the maximum.
+2. Among eligible candidates, one is preferred to another on the worst predicate, over
+   the predicates that meet section 6's floor, only where its F1 interval on that
+   predicate lies wholly above the other's. The candidate preferred to every other is
+   selected. Precision, recall and the intervals are reported beside it for every
+   predicate.
+3. Candidates whose intervals overlap on the worst predicate are tied, and a tie goes to
+   the lower per-turn cost at the maximum.
 4. If no candidate is eligible, or no predicate meets section 6's label support, none is
    selected, and the report says which bound each candidate missed and which predicates
    fell short.
@@ -136,4 +161,5 @@ tuples, and `SHA256SUMS`. The result note goes beside this plan and in the depos
   about 9 GB on its model card and 17 GB in its repository.
 - **The per-turn budget's number**, the operator's, set against the positions per turn
   the traces show, before any candidate is fitted.
-
+- **The rubric**, `RUBRIC.md`, its own act, merged before any position is labeled,
+  holding what section 3 requires of it.
