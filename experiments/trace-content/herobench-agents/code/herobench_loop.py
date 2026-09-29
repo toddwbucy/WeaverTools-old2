@@ -123,6 +123,7 @@ def drive(seat, text):
     opening = f"{past}\n\n{body}" if past else body
     cap = int(task.get("turn_cap", 8))
     won = False
+    ended = None
     turns = 0
     message = opening
     while turns < cap:
@@ -134,7 +135,10 @@ def drive(seat, text):
         # context at its eighth turn, and the loop died there unscored.
         try:
             outcome = seat.turn([{"role": "user", "text": message}])
-        except RuntimeError:
+        except RuntimeError as error:
+            # The pyworker maps every turn error to RuntimeError, so the cause
+            # rides the verdict's predicate and a fault-ended run reads as one.
+            ended = " ".join(str(error).split())[:200]
             won = _won(task["url"], task["character"], task["kind"], task["target"])
             break
         turns += 1
@@ -149,7 +153,10 @@ def drive(seat, text):
     # with an earlier one and its verdict is not in the record. Raising ends the
     # crossing with the refusal in the worker's log rather than letting the next
     # task begin as if it had been scored.
-    if not seat.score(f"herobench {task['name']} won", won, turns, cap):
+    predicate = f"herobench {task['name']} won"
+    if ended:
+        predicate += f", the run ended by a refused turn: {ended}"
+    if not seat.score(predicate, won, turns, cap):
         raise RuntimeError(
             f"the harness refused the score for {task['name']}: one run carries one verdict"
         )

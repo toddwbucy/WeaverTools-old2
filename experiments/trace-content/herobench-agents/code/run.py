@@ -200,6 +200,12 @@ def main():
                                           if not e.get("action_type", "").startswith("create")),
                            "logs": logs}
                 json.dump(outcome, open(os.path.join(out, f"{name}.json"), "w"), indent=1)
+                # What ended the task's crossing, as the gate answered it: an answer
+                # that is not "answered" carries its kind and reason, so a run a
+                # refused turn ended reads as one here as well as in the record.
+                if isinstance(answer, dict) and answer.get("kind") != "answered":
+                    reason = answer.get("reason", answer.get("fault", ""))
+                    entry["ended_by"] = f"{answer.get('kind')}: {reason}"
                 entry.update({k: outcome[k] for k in
                               ("result", "reward", "ideal_reward", "score", "actions", "seconds")})
                 print(f"{args.agent} {args.label} {name}: {result} score {score:.1f} "
