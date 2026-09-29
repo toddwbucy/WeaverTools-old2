@@ -1,4 +1,5 @@
 """The environment's rules, per python-spu-Spec sections 2, 5 and 8."""
+import ast
 import json
 import os
 import re
@@ -234,17 +235,22 @@ def test_the_tree_digest_is_never_of_nothing(tmp_path):
 def test_the_zipapp_is_never_built_from_nothing(tmp_path):
     """A source without the package, a package lacking a file the process cannot
     start without, and a package with an unreadable subdirectory are each refused.
-    Perturbations: drop the REQUIRED check, and the package without server.py builds;
-    drop the walk's onerror, and the unreadable subdirectory is skipped."""
+    Among the packages lacking a file is one without loaded_code.py, which enforce
+    imports only once admission is judged, so a build without it would start and then
+    fail at admission. Perturbations: drop the REQUIRED check, and the package without
+    server.py builds; drop loaded_code.py from REQUIRED, and the package without it
+    builds; drop the walk's onerror, and the unreadable subdirectory is skipped."""
     with pytest.raises(OSError):
         build_zipapp.build(tmp_path / "absent", tmp_path / "a.pyz")
-    lacking = tmp_path / "lacking" / "python_spu"
-    lacking.mkdir(parents=True)
-    for name in build_zipapp.REQUIRED:
-        if name != "server.py":
-            (lacking / name).write_text("\n")
-    with pytest.raises(ValueError, match="server.py"):
-        build_zipapp.build(tmp_path / "lacking", tmp_path / "b.pyz")
+    for absent in ("server.py", "loaded_code.py"):
+        lacking = tmp_path / f"lacking-{absent}" / "python_spu"
+        lacking.mkdir(parents=True)
+        for name in build_zipapp.REQUIRED:
+            if name != absent:
+                (lacking / name).write_text("\n")
+        with pytest.raises(ValueError, match=re.escape(absent)):
+            build_zipapp.build(lacking.parent, lacking.parent / "lacking.pyz")
+        assert not (lacking.parent / "lacking.pyz").exists()
     whole = tmp_path / "whole" / "python_spu"
     whole.mkdir(parents=True)
     for name in build_zipapp.REQUIRED:
@@ -255,11 +261,61 @@ def test_the_zipapp_is_never_built_from_nothing(tmp_path):
             build_zipapp.build(tmp_path / "whole", tmp_path / "c.pyz")
     finally:
         os.chmod(whole / "walled", 0o700)
-    assert not any((tmp_path / name).exists() for name in ("a.pyz", "b.pyz", "c.pyz"))
+    assert not any((tmp_path / name).exists() for name in ("a.pyz", "c.pyz"))
 
 
 def test_the_zipapp_requires_both_import_set_halves():
     assert set(import_set.HALVES) <= set(build_zipapp.REQUIRED)
+
+
+def served_modules(package):
+    """The package's modules the serving entry point imports, transitively from
+    server.py, as file names: every import in each module, a function's own among
+    them, whether relative or by the package's name, read from the source rather than
+    from what a run happened to import."""
+    def targets(tree):
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                assert node.level <= 1, node.lineno
+                if node.level == 1:
+                    base = node.module
+                elif (node.module or "").split(".")[0] == "python_spu":
+                    base = node.module.removeprefix("python_spu").removeprefix(".") or None
+                else:
+                    continue
+                if base is None:
+                    for alias in node.names:
+                        yield alias.name if (package / f"{alias.name}.py").is_file() else None
+                else:
+                    yield base.split(".")[0]
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name.startswith("python_spu."):
+                        yield alias.name.split(".")[1]
+                    elif alias.name == "python_spu":
+                        yield None
+    seen, todo = {"__init__.py"}, ["server"]
+    while todo:
+        name = todo.pop()
+        if f"{name}.py" in seen:
+            continue
+        seen.add(f"{name}.py")
+        for target in targets(ast.parse((package / f"{name}.py").read_text())):
+            if target is not None:
+                todo.append(target)
+    return seen
+
+
+def test_the_zipapp_requires_every_module_the_server_imports():
+    """Every module the serving entry point reaches is a file the build requires, so a
+    source lacking one is refused at the build rather than at the admission that first
+    imports it. The derivation reaches the imports made inside functions: loaded_code,
+    which enforce imports only at admission, is among them. Perturbation: drop
+    loaded_code.py, or any other module the server reaches, from REQUIRED, and this
+    fails."""
+    served = served_modules(ROOT / "src" / "python_spu")
+    assert {"loaded_code.py", "import_set.py", "candle_chain.py", "family.py"} <= served
+    assert served <= set(build_zipapp.REQUIRED), sorted(served - set(build_zipapp.REQUIRED))
 
 
 def test_declare_imports_refuses_its_inputs_before_any_launch(tmp_path):

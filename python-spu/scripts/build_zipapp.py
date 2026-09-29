@@ -26,9 +26,12 @@ from pathlib import Path
 
 INTERPRETER = "/opt/weaver/python-spu/bin/python3.14"
 LEFT_OUT = {"classifier.py"}
-# The files the process cannot start without, the two import-set halves being
-# import_set.HALVES, which the suite holds equal to these.
-REQUIRED = ("__init__.py", "server.py", "import_set.py", "imports-cpu.txt", "imports-cuda.txt")
+# The files the process cannot start without: every module the serving entry point
+# imports, transitively, which the suite derives from the source and holds within
+# these, and the two import-set halves, import_set.HALVES, held within them likewise.
+REQUIRED = ("__init__.py", "server.py", "transport.py", "wire.py", "session.py",
+            "family.py", "sampling.py", "candle_chain.py", "engine.py", "import_set.py",
+            "loaded_code.py", "imports-cpu.txt", "imports-cuda.txt")
 MAIN = "import sys\nfrom python_spu.server import main\nsys.exit(main())\n"
 
 
