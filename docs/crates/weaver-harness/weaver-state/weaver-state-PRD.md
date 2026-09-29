@@ -68,6 +68,22 @@ from: weaver-state
 to: weaver-types
 ```
 
+**It links `weaver-traits` as floor too, and that link has its consumer.** The
+typed landing of `weaver-state-Spec` section 3 reads a message kind's `role` and
+`content` through the message model that crate defines, the model the harness
+renders them from, so custody holds a message as the floor spells it rather than
+under a second definition of its own. `weaver-agents-PRD` section 5.1 rules the
+crate floor and Document Format section 4 admits a floor link to a floor crate, and
+this crate asks it nothing, so the record is a `floor-link`. The seam's contract
+draws the same name in its vocabulary clause, per the operator's ruling of
+2026-09-29 that the trace's payload is typed where it is read.
+
+```graph
+edge: floor-link
+from: weaver-state
+to: weaver-traits
+```
+
 On the operator's ruling of 2026-09-22, `weaver-trace` is a dev-dependency for
 this crate's tests alone, outside H2's edge set per Working Process section 6,
 with no production imports, closing section 5's dependency cell without a
@@ -405,7 +421,10 @@ that day rather than a shared file or a shared connection today.
   crate's seam, and the seam's own contract answers "**From `weaver-types`.**
   Nothing" in its vocabulary clause. So the link is sound by the ruling and
   unexplained by the corpus, and the cell closes when the consumer is written or
-  when a clause names what it draws. Stated as a cell rather than guessed at,
+  when a clause names what it draws. The envelope's identifiers do not close it:
+  the floor's session, run and turn types are bare strings with no invariant to
+  check, the envelope crosses as the record spells it, and landing it through them
+  would convert without testing anything. Stated as a cell rather than guessed at,
   because the guess is what an audit would have to un-write.
 - **The schema extension.** Apex section 9's door names one and this charter
   does not write it: the shape of the distillate the tee emits is settled with

@@ -29,6 +29,7 @@ use std::cell::{RefCell, RefMut};
 use postgres::{Client, GenericClient, NoTls};
 
 use crate::store::{CustodyFault, Distillate, Election, RecalledEvent, RunShape, Store};
+use crate::typed::{MeasurementRow, MessageRow, PartRow, SeriesRow, Typed, served, split};
 
 /// The service engine. The port's asks take `&self` and the wire is a
 /// stream that needs `&mut`, so the client sits behind a cell: one member
@@ -45,7 +46,7 @@ pub struct Postgres {
 impl Postgres {
     /// Connect over the store's socket directory as the member's account,
     /// under the declared role and database, and stand the schema: the event
-    /// and field tables and the envelope's standing indexes. The election's
+    /// and field tables, the typed landing's four, and the standing indexes. The election's
     /// own indexes arrive with [`Store::index_election`].
     pub fn open(socket_dir: &str, database: &str, role: &str) -> Result<Postgres, CustodyFault> {
         let mut client = postgres::Config::new()
@@ -73,6 +74,7 @@ impl Postgres {
                  CREATE INDEX IF NOT EXISTS event_kind_sequence ON event (kind, sequence);",
             )
             .map_err(unavailable)?;
+        client.batch_execute(TYPED_SCHEMA).map_err(unavailable)?;
         // **The ceiling is asked for rather than assumed.** A server built
         // with another `NAMEDATALEN` truncates at another width, and a name
         // measured against the wrong number is the silent collision again.
@@ -242,7 +244,145 @@ fn quoted(text: &str) -> String {
     out
 }
 
-/// The events of one query with their pairs, in the query's order.
+/// The typed landing's tables, per `weaver-state-Spec` section 3: a message's
+/// role and part count and its parts, a measurement's named readings and its
+/// series. Each row keys on its event, and a table's absent row is a member
+/// that did not land typed.
+const TYPED_SCHEMA: &str = "CREATE TABLE IF NOT EXISTS message (
+         event_id BIGINT PRIMARY KEY REFERENCES event(id),
+         role     TEXT,
+         parts    BIGINT
+     );
+     CREATE TABLE IF NOT EXISTS part (
+         event_id  BIGINT NOT NULL REFERENCES event(id),
+         ordinal   BIGINT NOT NULL,
+         block     TEXT NOT NULL,
+         text      TEXT,
+         name      TEXT,
+         arguments TEXT,
+         content   TEXT
+     );
+     CREATE TABLE IF NOT EXISTS measurement (
+         event_id   BIGINT PRIMARY KEY REFERENCES event(id),
+         perplexity DOUBLE PRECISION,
+         entropies  BIGINT,
+         surprisals BIGINT
+     );
+     CREATE TABLE IF NOT EXISTS series (
+         event_id BIGINT NOT NULL REFERENCES event(id),
+         member   TEXT NOT NULL,
+         ordinal  BIGINT NOT NULL,
+         value    DOUBLE PRECISION NOT NULL
+     );
+     CREATE INDEX IF NOT EXISTS part_event ON part (event_id, ordinal);
+     CREATE INDEX IF NOT EXISTS series_event ON series (event_id, member, ordinal);";
+
+/// Land one event's typed rows inside the caller's transaction.
+fn land_typed(
+    transaction: &mut postgres::Transaction<'_>,
+    event_id: i64,
+    typed: &Typed,
+) -> Result<(), postgres::Error> {
+    if let Some(message) = &typed.message {
+        transaction.execute(
+            "INSERT INTO message (event_id, role, parts) VALUES ($1, $2, $3)",
+            &[&event_id, &message.role, &message.parts],
+        )?;
+    }
+    for part in &typed.parts {
+        transaction.execute(
+            "INSERT INTO part (event_id, ordinal, block, text, name, arguments, content)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)",
+            &[
+                &event_id,
+                &part.ordinal,
+                &part.block,
+                &part.text,
+                &part.name,
+                &part.arguments,
+                &part.content,
+            ],
+        )?;
+    }
+    if let Some(measurement) = &typed.measurement {
+        transaction.execute(
+            "INSERT INTO measurement (event_id, perplexity, entropies, surprisals)
+             VALUES ($1, $2, $3, $4)",
+            &[
+                &event_id,
+                &measurement.perplexity,
+                &measurement.entropies,
+                &measurement.surprisals,
+            ],
+        )?;
+    }
+    for reading in &typed.series {
+        transaction.execute(
+            "INSERT INTO series (event_id, member, ordinal, value) VALUES ($1, $2, $3, $4)",
+            &[&event_id, &reading.member, &reading.ordinal, &reading.value],
+        )?;
+    }
+    Ok(())
+}
+
+/// The typed rows of a set of events, one read per table rather than one per
+/// event, on the argument [`with_pairs`] makes for the field rows.
+fn typed_of(
+    client: &mut Client,
+    ids: &[i64],
+) -> Result<std::collections::HashMap<i64, Typed>, postgres::Error> {
+    let mut typed: std::collections::HashMap<i64, Typed> = std::collections::HashMap::new();
+    for row in client.query(
+        "SELECT event_id, role, parts FROM message WHERE event_id = ANY($1)",
+        &[&ids],
+    )? {
+        typed.entry(row.get(0)).or_default().message = Some(MessageRow {
+            role: row.get(1),
+            parts: row.get(2),
+        });
+    }
+    for row in client.query(
+        "SELECT event_id, ordinal, block, text, name, arguments, content FROM part
+         WHERE event_id = ANY($1) ORDER BY event_id, ordinal",
+        &[&ids],
+    )? {
+        typed.entry(row.get(0)).or_default().parts.push(PartRow {
+            ordinal: row.get(1),
+            block: row.get(2),
+            text: row.get(3),
+            name: row.get(4),
+            arguments: row.get(5),
+            content: row.get(6),
+        });
+    }
+    for row in client.query(
+        "SELECT event_id, perplexity, entropies, surprisals FROM measurement
+         WHERE event_id = ANY($1)",
+        &[&ids],
+    )? {
+        typed.entry(row.get(0)).or_default().measurement = Some(MeasurementRow {
+            perplexity: row.get(1),
+            entropies: row.get(2),
+            surprisals: row.get(3),
+        });
+    }
+    for row in client.query(
+        "SELECT event_id, member, ordinal, value FROM series
+         WHERE event_id = ANY($1) ORDER BY event_id, member, ordinal",
+        &[&ids],
+    )? {
+        typed.entry(row.get(0)).or_default().series.push(SeriesRow {
+            member: row.get(1),
+            ordinal: row.get(2),
+            value: row.get(3),
+        });
+    }
+    Ok(typed)
+}
+
+/// The events of one query with their pairs, in the query's order, each
+/// event's verbatim pairs beside its typed members rendered back, per
+/// `weaver-state-Spec` section 4: every answer reads an event through this.
 fn with_pairs(
     client: &mut Client,
     rows: Vec<postgres::Row>,
@@ -268,16 +408,22 @@ fn with_pairs(
             .or_default()
             .push((pair.get(1), pair.get(2)));
     }
+    let mut typed_by_event = typed_of(client, &ids).map_err(unavailable)?;
     let mut out = Vec::with_capacity(rows.len());
     for row in rows {
         let id: i64 = row.get(0);
+        let pairs = served(
+            pairs_by_event.remove(&id).unwrap_or_default(),
+            &typed_by_event.remove(&id).unwrap_or_default(),
+        )
+        .map_err(CustodyFault::StoreUnavailable)?;
         out.push(RecalledEvent {
             session: row.get(1),
             run: row.get(2),
             turn: row.get(3),
             kind: row.get(4),
             sequence: row.get(5),
-            pairs: pairs_by_event.remove(&id).unwrap_or_default(),
+            pairs,
         });
     }
     Ok(out)
@@ -321,7 +467,10 @@ impl Store for Postgres {
             )
             .map_err(landing)?;
         let event_id: i64 = row.get(0);
-        for (key, value) in &distillate.pairs {
+        // The named members land typed and the rest verbatim, per
+        // `weaver-state-Spec` section 3, both inside the one transaction.
+        let (typed, verbatim) = split(&distillate.kind, &distillate.pairs);
+        for (key, value) in &verbatim {
             transaction
                 .execute(
                     "INSERT INTO field (event_id, key, value) VALUES ($1, $2, $3)",
@@ -329,6 +478,7 @@ impl Store for Postgres {
                 )
                 .map_err(landing)?;
         }
+        land_typed(&mut transaction, event_id, &typed).map_err(landing)?;
         transaction.commit().map_err(landing)
     }
 
@@ -336,12 +486,17 @@ impl Store for Postgres {
         let limit = self.identifier_limit;
         let client = self.client.get_mut();
         let mut transaction = client.transaction().map_err(landing)?;
-        transaction
-            .execute(
-                "DELETE FROM field WHERE event_id IN (SELECT id FROM event WHERE session = $1)",
-                &[&session],
-            )
-            .map_err(landing)?;
+        for table in ["field", "part", "message", "series", "measurement"] {
+            transaction
+                .execute(
+                    &format!(
+                        "DELETE FROM {table} \
+                         WHERE event_id IN (SELECT id FROM event WHERE session = $1)"
+                    ),
+                    &[&session],
+                )
+                .map_err(landing)?;
+        }
         transaction
             .execute("DELETE FROM event WHERE session = $1", &[&session])
             .map_err(landing)?;
@@ -491,6 +646,50 @@ mod tests {
     use super::scratch::Scratch;
     use super::*;
     use crate::store::*;
+
+    /// **A recorded line of each typed kind lands typed and serves what the
+    /// record reads**, the shared test run on this engine and then its tables
+    /// read for the typed rows. Perturbation: make the split type nothing, so
+    /// every pair lands verbatim, and the answers still match while the part,
+    /// message and series counts read zero, which is the test failing on the
+    /// property rather than on the bytes.
+    #[test]
+    #[ignore = "needs WEAVER_STATE_TEST_PG naming a scratch PostgreSQL socket directory; see the W5a goal"]
+    fn recorded_lines_land_typed() {
+        let scratch = Scratch::new();
+        let mut store = scratch.open();
+        super::super::recorded_lines_land_typed_and_serve_what_the_record_reads(&mut store);
+        let count =
+            |sql: &str| -> i64 { store.client().query_one(sql, &[]).expect("counts").get(0) };
+        assert_eq!(
+            count("SELECT COUNT(*) FROM part"),
+            3,
+            "one part per message"
+        );
+        assert_eq!(
+            count("SELECT COUNT(*) FROM message WHERE role IS NOT NULL AND parts = 1"),
+            3
+        );
+        assert_eq!(count("SELECT COUNT(*) FROM series"), 4, "two readings each");
+        assert_eq!(
+            count("SELECT COUNT(*) FROM measurement WHERE perplexity IS NULL"),
+            1,
+            "the absent perplexity is held absent, not zero"
+        );
+        assert_eq!(
+            count(
+                "SELECT COUNT(*) FROM field \
+                 WHERE key IN ('role', 'content', 'perplexity', 'entropies', 'surprisals')"
+            ),
+            0,
+            "no typed member is also held verbatim"
+        );
+        assert_eq!(
+            count("SELECT COUNT(*) FROM field WHERE key = 'input_tokens'"),
+            2,
+            "a member no Spec names lands verbatim"
+        );
+    }
 
     #[test]
     #[ignore = "needs WEAVER_STATE_TEST_PG naming a scratch PostgreSQL socket directory; see the W5a goal"]

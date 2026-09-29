@@ -65,6 +65,24 @@ vocabulary, defined below, and the floor carries no member for it, per the
 custody rule of apex section 5.2: the floor carries only what the harness
 itself consumes, and what crosses here is consumed by state.
 
+**From `weaver-traits`.** The message model. A pair elected from a message kind's
+`role` or `content`, and every pair of a message kind that crosses whole, carries that
+member of a conversation message in the shape that crate defines, and this contract
+does not redefine it. The harness renders the message from it and state reads the
+pair through it, so the name crosses in both directions. It is floor on the
+harness's own consumption, the harness being the party that reads a message as a
+message, so state drawing it adds no member to the floor, per apex section 5.2.
+
+**From `weaver-spu`.** Three members of the generation measurement, `perplexity`,
+`entropies` and `surprisals`, in the spelling and with the absence `weaver-spu-Spec`
+section 6 gives them, which is authoritative where this clause and that section
+disagree. A pair elected from `model.measurement` at one of the three carries that
+reading as the SPU rendered it, and an unproduced reading crosses as no pair at all.
+The measurement's other members are the SPU's too and are named here once that
+section spells them, until when they cross as values this contract does not name.
+State reads the three member by member and the floor carries no measurement shape,
+the harness consuming none of it.
+
 **This seam's own.** Four terms. The `election`: the seam's opener, the session the load
 declared and, beside it, three facts the load declared about what crosses. Whether every
 kind crosses carrying its envelope or only the kinds named do, which kinds are named,
@@ -97,6 +115,10 @@ well-formed ask, sent only when asked and at no other time.
 edge: draws
 from: weaver-harness-state-contract
 to: canonical-event
+
+edge: draws
+from: weaver-harness-state-contract
+to: message-model
 
 node: distillate
 kind: term
@@ -301,6 +323,10 @@ A further ask name is a change under section 7 and does not exist until it merge
 - **Transformation without judgment.** Derived shapes, aggregates, and
   indexes are custody's work and carry no opinion about what a turn should
   do, per the three-way division of `weaver-state-PRD` section 2.
+- **Served as it crossed.** Every pair an answer serves is the value that
+  crossed, byte for byte, whatever custody holds it as. A member the
+  Vocabulary names may be held typed and every other is held as it crossed,
+  and neither changes what an answer spells.
 - **The answer, only when asked.** Exactly one answer per well-formed ask,
   in arrival order, each answered against the holdings the stream carried
   before its ask, and no other traffic ever. The one stated exception is

@@ -12,6 +12,7 @@
 
 pub mod engine;
 mod store;
+pub mod typed;
 
 pub use store::{
     Ask, CustodyFault, Distillate, Election, RecalledEvent, RunShape, Store, is_shape_ask,
