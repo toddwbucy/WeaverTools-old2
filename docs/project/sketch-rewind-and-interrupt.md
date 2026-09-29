@@ -105,7 +105,10 @@ by a retry that behaves strangely.
   creates a character, and a branch recreates it and replays the accepted actions to N,
   or restores the character block the record carries. The environment's answer to an
   accepted action carries the character block, recorded verbatim in the tool result,
-  which is what makes the restore possible from the record alone.
+  which is what makes the restore possible from the record alone. The reset covers
+  everything the experiment reads, the environment's own log of the character included,
+  which the HeroBench loop and driver read to judge a task, or the branch declares the
+  log's divergence.
 - **The record carries the world's state at every tool result, and the branch measures
   the divergence.** Where a tool cannot reset, the tool result's content is the evidence
   of what the world was, and a branch reports what it found the world to be against what
@@ -159,13 +162,14 @@ request only while the run is quiesced and only when its line carries that ident
 and refuses it otherwise, so the mark binds to the quiescence act rather than to any
 principal the gate admits, on the pattern of `weaver-admin-harness-contract`'s "what
 crosses is a capability rather than a name", and while the run is quiesced it refuses a
-request carrying none as quiesced. **Every turn the harness starts while the run is
-quiesced carries the interrupt's identifier on `turn.started`**, however many turns the
-loop makes of one request, since a loop may make several turns of one client request.
-The field that carries it on the request line is a Spec election owed, the line's format
-being the Spec's under `weaver-gate-world-contract`. The trace is turn-bracketed, so the
-turn is the unit that is marked, and a replay presents the run with the interview or
-without it by that mark on every turn, and a count reports both.
+request carrying none as quiesced. **Every event the harness authors while the run is
+quiesced carries the interrupt's identifier**, however many turns the loop makes of one
+request and including the turnless events between them, since a loop may flush and
+recall between turns of one request as `bravo_loop.py` does. The field that carries it
+on the request line is a Spec election owed, the line's format being the Spec's under
+`weaver-gate-world-contract`. The trace is turn-bracketed, so the turn is the unit that
+is marked, and a replay presents the run with the interview or without it by that mark
+on every event, and a count reports both.
 
 **Cleanliness is read rather than inferred.** The run's closing event carries
 the list of interrupt identifiers it saw, the empty list being the positive
@@ -225,7 +229,7 @@ carries the toggle.
   such ask today. `weaver-analysis-Spec` section 4's `--through` cuts at a turn's close
   and excludes a between-turn edit, and the preload's election is the state contract's.
 - `weaver-trace-Spec` section 3: the quiescence event, the branch event with its world
-  disposition, the interrupt's identifier on every turn started while quiesced, the
+  disposition, the interrupt's identifier on every event authored while quiesced, the
   closing list.
 - `weaver-types-Spec`: the quiescence condition beside `AgentState` in the observation's
   answer, the state's cases unchanged.
