@@ -4,7 +4,7 @@
 # and reviewed, never edited by hand.
 #
 # cpu: 2026-09-28, python 3.14.7, with the zipapp
-# cuda: pending, generated on a GPU run of the real model
+# cuda: 2026-09-29, python 3.14.7, with the zipapp
 __future__
 __main__
 __mp_main__
@@ -211,6 +211,7 @@ cuda.pathfinder._utils.path_sort
 cuda.pathfinder._utils.platform_aware
 cuda.pathfinder._utils.windows_arch
 cuda.pathfinder._version
+cuda_utils
 cython_runtime
 dataclasses
 datetime
@@ -1504,6 +1505,7 @@ torch._native.nvmath_utils
 torch._native.ops
 torch._native.ops.bmm_outer_product
 torch._native.ops.bmm_outer_product.triton_impl
+torch._native.ops.bmm_outer_product.triton_kernels
 torch._native.ops.foreach_mm
 torch._native.ops.foreach_mm.impl
 torch._native.ops.norm
@@ -1519,6 +1521,8 @@ torch._native.ops.topk
 torch._native.ops.topk._common
 torch._native.ops.topk.cutedsl_impl
 torch._native.registry
+torch._native.triton
+torch._native.triton.const_tensor_wrapper
 torch._native.triton_utils
 torch._numpy
 torch._numpy._binary_ufuncs_impl
@@ -2791,9 +2795,56 @@ triton.backends.nvidia
 triton.backends.nvidia.compiler
 triton.backends.nvidia.driver
 triton.compiler
+triton.compiler.code_generator
 triton.compiler.compiler
 triton.compiler.errors
 triton.errors
+triton.experimental
+triton.experimental.gluon
+triton.experimental.gluon._runtime
+triton.experimental.gluon.amd
+triton.experimental.gluon.amd.cdna5
+triton.experimental.gluon.amd.gfx1250
+triton.experimental.gluon.language
+triton.experimental.gluon.language._core
+triton.experimental.gluon.language._layouts
+triton.experimental.gluon.language._math
+triton.experimental.gluon.language._semantic
+triton.experimental.gluon.language._standard
+triton.experimental.gluon.language.amd
+triton.experimental.gluon.language.amd._layouts
+triton.experimental.gluon.language.amd._ops
+triton.experimental.gluon.language.amd.cdna3
+triton.experimental.gluon.language.amd.cdna4
+triton.experimental.gluon.language.amd.cdna4.async_copy
+triton.experimental.gluon.language.amd.cdna5
+triton.experimental.gluon.language.amd.gfx1250
+triton.experimental.gluon.language.amd.gfx1250._layouts
+triton.experimental.gluon.language.amd.gfx1250.async_copy
+triton.experimental.gluon.language.amd.gfx1250.cluster
+triton.experimental.gluon.language.amd.gfx1250.mbarrier
+triton.experimental.gluon.language.amd.gfx1250.tdm
+triton.experimental.gluon.language.amd.rdna3
+triton.experimental.gluon.language.amd.rdna4
+triton.experimental.gluon.language.amd.slice
+triton.experimental.gluon.language.amd.warp_pipeline
+triton.experimental.gluon.language.extra
+triton.experimental.gluon.language.nvidia
+triton.experimental.gluon.language.nvidia.ampere
+triton.experimental.gluon.language.nvidia.ampere.async_copy
+triton.experimental.gluon.language.nvidia.ampere.mbarrier
+triton.experimental.gluon.language.nvidia.blackwell
+triton.experimental.gluon.language.nvidia.blackwell.clc
+triton.experimental.gluon.language.nvidia.blackwell.tma
+triton.experimental.gluon.language.nvidia.hopper
+triton.experimental.gluon.language.nvidia.hopper.cluster
+triton.experimental.gluon.language.nvidia.hopper.mbarrier
+triton.experimental.gluon.language.nvidia.hopper.tma
+triton.experimental.gluon.language.nvidia.rubin
+triton.experimental.gluon.language.nvidia.rubin.mbarrier
+triton.experimental.gluon.nvidia
+triton.experimental.gluon.nvidia.blackwell
+triton.experimental.gluon.nvidia.hopper
 triton.knobs
 triton.language
 triton.language.core
@@ -2805,8 +2856,10 @@ triton.language.extra.cuda.utils
 triton.language.extra.hip
 triton.language.extra.hip.libdevice
 triton.language.extra.hip.utils
+triton.language.extra.libdevice
 triton.language.math
 triton.language.random
+triton.language.semantic
 triton.language.standard
 triton.language.target_info
 triton.runtime
@@ -2821,6 +2874,7 @@ triton.runtime.jit
 triton.testing
 triton.tools
 triton.tools.disasm
+triton.tools.tensor_descriptor
 types
 typing
 typing_extensions

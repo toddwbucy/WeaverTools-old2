@@ -70,9 +70,11 @@ and every installed package. The packages are installed into the interpreter's o
 prefix rather than a venv, so the prefix is the whole of what runs.
 
 `src/python_spu/imports.txt` is the import set the serving process is judged against.
-Its CPU half is generated, and its CUDA half is pending a GPU run of the real model:
-`scripts/declare_imports.py --device cuda --zipapp <file> --model <dir>`. Until that
-run lands, the process refuses to serve on a device, faulting at admission.
+Both halves are generated, the CPU half with `--device cpu` and the CUDA half on a card
+with the real model: `scripts/declare_imports.py --device cuda --zipapp <file> --model
+<dir>`. The zipapp carries the list as it stood when it was built, so rebuild it after
+the list changes. One built before the CUDA half faults on a device after its first
+generation, exit 3, torch loading triton's modules in its first forward.
 
 ## Files
 
