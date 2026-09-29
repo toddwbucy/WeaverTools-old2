@@ -42,19 +42,21 @@ opening event names R and N.** N is a closed turn boundary, the cut
 `weaver-analysis-Spec` section 4's `--through <run>:<turn>` already takes, through that
 turn's close, and never a position inside a turn, since a cut inside one would land a
 generation without its close. Nothing in R is rewritten and nothing is removed. The new
-run's first event after its load is the branch event, carrying the parent run, the
+run's first event after its load is the branch event. It carries the parent run, the
 branch position, the reason (a retry, an interrupt's resumption, a diagnostic entry),
-what the record holds of the deployment tuple the branch stands on, the `load` payload's
-`stack` digests and declaration digest per `weaver-trace-Spec` section 3, and the parent
-run's `weights_hash` named as the expectation, since the branch event precedes any
-measurement of its own and the branch's first `model.measurement`, authored during its
-first generation per `weaver-harness-Spec` section 6.1, verifies it, a reader comparing
-the two and a mismatch authored as a fault, the tuple beyond that, the device, the
-kernel stack, the batch and the sampler, being the deposit's box facts as the result
-notes record it, and the world's disposition, one of section 2's three: reset to N,
-divergence measured with what was found, or a changed world declared. Every later reader
-can walk from any run to the position it grew from, which is the lineage the
-analysis-web contract's branch position already expects a record to state.
+the world's disposition, one of section 2's three (reset to N, divergence measured with
+what was found, or a changed world declared), and what the record holds of the
+deployment tuple the branch stands on: the `load` payload's `stack` digests and
+declaration digest, per `weaver-trace-Spec` section 3, and the parent run's
+`weights_hash` named as an expectation, since the branch event precedes any measurement
+of its own. The tuple beyond that, the device, the kernel stack, the batch and the
+sampler, is the deposit's box facts, as the result notes record it. **The weights check
+is a reader's.** It compares the branch's first `model.measurement`, which the harness
+splices opaque per `weaver-trace-Spec` section 3, against the expectation the branch
+event carries, and reports a divergence, since the SPU holds no expectation to compare
+against. Every later reader can walk from any run to the position it grew from, which is
+the lineage the analysis-web contract's branch position already expects a record to
+state.
 
 **That departs from a standing ruling, and the departure is the operator's to make.**
 Under `weaver-state-PRD` section 4 today, a cut lands as a branch under a new session
@@ -132,26 +134,29 @@ boundary: the gate exchange in flight completes with every turn its loop makes o
 new exchange is admitted after the request, in-flight forward passes and concurrent
 organ work finish, and nothing is cancelled mid-flight. A loop's follow-up turns are
 therefore never refused mid-exchange, which matters because a loop such as
-`bravo_loop.py` fails its whole request when a follow-up turn refuses. **A resume of
-either form takes effect at the exchange boundary too**: an admin directive may arrive
-while a turn runs, per `weaver-harness-Spec` section 3, so an interview exchange in
-flight completes under the mark before the run resumes, and no new exchange is admitted
-between the resume's arrival and its taking effect. **Every request already queued at
-the harness is refused as quiesced**, since the gate admits concurrent exchanges and the
-harness serialises them, each refusal returning by the path its request line came in on,
-and the harness declares the run quiesced with an empty queue. **The quiescence position
-is the last closed turn boundary together with every flush and elision recorded between
-that turn's close and the quiescence event**, so a resumption from it is the exact
-re-prefill of section 1 whenever such an edit stands. **A run with no closed turn has
-its quiescence position at its opening**, the load, and a branch from it starts from
-what that opening seated: the identity, and whatever the load restored where it was a
-restoring load, per `weaver-harness-Spec` section 6.1. **While quiesced the harness
-executes no tool**: a call the model makes in an interview turn is recorded and refused
-as quiesced, so an interview is conversation and never work. A half-written state is a
-state that never existed and is not worth interviewing. The trace records a quiescence
-event carrying the position, the wall clock instant and what was in flight when the
-request arrived, so a clean stop reads differently from a stop that caught the loop
-mid-turn.
+`bravo_loop.py` fails its whole request when a follow-up turn refuses.
+**Resume-with-interview takes effect at the exchange boundary too**: an admin directive
+may arrive while a turn runs, per `weaver-harness-Spec` section 3, so an interview
+exchange in flight completes under the mark before the run resumes, and no new exchange
+is admitted between the resume's arrival and its taking effect. **Resume-clean is issued
+only when no exchange is in flight.** It composes unload and load, and
+`weaver-admin-harness-contract` section 3 has the leave refuse while a turn is in
+flight, so that refusal is the guard and the operator reissues after the exchange
+completes. **Every request already queued at the harness is refused as quiesced**, since
+the gate admits concurrent exchanges and the harness serialises them, each refusal
+returning by the path its request line came in on, and the harness declares the run
+quiesced with an empty queue. **The quiescence position is the last closed turn boundary
+together with every flush and elision recorded between that turn's close and the
+quiescence event**, so a resumption from it is the exact re-prefill of section 1
+whenever such an edit stands. **A run with no closed turn has its quiescence position at
+its opening**, the load, and a branch from it starts from what that opening seated: the
+identity, and whatever the load restored where it was a restoring load, per
+`weaver-harness-Spec` section 6.1. **While quiesced the harness executes no tool**: a
+call the model makes in an interview turn is recorded and refused as quiesced, so an
+interview is conversation and never work. A half-written state is a state that never
+existed and is not worth interviewing. The trace records a quiescence event carrying the
+position, the wall clock instant and what was in flight when the request arrived, so a
+clean stop reads differently from a stop that caught the loop mid-turn.
 
 **The interview enters through the gate as ordinary traffic.** The gate is the sole work
 ingress and it authenticates the researcher already, so a second channel would cost a
