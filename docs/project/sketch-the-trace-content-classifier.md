@@ -13,10 +13,12 @@ moves into a charter or a Spec by an act of its own.
 ## 0. What this document is
 
 The plan for typing the trace's payload. The envelope is typed and positional
-already, per `weaver-trace-PRD` section 3. The payload is not: the model's own
-output text and the input text at each position ride `message.*` and
-`model.measurement` as raw JSON, and `weaver-state` lands them as text pairs.
-Typing that payload is what the state organ needs, per the operator's word of
+already, per `weaver-trace-PRD` section 3, and the payloads are what the classifier
+reads. Each event carries its own: the conversation's text in the `message.*` kinds,
+the rendered model input in `model.request`'s `rendered`, the verbatim generation in
+`model.output`'s `emission`, and the token identifiers and readings in
+`model.measurement`. None of it is typed by what it says. Typing that payload is what
+the state organ needs, per the operator's word of
 2026-09-28, and it is the prerequisite for the prefetch organ's text head.
 
 The instrument is a trace-content classifier run in the loop as a routing stage
@@ -127,15 +129,18 @@ labels would be. Recorded here so the exclusion is not rediscovered.
 
 ## 4. The evaluation
 
-Every candidate is evaluated on the same labeled judgmental positions, side by
-side. The computable share needs no model, its labels joining game state by
-position, so no candidate is scored on it. **The split's size is the case for
-building a classifier and not evidence for choosing one**: four of every five
-positions the model wrote are judgmental, which says the instrument is worth
-building, and which candidate serves is what the evaluation measures. A contract
-change to carry questions on the ask follows that measurement rather than the
-split. Either way the classifier's own tuple is recorded and the observer stays off
-the decoder's weights and device.
+Every candidate is evaluated on the same held-out judgmental positions, side by side.
+**The labeled positions are split by task and by result set, never by line**, so one
+completion's lines never straddle the split. Each candidate is fitted on the training
+split and scored on the held-out split, the split is recorded in the deposit beside the
+labels, and a score on positions a candidate was fitted on is not reported. The
+computable share needs no model, its labels joining game state by position, so no
+candidate is scored on it. **The label split's size is the case for building a
+classifier and not evidence for choosing one**: four of every five positions the model
+wrote are judgmental, which says the instrument is worth building, and which candidate
+serves is what the evaluation measures. A contract change to carry questions on the ask
+follows that measurement rather than the label split. Either way the classifier's own
+tuple is recorded and the observer stays off the decoder's weights and device.
 
 ## 5. Open cells
 
