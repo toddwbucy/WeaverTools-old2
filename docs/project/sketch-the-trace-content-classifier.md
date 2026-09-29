@@ -35,13 +35,16 @@ process is external and finite, and a classifier trained on it can be measured
 against the game's own record of what happened.
 
 The agent plays HeroBench through the gate's shell, the environment's actions
-being a CLI in the agent's home, so every action and the environment's answer
-crosses as `message.tool_result` at a position in the trace. The task arrives as
-`message.user`, the rules and the game dump as `message.system`, and the model's
-reasoning and program as `message.assistant`. The join from a position to game
-state is by position, and it is free.
+being a CLI in the agent's home. The task arrives as `message.user`, the rules and
+the game dump as `message.system`, and the model's reasoning and program as
+`message.assistant`. **Where the agent plays action by action, each action its own
+shell call**, every action and the environment's answer cross as
+`message.tool_result` at a position of their own, and the join from a position to
+game state is by position and free. A program run as one invocation collapses every
+action into one `message.tool_result`, which is how HeroBench's published runs ran,
+so the state work plays the per-action shape.
 
-## 2. The split that decides the architecture
+## 2. The split that makes the case for building
 
 Nothing is built before this is measured. The label space is split in two and
 both halves are counted, over HeroBench's own results and one replayed pair of
@@ -124,13 +127,15 @@ labels would be. Recorded here so the exclusion is not rediscovered.
 
 ## 4. The evaluation
 
-On the same labeled positions, side by side: the encoder for the computable-
-adjacent labels, Kev for the judgmental questions. If the split says the
-judgmental share dominates, Kev's question-shaped interface is the better
-instrument and the contract changes on that measurement. If the computable share
-dominates, the encoder stands and the judgmental questions are the smaller
-problem. Either way the classifier's own tuple is recorded and the observer stays
-off the decoder's weights and device.
+Every candidate is evaluated on the same labeled judgmental positions, side by
+side. The computable share needs no model, its labels joining game state by
+position, so no candidate is scored on it. **The split's size is the case for
+building a classifier and not evidence for choosing one**: four of every five
+positions the model wrote are judgmental, which says the instrument is worth
+building, and which candidate serves is what the evaluation measures. A contract
+change to carry questions on the ask follows that measurement rather than the
+split. Either way the classifier's own tuple is recorded and the observer stays off
+the decoder's weights and device.
 
 ## 5. Open cells
 
