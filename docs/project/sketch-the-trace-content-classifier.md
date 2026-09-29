@@ -130,21 +130,43 @@ labels would be. Recorded here so the exclusion is not rediscovered.
 ## 4. The evaluation
 
 Every candidate is evaluated on the same held-out judgmental positions, side by side.
-**The labeled positions are split by task and by result set, never by line**, so one
-completion's lines never straddle the split. Each candidate is fitted on the training
+**The labeled positions are split by task, never by line or by result set**: every
+result set's completion of one task falls on the same side, so neither a completion's
+lines nor a task's text straddle the split. Each candidate is fitted on the training
 split and scored on the held-out split, the split is recorded in the deposit beside the
-labels, and a score on positions a candidate was fitted on is not reported. The
+labels, and a score on positions a candidate was fitted on is not reported. **The labels
+come from outside every candidate**: no candidate, and no model of a candidate's family,
+labels a position it is scored on, and the labels' source is recorded in the deposit
+beside them. **Every candidate reads the same input at a position**, the trace window
+ending there, its extent fixed before any candidate is scored, within every candidate's
+context, and recorded, so a difference in score is the model's and not its input's. The
 computable share needs no model, its labels joining game state by position, so no
-candidate is scored on it. **The label split's size is the case for building a
-classifier and not evidence for choosing one**: four of every five positions the model
-wrote are judgmental, which says the instrument is worth building, and which candidate
-serves is what the evaluation measures. A contract change to carry questions on the ask
-follows that measurement rather than the label split. Either way the classifier's own
-tuple is recorded and the observer stays off the decoder's weights and device.
+candidate is scored on it.
+
+**Each judgmental predicate is scored as its own binary decision**: whether a position
+recites the dump, whether it states a plan, and whether it contradicts what was recited,
+a position able to hold more than one. The candidates answer in different shapes, Kev a
+distribution per typed question and the SPU's ModernBERT path one softmax over a fixed
+id2label head, so each candidate's output is normalised to that decision before it is
+scored: for Kev a `noul` question per predicate with its probability thresholded, and
+for ModernBERT one encoder head per predicate or a multi-label head thresholded per
+predicate. **Every threshold is chosen on the training split and never on the held-out
+one.** The candidates are compared per predicate on precision and recall over the
+held-out positions, and a single figure across the three predicates is not reported.
+
+**The label split's size is the case for building a classifier and not evidence for
+choosing one**: four of every five positions the model wrote are judgmental, which says
+the instrument is worth building, and which candidate serves is what the evaluation
+measures. A contract change to carry questions on the ask follows that measurement
+rather than the label split. Either way the classifier's own tuple is recorded and the
+observer stays off the decoder's weights and device.
 
 ## 5. Open cells
 
-- A model's measured accuracy on the judgmental positions, per candidate.
+- Each candidate's precision and recall per judgmental predicate on the held-out
+  positions, a measurement.
+- Who labels the judgmental positions. Section 4 requires only that no candidate
+  and no model of a candidate's family does.
 - The Pumpkin Spice specimen is not an artifact on disk: it names a decision
   point, the moment after a retrieved fact lands, per the operator's word of
   2026-08-31. The template case for the judgmental labels is still to be chosen
