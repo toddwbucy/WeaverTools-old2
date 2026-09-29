@@ -199,6 +199,11 @@ observer stays off the decoder's weights and device.
   answered there rather than here. The plan fixes the input window's extent as a bound
   every candidate and the seam can hold, at most the classify frame's 64 KiB of
   `weaver-spu-Spec` section 11 and the artifact's own position limit, and records it.
+  The plan measures each candidate's latency at that extent on the device it would serve
+  from, and a candidate that cannot answer inside the harness's classify bound,
+  `CLASSIFY_ANSWER_BOUND_MS` in `weaver-harness`, is not selected however it scores,
+  since the harness serialises classify asks and retires the classify arm after an
+  answer past it.
 - The Pumpkin Spice specimen is not an artifact on disk: it names a decision
   point, the moment after a retrieved fact lands, per the operator's word of
   2026-08-31. The template case for the judgmental labels is still to be chosen
