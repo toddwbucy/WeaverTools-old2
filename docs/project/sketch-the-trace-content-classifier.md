@@ -188,10 +188,12 @@ observer stays off the decoder's weights and device.
   positions, a measurement.
 - Who labels the judgmental positions. Section 4 requires only that no candidate
   and no model of a candidate's family does.
-- The evaluation's protocol. Section 4 is a draft, and the protocol is settled in
-  its own experiment plan under `experiments/trace-content/`, a plan document
-  reviewed as a plan before any candidate is fitted. A further finding against the
-  protocol is answered there rather than here.
+- The evaluation's protocol. Section 4 is a draft, and the protocol is settled in its
+  own experiment plan under `experiments/trace-content/`, a plan document reviewed as a
+  plan before any candidate is fitted. A further finding against the protocol is
+  answered there rather than here. The plan fixes the input window's extent as a bound
+  every candidate and the seam can hold, at most the classify frame's 64 KiB of
+  `weaver-spu-Spec` section 11 and the artifact's own position limit, and records it.
 - The Pumpkin Spice specimen is not an artifact on disk: it names a decision
   point, the moment after a retrieved fact lands, per the operator's word of
   2026-08-31. The template case for the judgmental labels is still to be chosen
