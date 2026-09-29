@@ -772,17 +772,19 @@ def _resolve_spu(cfg):
         if chosen is not None:
             return chosen
         stated = os.path.join(directory, "spu-binary")
-        try:
-            with open(stated) as f:
-                named = f.read().strip()
-            # A relative path is refused rather than resolved here, the stack
-            # resolving it against another directory (#716 round ten).
-            if named and not os.path.isabs(named):
-                return None, f"{stated} names a relative path {named!r}"
-            if named:
-                return named, "admin config spu-binary"
-        except OSError:
-            pass
+        text, why = _read_admin(directory, "spu-binary")
+        # **Only absence falls through to the guess.** A file that stands and
+        # does not read is an unreadable resolution the exit gates, never the
+        # guess beside `admin_bin` standing in for what admin launches.
+        if why is not None:
+            return None, why
+        named = (text or "").strip()
+        # A relative path is refused rather than resolved here, the stack
+        # resolving it against another directory (#716 round ten).
+        if named and not os.path.isabs(named):
+            return None, f"{stated} names a relative path {named!r}"
+        if named:
+            return named, "admin config spu-binary"
     admin_bin = cfg.get("admin_bin")
     if not admin_bin:
         # `.get`, as `toolchain` uses beside it: a config omitting this raised
@@ -795,15 +797,41 @@ def _resolve_spu(cfg):
     )
 
 
+def _read_admin(directory, name):
+    """A value of admin's configuration, as `(text, None)`, `(None, None)` where
+    nothing stands at its path, or `(None, why)` where something stands and does
+    not read, per weaver-admin-Spec section 9.
+
+    **Presence is `lstat`'s answer and nothing else's.** Only nothing at the path
+    is absence: a dangling link, a directory, a file this process may not read,
+    or bytes that are not UTF-8 stand there and fail, since reading any of them as
+    absent would stand a default admin does not launch. `os.path.exists` is not
+    used, Python 3.14 answering False for a path it may not look at.
+    """
+    path = os.path.join(directory, name)
+    try:
+        os.lstat(path)
+    except FileNotFoundError:
+        return None, None
+    except OSError as e:
+        return None, f"{path}: {_why(e)}"
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.read(), None
+    except (OSError, UnicodeDecodeError) as e:
+        return None, f"{path}: {_why(e)}"
+
+
 def _agent_spu(directory, agent):
     """The SPU `agent-spu` chooses for the agent, as `_resolve_spu`'s pair, or
     None where the map is absent or does not name the agent."""
     def pairs(name):
-        try:
-            with open(os.path.join(directory, name)) as f:
-                lines = [line.split() for line in f.read().splitlines() if line.strip()]
-        except OSError:
+        text, why = _read_admin(directory, name)
+        if why is not None:
+            return why
+        if text is None:
             return None
+        lines = [line.split() for line in text.splitlines() if line.strip()]
         if any(len(fields) != 2 for fields in lines):
             return f"{name} holds a line that is not two fields"
         return dict(lines)
@@ -814,6 +842,8 @@ def _agent_spu(directory, agent):
         return None, agents
     key = agents[agent]
     implementations = pairs("spu-implementations")
+    if isinstance(implementations, str):
+        return None, implementations
     if not isinstance(implementations, dict) or key not in implementations:
         return None, f"agent-spu names the key {key!r}, which spu-implementations does not hold"
     path = implementations[key]
@@ -1030,13 +1060,12 @@ def weaver_binaries(cfg, spu=None):
                             "unreadable": "the config names no admin_config"}
                 continue
             stated = os.path.join(directory, key)
-            try:
-                with open(stated) as f:
-                    path = f.read().strip()
-            except OSError as e:
+            text, why = _read_admin(directory, key)
+            if why is not None or text is None:
                 out[key] = {"path": None, "sha256": None,
-                            "unreadable": f"{stated}: {e}"}
+                            "unreadable": why or f"{stated}: absent"}
                 continue
+            path = text.strip()
             # An empty config file is an unset value, not a binary at the
             # empty path, and `_sha256("")` would report it as a missing file.
             if not path:
@@ -1126,6 +1155,14 @@ def toolchain(cfg):
     return out
 
 
+def _stat_spu(path):
+    """The SPU binary's presence, by `os.stat`: FileNotFoundError where nothing
+    stands, another OSError where something stands and may not be looked at. One
+    function, so a test fixing the SPU's presence replaces this and not
+    `os.stat` for the whole process."""
+    os.stat(path)
+
+
 def engine_libraries(cfg, spu=None):
     """sha256 of the libraries the serving binary actually links.
 
@@ -1148,8 +1185,15 @@ def engine_libraries(cfg, spu=None):
     spu = (spu[0] if spu is not None else spu_binary(cfg))
     if spu is None:
         return {"unreadable": "the config names no route to the SPU binary"}
-    if not os.path.exists(spu):
+    # `os.stat` and not `os.path.exists`, which reads a path this process may not
+    # look at as absent on Python 3.14: nothing there and there-but-unreadable
+    # are two findings and each names itself.
+    try:
+        _stat_spu(spu)
+    except FileNotFoundError:
         return {"unreadable": f"no SPU binary at {spu}"}
+    except OSError as e:
+        return {"unreadable": f"the SPU binary at {spu} does not stat: {_why(e)}"}
     r = sh(["ldd", spu])
     if r.returncode != 0:
         return {"unreadable": f"ldd exit {r.returncode} on {spu}: "

@@ -404,7 +404,11 @@ the declaration file, `admin_bin`, `repo` and the outdir, are its own. A config 
 name an SPU of its own: the admin launches the one its configuration names for the
 agent, the key `agent-spu` gives it in `spu-implementations` where the agent is named
 there and `spu-binary` otherwise, per `weaver-admin-Spec` section 9, and the run reads
-it there, so a config carrying `spu_bin` is refused.
+it there, so a config carrying `spu_bin` is refused. Only a value absent from admin's
+configuration falls back: one that stands and does not read, a dangling link, a
+directory or a file this run may not read, is an unreadable resolution the exit gates,
+never the default, since admin launches what the file says and not what this run could
+see.
 
 **Every file a run writes is its own.** A run in either mode writes three fixed names
 into its outdir, and its declaration backup beside the declaration.

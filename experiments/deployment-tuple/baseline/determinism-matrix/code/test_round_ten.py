@@ -186,14 +186,14 @@ def test_an_ldd_path_that_is_not_absolute_is_unreadable():
     # ldd names absolute paths. Anything else is unreadable and never
     # resolved here. Perturbation: take any path, and the relative one is
     # opened against this directory.
-    saved_sh, saved_exists = base.sh, base.os.path.exists
+    saved_sh, saved_stat = base.sh, base._stat_spu
     ldd = "\tlibggml.so.0 => rel/libggml.so.0 (0x00007f)\n\tlibllama.so.0 => not found\n"
     try:
-        base.os.path.exists = lambda p: True
+        base._stat_spu = lambda p: None
         base.sh = lambda args, **kw: subprocess.CompletedProcess(args, 0, ldd, "")
         reading = base.engine_libraries({}, ("/spu", "admin config spu-binary"))
     finally:
-        base.sh, base.os.path.exists = saved_sh, saved_exists
+        base.sh, base._stat_spu = saved_sh, saved_stat
     assert "not absolute" in reading["libggml.so.0"]["unreadable"], reading
     assert reading["libllama.so.0"]["unreadable"] == "ldd reports it not found", reading
 

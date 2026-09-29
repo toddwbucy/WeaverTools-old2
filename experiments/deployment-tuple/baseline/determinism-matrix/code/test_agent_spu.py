@@ -3,7 +3,9 @@
 Perturbations, each failing a watch here: skip `_agent_spu` and read `spu-binary`
 alone, and the named agent reads the default; return the map's choice for every
 agent, and the unnamed agent reads the key; drop the relative-path check, and the
-relative path is taken.
+relative path is taken; read every OSError in `_read_admin` as absence, and an
+unreadable map reads as the default; decide presence with `os.path.exists`, and the
+SPU behind a directory this process may not search reads as missing.
 """
 import os
 import tempfile
@@ -47,6 +49,68 @@ def test_a_map_it_cannot_follow_is_reported():
         path, why = resolve({**base, **files})
         assert path is None, files
         assert said in why, (files, why)
+
+
+def unreadable_forms(root, name):
+    """Each way something can stand at a path and not read: a file this process
+    may not read, a directory, a dangling link, and bytes that are not UTF-8."""
+    path = os.path.join(root, name)
+    forms = []
+    if os.geteuid() != 0:
+        forms.append(("mode 000", lambda: (open(path, "w").write("karl python\n"),
+                                           os.chmod(path, 0o000))))
+    forms.append(("a directory", lambda: os.mkdir(path)))
+    forms.append(("a dangling link", lambda: os.symlink(os.path.join(root, "gone"), path)))
+    forms.append(("not UTF-8", lambda: open(path, "wb").write(b"\xff\xfe karl\n")))
+    return forms
+
+
+def test_an_unreadable_value_is_unreadable_never_the_default():
+    """At each of the three paths, anything that stands and does not read is an
+    unreadable resolution, never the default and never the guess beside admin_bin.
+    Only absence falls back."""
+    base = {"spu-binary": "/opt/weaver/bin/weaver-spu\n",
+            "spu-implementations": "python /opt/weaver/python-spu/python-spu.pyz\n",
+            "agent-spu": "karl python\n"}
+    for name in ("agent-spu", "spu-implementations", "spu-binary"):
+        probe = tempfile.mkdtemp()
+        for form, make in unreadable_forms(probe, name):
+            root = tempfile.mkdtemp()
+            for other, text in base.items():
+                if other != name:
+                    with open(os.path.join(root, other), "w") as f:
+                        f.write(text)
+            dict(unreadable_forms(root, name))[form]()
+            cfg = {"admin_config": root, "agent": "karl", "admin_bin": "/opt/weaver/bin/weaver-admin"}
+            path, why = g._resolve_spu(cfg)
+            if name == "spu-binary":
+                # agent-spu names karl, so spu-binary is not consulted for him.
+                cfg["agent"] = "ada"
+                path, why = g._resolve_spu(cfg)
+            assert path is None, (name, form, path, why)
+            assert name in why, (name, form, why)
+
+
+def test_the_spu_behind_an_unsearchable_directory_does_not_read_as_missing():
+    """`os.path.exists` answers False for a path under a directory this process
+    may not search. The check reads the difference, against a real 0o000
+    directory."""
+    if os.geteuid() == 0:
+        print("skip: root searches every directory")
+        return
+    root = tempfile.mkdtemp()
+    walled = os.path.join(root, "walled")
+    os.mkdir(walled)
+    spu = os.path.join(walled, "weaver-spu")
+    open(spu, "w").close()
+    os.chmod(walled, 0o000)
+    try:
+        answer = g.engine_libraries({"admin_config": root}, spu=(spu, "test"))
+    finally:
+        os.chmod(walled, 0o700)
+    assert "does not stat" in answer["unreadable"], answer
+    gone = g.engine_libraries({"admin_config": root}, spu=(os.path.join(root, "gone"), "test"))
+    assert gone["unreadable"].startswith("no SPU binary at"), gone
 
 
 if __name__ == "__main__":

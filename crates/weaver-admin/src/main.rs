@@ -1155,24 +1155,41 @@ fn load_service_config() -> Result<ServiceConfig, String> {
 /// The service configuration read from its directory, so a test can hand one
 /// in without the process environment.
 fn load_service_config_from(root: &std::path::Path) -> Result<ServiceConfig, String> {
+    // A required value refuses where it is absent and where it does not read,
+    // and the message says which, a file that stands and fails not being one
+    // the operator never placed.
     let read = |name: &str| -> Result<String, String> {
         std::fs::read_to_string(root.join(name))
             .map(|s| s.trim().to_string())
-            .map_err(|_| format!("the service configuration has no {name}"))
+            .map_err(|e| match std::fs::symlink_metadata(root.join(name)) {
+                Err(absent) if absent.kind() == std::io::ErrorKind::NotFound => {
+                    format!("the service configuration has no {name}")
+                }
+                _ => format!("the service configuration's {name} does not read: {e}"),
+            })
     };
     // **An optional value is absent only where nothing stands at its path.** Any
     // other failure - a directory, bytes that are not UTF-8, a read the kernel
     // refuses - is the operator's file failing to read, and it fails the
     // invocation before any verb rather than reading as absent and standing a
     // default the operator did not choose, per Spec section 9.
+    // **Presence is `symlink_metadata`'s answer**: nothing at the path is
+    // absence, and anything there, a dangling link included, is read and fails
+    // if it does not read, a link's missing target answering `NotFound` to the
+    // read itself.
     let optional = |name: &str| -> Result<Option<String>, String> {
-        match std::fs::read_to_string(root.join(name)) {
-            Ok(s) => Ok(Some(s.trim().to_string())),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(format!(
-                "the service configuration's {name} does not read: {e}"
-            )),
+        match std::fs::symlink_metadata(root.join(name)) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => {
+                return Err(format!(
+                    "the service configuration's {name} does not read: {e}"
+                ));
+            }
+            Ok(_) => {}
         }
+        std::fs::read_to_string(root.join(name))
+            .map(|s| Some(s.trim().to_string()))
+            .map_err(|e| format!("the service configuration's {name} does not read: {e}"))
     };
     let allow = read("allow-list")?;
     // An interior blank line would otherwise provision an agent named the
@@ -1529,9 +1546,10 @@ mod tests {
 
     /// **An optional value is absent only where nothing stands at its path**,
     /// per Spec section 9: at each optional path a directory and bytes that are
-    /// not UTF-8 fail the read, naming the value, and an absent file leaves the
-    /// read standing. Perturbation: read every error as absent, as the first form
-    /// of this loader did, and each failing case is accepted.
+    /// not UTF-8 and a dangling link fail the read, naming the value, and an
+    /// absent file leaves the read standing. Perturbations: read every error as
+    /// absent, as the first form of this loader did, or decide presence by
+    /// following the link, as the second did, and the failing cases are accepted.
     #[test]
     fn an_optional_value_that_does_not_read_fails_the_read() {
         let root =
@@ -1569,6 +1587,13 @@ mod tests {
             std::fs::write(root.join(name), [0xff, 0xfe, 0x00]).unwrap();
             let failure = load_service_config_from(&root).err().unwrap_or_default();
             assert!(failure.contains(name), "{name} not UTF-8: {failure:?}");
+            fresh();
+            std::os::unix::fs::symlink(root.join("gone"), root.join(name)).unwrap();
+            let failure = load_service_config_from(&root).err().unwrap_or_default();
+            assert!(
+                failure.contains(name),
+                "{name} a dangling link: {failure:?}"
+            );
         }
         let _ = std::fs::remove_dir_all(&root);
     }

@@ -1755,10 +1755,13 @@ configuration's failure having no lifecycle case to be.
 
 **An optional value is absent only where nothing stands at its path.** Every optional
 value of this section, the two above, `unit-properties`, `headroom-bytes` and
-`state-store-socket`, reads as absent only where the file is not found. A directory,
-bytes that are not UTF-8, or a read the kernel refuses is the operator's file failing to
-read, and fails the invocation before any verb rather than standing a default the
-operator did not choose.
+`state-store-socket`, reads as absent only where the path itself names nothing, which is
+asked of the link and never of its target. A dangling link, a directory, bytes that are
+not UTF-8, or a read the kernel refuses is the operator's file failing to read, and
+fails the invocation before any verb rather than standing a default the operator did not
+choose. A required value fails either way, and its message says whether it was absent or
+did not read. Every reader of these files outside this crate holds the same line, the
+determinism matrix's among them.
 
 **What the SPU binary is, this crate does not judge.** It passes the agent's path on
 section 6's vector as it passed the installation's, and the worker forks it at enter as
