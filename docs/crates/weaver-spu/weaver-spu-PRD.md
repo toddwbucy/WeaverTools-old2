@@ -12,7 +12,7 @@ later releasing it.
 **Parent:** `weaver-agents-PRD`
 **Companion contract:** `weaver-harness-spu-contract`, drafted with this document
 **Editorial:** Per the Working Rules.
-**Landing PR:** #727
+**Landing PR:** #734
 
 ---
 

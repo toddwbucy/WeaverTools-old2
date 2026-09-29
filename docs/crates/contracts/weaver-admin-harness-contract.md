@@ -8,7 +8,7 @@ human's ruling of 2026-07-31.
 **Document ID:** `weaver-admin-harness-contract`
 **Parent:** `weaver-agents-PRD`, invariant 5.3
 **Editorial:** Per the Working Rules.
-**Landing PR:** #647
+**Landing PR:** #734
 
 ---
 
