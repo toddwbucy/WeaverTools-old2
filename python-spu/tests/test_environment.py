@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 import build_zipapp  # noqa: E402
 import declare_imports  # noqa: E402
+import installed_set  # noqa: E402
 import tree_digest  # noqa: E402
 from python_spu import import_set, loaded_code  # noqa: E402
 from python_spu.client import reap  # noqa: E402
@@ -449,3 +450,58 @@ def test_the_environment_carries_no_triton_and_torch_compiles_nothing():
     for lock in ("requirements.lock", "requirements-test.lock"):
         assert not re.search(r"^triton==", (ROOT / lock).read_text(), re.M), lock
     assert python_spu and os.environ["TORCH_DISABLE_NATIVE_JIT"] == "1"
+
+
+def test_the_locked_environment_holds_the_test_lock_and_nothing_more():
+    """The guard the install runs after pip, run as the install runs it, isolated, on
+    the environment the suite runs in: every distribution is the test lock's pin, at
+    its version, beside the interpreter's own pip."""
+    done = subprocess.run([sys.executable, "-I", "-B",
+                           str(ROOT / "scripts" / "installed_set.py"),
+                           str(ROOT / "requirements-test.lock")],
+                          capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr
+
+
+def distribution(root, name, version):
+    info = root / f"{name}-{version}.dist-info"
+    info.mkdir(parents=True)
+    (info / "METADATA").write_text(f"Metadata-Version: 2.1\nName: {name}\n"
+                                   f"Version: {version}\n")
+
+
+def test_the_installed_set_refuses_what_the_lock_does_not_pin(tmp_path):
+    """pip install adds what a lock lists and removes nothing, so a prefix installed
+    from an earlier lock keeps what the new one dropped, as triton was kept. A
+    distribution the lock does not pin, one it pins that is absent, one at another
+    version and one found twice are each refused by name, and so is a lock line that
+    is not a pin. Perturbations: drop the not-in-the-lock branch, the missing clause,
+    the version comparison or the twice clause, or skip a line that is not a pin, and
+    this fails."""
+    locked = installed_set.pins((ROOT / "requirements-test.lock").read_text())
+    assert installed_set.differences(locked) == []
+    distribution(tmp_path / "extra", "triton", "3.8.0")
+    assert installed_set.differences(locked, [*sys.path, str(tmp_path / "extra")]) == [
+        "not in the lock: triton==3.8.0"]
+    assert installed_set.differences({**locked, "absent": "1.0"}) == [
+        "missing: absent==1.0"]
+    assert installed_set.differences({**locked, "blake3": "0.0.1"}) == [
+        f"another version: blake3=={locked['blake3']}, the lock pins 0.0.1"]
+    distribution(tmp_path / "twice", "blake3", locked["blake3"])
+    assert installed_set.differences(locked, [*sys.path, str(tmp_path / "twice")]) == [
+        f"found twice: blake3 {locked['blake3']}, {locked['blake3']}"]
+    with pytest.raises(ValueError, match="line 2"):
+        installed_set.pins("blake3==1.0 \\\n-e ./somewhere\n")
+    with pytest.raises(ValueError, match="pins nothing"):
+        installed_set.pins("# a comment\n")
+    lock = tmp_path / "short.lock"
+    lock.write_text((ROOT / "requirements-test.lock").read_text() + "absent==1.0\n")
+    done = subprocess.run([sys.executable, "-I", "-B",
+                           str(ROOT / "scripts" / "installed_set.py"), str(lock)],
+                          capture_output=True, text=True, timeout=120)
+    assert (done.returncode, done.stderr) == (1, "installed_set: missing: absent==1.0\n")
+    done = subprocess.run([sys.executable, "-I", "-B",
+                           str(ROOT / "scripts" / "installed_set.py"),
+                           str(tmp_path / "no.lock")],
+                          capture_output=True, text=True, timeout=120)
+    assert done.returncode == 2, done.stderr

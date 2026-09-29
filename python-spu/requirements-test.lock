@@ -8,7 +8,10 @@
 # first forward on a device. Eager CUDA serves without it, per python-spu-Spec
 # section 8. Install with
 #   pip install --require-hashes --no-deps --only-binary=:all: -r requirements-test.lock
-# into a venv of the pinned interpreter:
+# into a fresh venv of the pinned interpreter, since pip removes nothing a newer lock
+# drops, then hold it to this lock with
+#   <venv>/bin/python -I -B scripts/installed_set.py requirements-test.lock
+# The interpreter is
 #   python-build-standalone 20260924, CPython 3.14.7, x86_64-unknown-linux-gnu, install_only
 #   https://github.com/astral-sh/python-build-standalone/releases/download/20260924/cpython-3.14.7+20260924-x86_64-unknown-linux-gnu-install_only.tar.gz
 #   sha256 5539eaf1de20bd9b5f43ea11c3c1f84cbac74fe927ac050318a9210c022618cb
