@@ -47,16 +47,18 @@ branch position, the reason (a retry, an interrupt's resumption, a diagnostic en
 the world's disposition, one of section 2's three (reset to N, divergence measured with
 what was found, or a changed world declared), and what the record holds of the
 deployment tuple the branch stands on: the `load` payload's `stack` digests and
-declaration digest, per `weaver-trace-Spec` section 3, and the parent run's
-`weights_hash` named as an expectation, since the branch event precedes any measurement
-of its own. The tuple beyond that, the device, the kernel stack, the batch and the
-sampler, is the deposit's box facts, as the result notes record it. **The weights check
-is a reader's.** It compares the branch's first `model.measurement`, which the harness
-splices opaque per `weaver-trace-Spec` section 3, against the expectation the branch
-event carries, and reports a divergence, since the SPU holds no expectation to compare
-against. Every later reader can walk from any run to the position it grew from, which is
-the lineage the analysis-web contract's branch position already expects a record to
-state.
+declaration digest, per `weaver-trace-Spec` section 3, and a `weights_hash` named as an
+expectation, since the branch event precedes any measurement of its own. The expectation
+is the nearest ancestor's `weights_hash` along the lineage. Where no ancestor has one, a
+parent quiesced before its first turn, the branch event carries none and says so, and
+the branch's first measurement is the lineage's first, with nothing to compare against.
+The tuple beyond that, the device, the kernel stack, the batch and the sampler, is the
+deposit's box facts, as the result notes record it. **The weights check is a reader's.**
+It compares the branch's first `model.measurement`, which the harness splices opaque per
+`weaver-trace-Spec` section 3, against the expectation the branch event carries, and
+reports a divergence, since the SPU holds no expectation to compare against. Every later
+reader can walk from any run to the position it grew from, which is the lineage the
+analysis-web contract's branch position already expects a record to state.
 
 **That departs from a standing ruling, and the departure is the operator's to make.**
 Under `weaver-state-PRD` section 4 today, a cut lands as a branch under a new session
