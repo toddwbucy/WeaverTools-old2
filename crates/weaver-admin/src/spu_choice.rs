@@ -345,6 +345,21 @@ mod tests {
                 "shares its file name",
             ),
             (None, None, "/opt/other/worker", "shares its file name"),
+            // `split_whitespace` is Rust's `char::is_whitespace`, which \x1c is
+            // not, and `file_name` reads past a trailing separator: the matrix
+            // mirrors both, so both are pinned here as there.
+            (
+                Some("python\u{1c}/opt/p/a.pyz"),
+                None,
+                DEFAULT,
+                "expected two fields",
+            ),
+            (
+                Some("python /opt/p/worker/"),
+                None,
+                DEFAULT,
+                "shares its file name",
+            ),
         ];
         for (implementations, agents, default_spu, message) in cases {
             let failure = read_with(*implementations, *agents, default_spu)

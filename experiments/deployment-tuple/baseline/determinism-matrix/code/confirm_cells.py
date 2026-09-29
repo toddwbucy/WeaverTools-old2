@@ -741,8 +741,8 @@ def spu_binary(cfg):
     deploy material uses `/usr/local/libexec/weaver/`, so the two are not
     reliably co-located. The admin configuration is the one source, the
     config's own `spu_bin` override being refused (#716, the pass on
-    90b9a8a), and the sibling guess is the last resort, which preflight
-    refuses too.
+    90b9a8a), and the sibling guess stands only where the config names no
+    admin configuration at all, which preflight refuses too.
     """
     return _resolve_spu(cfg)[0]
 
@@ -750,11 +750,13 @@ def spu_binary(cfg):
 def _resolve_spu(cfg):
     """The SPU path and how it was arrived at.
 
-    **The source travels because the last resort is a guess.** With the admin
-    config unreadable the other two binaries record `unreadable` naming the
-    config, while this one falls back beside `admin_bin` - and a stale binary
+    **The source travels because the last resort is a guess.** With no admin
+    configuration named, the other two binaries record `unreadable` naming its
+    absence, while this one falls back beside `admin_bin` - and a stale binary
     from an older deploy sitting there would be hashed confidently under the
-    field whose whole purpose is to say whether two boxes run one build.
+    field whose whole purpose is to say whether two boxes run one build. With
+    one named, nothing falls back: `spu-binary` is required there as admin
+    requires it.
     """
     # **Skipped rather than joined against nothing.** `os.path.join("", name)`
     # is a bare relative name read against the launch directory, so a file
@@ -773,18 +775,21 @@ def _resolve_spu(cfg):
             return chosen
         stated = os.path.join(directory, "spu-binary")
         text, why = _read_admin(directory, "spu-binary")
-        # **Only absence falls through to the guess.** A file that stands and
-        # does not read is an unreadable resolution the exit gates, never the
-        # guess beside `admin_bin` standing in for what admin launches.
+        # **Nothing falls through to the guess once the directory is named.**
+        # `spu-binary` is required, so its absence is admin refusing every
+        # verb, and a file that stands and does not read, or names no path, is
+        # an unreadable resolution the exit gates, never the guess beside
+        # `admin_bin` standing in for what admin launches.
         if why is not None:
             return None, why
-        named = (text or "").strip()
+        named = _trim(text)
+        if not named:
+            return None, f"{stated} names no path"
         # A relative path is refused rather than resolved here, the stack
         # resolving it against another directory (#716 round ten).
-        if named and not os.path.isabs(named):
+        if not os.path.isabs(named):
             return None, f"{stated} names a relative path {named!r}"
-        if named:
-            return named, "admin config spu-binary"
+        return named, "admin config spu-binary"
     admin_bin = cfg.get("admin_bin")
     if not admin_bin:
         # `.get`, as `toolchain` uses beside it: a config omitting this raised
@@ -797,10 +802,23 @@ def _resolve_spu(cfg):
     )
 
 
+# **Admin's class of every file this module reads**, as `load_service_config_from`
+# in `crates/weaver-admin/src/main.rs` classes it: required ones through its
+# `read`, whose absence refuses every verb, and optional ones through its
+# `optional`, whose absence stands a default. A name in neither is refused by
+# `_read_admin`, so a new reader classes its file before it can read it.
+_ADMIN_REQUIRED = ("allow-list", "worker-binary", "spu-binary", "gate-binary")
+_ADMIN_OPTIONAL = ("spu-implementations", "agent-spu")
+
+
 def _read_admin(directory, name):
     """A value of admin's configuration, as `(text, None)`, `(None, None)` where
-    nothing stands at its path, or `(None, why)` where something stands and does
-    not read, per weaver-admin-Spec section 9.
+    an optional file is absent, or `(None, why)` where something stands and does
+    not read or a required file is absent, per weaver-admin-Spec section 9.
+
+    **A required file's absence is a failure, never an absence**, admin's loader
+    refusing every verb without it: reading it as absent passed a preflight on a
+    configuration admin launches nothing on (#734, the pass on 9d1853a).
 
     **Presence is `lstat`'s answer and nothing else's.** Only nothing at the path
     is absence: a dangling link, a directory, a file this process may not read,
@@ -808,10 +826,14 @@ def _read_admin(directory, name):
     absent would stand a default admin does not launch. `os.path.exists` is not
     used, Python 3.14 answering False for a path it may not look at.
     """
+    if name not in _ADMIN_REQUIRED + _ADMIN_OPTIONAL:
+        raise ValueError(f"{name} is not classed as admin's loader classes it")
     path = os.path.join(directory, name)
     try:
         os.lstat(path)
     except FileNotFoundError:
+        if name in _ADMIN_REQUIRED:
+            return None, f"{path}: absent, and admin requires it"
         return None, None
     except OSError as e:
         return None, f"{path}: {_why(e)}"
@@ -823,6 +845,27 @@ def _read_admin(directory, name):
 
 
 _KEY = re.compile(r"[a-z0-9-]+")
+
+# Rust's `char::is_whitespace`, which `trim`, `split_whitespace` and admin's
+# every read use. Python's `str.strip` and `str.split` also take \x1c-\x1f,
+# which Rust does not, so they are not used where admin's reading is mirrored.
+_WS = "\t\n\x0b\x0c\r \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000"
+_WHITESPACE = re.compile(f"[{_WS}]+")
+_EDGES = re.compile(f"^[{_WS}]+|[{_WS}]+$")
+
+
+def _trim(text):
+    """`str::trim`."""
+    return _EDGES.sub("", text)
+
+
+def _lines(text):
+    """Admin's `lines` in `spu_choice.rs` and its allow-list reading: `str::lines`,
+    each trimmed, blank ones dropped, numbered from one."""
+    for number, line in enumerate(text.split("\n"), 1):
+        line = _trim(line)
+        if line:
+            yield number, line
 
 
 def _judge_spu_map(directory):
@@ -839,27 +882,34 @@ def _judge_spu_map(directory):
     twice, and no file name shared by two binaries the stack records, the worker,
     the state member and the gate pairwise and each SPU against those three.
     """
-    def lines_of(name):
+    # **Admin's order**: the four required files first, each refusing where it
+    # is absent, then the two optional maps read, then every line of
+    # `spu-implementations` judged before any of `agent-spu`, so the failure
+    # named here is the one admin names.
+    required = {}
+    for name in _ADMIN_REQUIRED:
         text, why = _read_admin(directory, name)
         if why is not None:
-            return None, why
-        if text is None:
-            return [], None
-        rows = []
-        for number, line in enumerate(text.splitlines(), 1):
-            if not line.strip():
-                continue
-            fields = line.split()
-            if len(fields) != 2:
-                return None, f"{name} line {number}: expected two fields"
-            rows.append((number, fields[0], fields[1]))
-        return rows, None
+            return None, None, why
+        required[name] = _trim(text)
+    texts = {}
+    for name in _ADMIN_OPTIONAL:
+        text, why = _read_admin(directory, name)
+        if why is not None:
+            return None, None, why
+        texts[name] = _trim(text or "")
 
-    implementations, why = lines_of("spu-implementations")
-    if why:
-        return None, None, why
+    def rows_of(name):
+        for number, line in _lines(texts[name]):
+            fields = _WHITESPACE.split(line)
+            yield number, fields if len(fields) == 2 else None, (
+                f"{name} line {number}: expected two fields")
+
     chosen = {}
-    for number, key, path in implementations:
+    for number, fields, malformed in rows_of("spu-implementations"):
+        if fields is None:
+            return None, None, malformed
+        key, path = fields
         if not _KEY.fullmatch(key):
             return None, None, f"spu-implementations line {number}: the key {key!r} is not lowercase letters, digits and hyphens"
         if not os.path.isabs(path):
@@ -867,44 +917,41 @@ def _judge_spu_map(directory):
         if key in chosen:
             return None, None, f"spu-implementations line {number}: the key {key!r} is named twice"
         chosen[key] = path
-    agents_rows, why = lines_of("agent-spu")
-    if why:
-        return None, None, why
+    allowed = {line for _, line in _lines(required["allow-list"])}
     agents = {}
-    if agents_rows:
-        allow, why = _read_admin(directory, "allow-list")
-        if why is not None or allow is None:
-            return None, None, why or "agent-spu cannot be judged without the allow-list"
-        allowed = {line.strip() for line in allow.splitlines() if line.strip()}
-        for number, agent, key in agents_rows:
-            if agent not in allowed:
-                return None, None, f"agent-spu line {number}: the agent {agent!r} is not on the allow-list"
-            if key not in chosen:
-                return None, None, f"agent-spu line {number}: the key {key!r} is not in spu-implementations"
-            if agent in agents:
-                return None, None, f"agent-spu line {number}: the agent {agent!r} is named twice"
-            agents[agent] = key
-    fixed = []
-    for label, name in (("the worker", "worker-binary"), ("the gate", "gate-binary")):
-        text, why = _read_admin(directory, name)
-        if why is not None:
-            return None, None, why
-        if text and text.strip():
-            fixed.append((label, os.path.basename(text.strip())))
-    fixed.insert(1, ("the state member", "weaver-state"))
+    for number, fields, malformed in rows_of("agent-spu"):
+        if fields is None:
+            return None, None, malformed
+        agent, key = fields
+        if agent not in allowed:
+            return None, None, f"agent-spu line {number}: the agent {agent!r} is not on the allow-list"
+        if key not in chosen:
+            return None, None, f"agent-spu line {number}: the key {key!r} is not in spu-implementations"
+        if agent in agents:
+            return None, None, f"agent-spu line {number}: the agent {agent!r} is named twice"
+        agents[agent] = key
+    fixed = [("the worker", _file_name(required["worker-binary"])),
+             ("the state member", "weaver-state"),
+             ("the gate", _file_name(required["gate-binary"]))]
     for i, (one, name) in enumerate(fixed):
         for other, other_name in fixed[i + 1:]:
             if name == other_name:
                 return None, None, f"{one} and {other} share the file name {name!r}"
-    default, why = _read_admin(directory, "spu-binary")
-    if why is not None:
-        return None, None, why
-    spus = ([default.strip()] if default and default.strip() else []) + list(chosen.values())
-    for spu in spus:
-        clash = [one for one, name in fixed if name == os.path.basename(spu)]
+    for spu in [required["spu-binary"]] + list(chosen.values()):
+        clash = [one for one, name in fixed if name == _file_name(spu)]
         if clash:
             return None, None, f"the SPU binary {spu} shares its file name with {clash[0]}"
     return agents, chosen, None
+
+
+def _file_name(path):
+    """A path's file name as Rust's `Path::file_name` answers it, the empty
+    string where that answers None: the last component after separators
+    repeated or trailing and `.` components are dropped, and none where it is
+    `..` or the root. `os.path.basename` answers "" for a trailing separator,
+    where admin keys the stack by the name before it."""
+    parts = [p for p in path.split("/") if p not in ("", ".")]
+    return parts[-1] if parts and parts[-1] != ".." else ""
 
 
 def _agent_spu(directory, agent):
@@ -1104,8 +1151,8 @@ def weaver_binaries(cfg, spu=None):
     out = {}
     for key in ("worker-binary", "spu-binary", "gate-binary"):
         # **The SPU goes through its own resolver**, which reads the admin
-        # configuration and falls back beside `admin_bin`, a guess preflight
-        # refuses.
+        # configuration and falls back beside `admin_bin` only where none is
+        # named, a guess preflight refuses.
         # Reading it straight from the config here would let one report hash
         # a real SPU under `engine_libraries` while recording `unreadable`
         # for the same binary under this key - two fields disagreeing about
@@ -1133,7 +1180,7 @@ def weaver_binaries(cfg, spu=None):
                 out[key] = {"path": None, "sha256": None,
                             "unreadable": why or f"{stated}: absent"}
                 continue
-            path = text.strip()
+            path = _trim(text)
             # An empty config file is an unset value, not a binary at the
             # empty path, and `_sha256("")` would report it as a missing file.
             if not path:

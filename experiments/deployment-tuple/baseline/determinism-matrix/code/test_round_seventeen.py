@@ -43,8 +43,11 @@ def test_the_resolver_reads_the_admin_configuration_alone():
     # Perturbation: put the override back into _resolve_spu, and the
     # config's own path is hashed in place of the admin's.
     with tempfile.TemporaryDirectory() as tmp:
-        with open(os.path.join(tmp, "spu-binary"), "w") as fh:
-            fh.write("/opt/weaver/bin/weaver-spu")
+        for key, value in (("spu-binary", "/opt/weaver/bin/weaver-spu"), ("allow-list", "karl"),
+                           ("worker-binary", "/opt/weaver/bin/worker"),
+                           ("gate-binary", "/opt/weaver/bin/weaver-gate")):
+            with open(os.path.join(tmp, key), "w") as fh:
+                fh.write(value)
         cfg = dict(CFG, admin_config=tmp, spu_bin="/elsewhere/weaver-spu")
         assert base._resolve_spu(cfg) == ("/opt/weaver/bin/weaver-spu", "admin config spu-binary")
     assert "spu_bin" not in base.OPTIONAL_KEYS and "spu_bin" not in base.STACK_PATH_KEYS

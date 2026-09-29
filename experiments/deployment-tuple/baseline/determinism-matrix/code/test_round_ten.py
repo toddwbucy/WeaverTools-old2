@@ -166,7 +166,8 @@ def test_the_admin_configuration_names_absolute_binaries():
     with tempfile.TemporaryDirectory() as tmp:
         conf = os.path.join(tmp, "admin")
         os.makedirs(conf)
-        for key, value in (("worker-binary", "worker"), ("gate-binary", MODEL), ("spu-binary", "spu")):
+        for key, value in (("worker-binary", "worker"), ("gate-binary", MODEL), ("spu-binary", "spu"),
+                           ("allow-list", "karl")):
             with open(os.path.join(conf, key), "w") as fh:
                 fh.write(value)
         cfg = dict(CFG, admin_config=conf)

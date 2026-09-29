@@ -4,9 +4,12 @@ Perturbations, each failing a watch here: skip `_agent_spu` and read `spu-binary
 alone, and the named agent reads the default; return the map's choice for every
 agent, and the unnamed agent reads the key; drop the relative-path check, and the
 relative path is taken; judge spu-implementations only where agent-spu names
-the run's agent, and a map admin refuses takes the default; read every OSError in `_read_admin` as absence, and an
-unreadable map reads as the default; decide presence with `os.path.exists`, and the
-SPU behind a directory this process may not search reads as missing.
+the run's agent, and a map admin refuses takes the default; read every OSError in
+`_read_admin` as absence, and an unreadable map reads as the default; decide
+presence with `os.path.exists`, and the SPU behind a directory this process may not
+search reads as missing; read a required file's absence as absence, and an absent
+spu-binary or allow-list passes under a map; split lines with Python's `str.split`,
+and a field joined by \x1c reads as two.
 """
 import os
 import tempfile
@@ -14,12 +17,21 @@ import tempfile
 import confirm_cells as g
 
 
+# The four files admin's loader requires, each naming what a box would. A test
+# omits one by naming it with None.
+REQUIRED = {"allow-list": "karl\nada\n", "worker-binary": "/opt/weaver/bin/worker\n",
+            "spu-binary": "/opt/weaver/bin/weaver-spu\n",
+            "gate-binary": "/opt/weaver/bin/weaver-gate\n"}
+
+
 def resolve(files, agent="karl"):
     root = tempfile.mkdtemp()
-    for name, text in files.items():
-        with open(os.path.join(root, name), "w") as f:
-            f.write(text)
-    return g._resolve_spu({"admin_config": root, "agent": agent})
+    for name, text in {**REQUIRED, **files}.items():
+        if text is not None:
+            with open(os.path.join(root, name), "w") as f:
+                f.write(text)
+    return g._resolve_spu({"admin_config": root, "agent": agent,
+                           "admin_bin": "/opt/weaver/bin/weaver-admin"})
 
 
 def test_without_the_map_the_default_stands():
@@ -28,8 +40,7 @@ def test_without_the_map_the_default_stands():
 
 
 def test_a_named_agent_reads_its_key():
-    files = {"spu-binary": "/opt/weaver/bin/weaver-spu\n", "allow-list": "karl\nada\n",
-             "spu-implementations": "python /opt/weaver/python-spu/python-spu.pyz\n",
+    files = {"spu-implementations": "python /opt/weaver/python-spu/python-spu.pyz\n",
              "agent-spu": "karl python\n"}
     assert resolve(files) == ("/opt/weaver/python-spu/python-spu.pyz",
                               "admin config agent-spu key python")
@@ -38,7 +49,7 @@ def test_a_named_agent_reads_its_key():
 
 
 def test_a_map_it_cannot_follow_is_reported():
-    base = {"spu-binary": "/opt/weaver/bin/weaver-spu\n", "allow-list": "karl\n"}
+    base = {"allow-list": "karl\n"}
     cases = [
         ({"agent-spu": "karl rust\n", "spu-implementations": "python /p/python-spu.pyz\n"},
          "not in spu-implementations"),
@@ -67,13 +78,13 @@ def unreadable_forms(root, name):
 
 
 def test_an_unreadable_value_is_unreadable_never_the_default():
-    """At each of the three paths, anything that stands and does not read is an
-    unreadable resolution, never the default and never the guess beside admin_bin.
-    Only absence falls back."""
-    base = {"spu-binary": "/opt/weaver/bin/weaver-spu\n", "allow-list": "karl\nada\n",
+    """At each of the six paths, anything that stands and does not read is an
+    unreadable resolution, never the default and never the guess beside admin_bin,
+    for the agent the map names as for the one it does not."""
+    base = {**REQUIRED,
             "spu-implementations": "python /opt/weaver/python-spu/python-spu.pyz\n",
             "agent-spu": "karl python\n"}
-    for name in ("agent-spu", "spu-implementations", "spu-binary"):
+    for name in base:
         probe = tempfile.mkdtemp()
         for form, make in unreadable_forms(probe, name):
             root = tempfile.mkdtemp()
@@ -82,14 +93,62 @@ def test_an_unreadable_value_is_unreadable_never_the_default():
                     with open(os.path.join(root, other), "w") as f:
                         f.write(text)
             dict(unreadable_forms(root, name))[form]()
-            cfg = {"admin_config": root, "agent": "karl", "admin_bin": "/opt/weaver/bin/weaver-admin"}
-            path, why = g._resolve_spu(cfg)
-            if name == "spu-binary":
-                # agent-spu names karl, so spu-binary is not consulted for him.
-                cfg["agent"] = "ada"
+            for agent in ("karl", "ada"):
+                cfg = {"admin_config": root, "agent": agent,
+                       "admin_bin": "/opt/weaver/bin/weaver-admin"}
                 path, why = g._resolve_spu(cfg)
-            assert path is None, (name, form, path, why)
-            assert name in why, (name, form, why)
+                assert path is None, (name, form, agent, path, why)
+                assert name in why, (name, form, agent, why)
+
+
+def test_a_required_file_absent_is_unreadable_under_any_map():
+    """Admin's loader reads allow-list, worker-binary, spu-binary and gate-binary
+    as required, refusing every verb where one is absent, so each one's absence is
+    an unreadable resolution: under a map choosing an alternate for the run's
+    agent, under a map naming another, and with no map at all. Never the map's
+    choice, never the default, never the guess beside admin_bin."""
+    maps = [
+        {"spu-implementations": "python /opt/weaver/python-spu/python-spu.pyz\n",
+         "agent-spu": "karl python\n"},
+        {"spu-implementations": "python /opt/weaver/python-spu/python-spu.pyz\n",
+         "agent-spu": "ada python\n"},
+        {},
+    ]
+    for name in g._ADMIN_REQUIRED:
+        for chosen in maps:
+            path, why = resolve({**chosen, name: None})
+            assert path is None, (name, chosen, path, why)
+            assert name in why and "absent, and admin requires it" in why, (name, chosen, why)
+
+
+def test_the_planners_two_cases():
+    """An absent spu-binary with a map selecting an alternate, and an absent
+    allow-list with a map present: both unreadable."""
+    path, why = resolve({"spu-binary": None,
+                         "spu-implementations": "python /opt/weaver/python-spu/python-spu.pyz\n",
+                         "agent-spu": "karl python\n"})
+    assert path is None and "spu-binary" in why, (path, why)
+    path, why = resolve({"allow-list": None,
+                         "spu-implementations": "python /opt/weaver/python-spu/python-spu.pyz\n"})
+    assert path is None and "allow-list" in why, (path, why)
+
+
+def test_a_spu_binary_naming_no_path_is_unreadable_never_the_guess():
+    """Admin launches the empty path where spu-binary names none, which is no SPU,
+    so the guess beside admin_bin does not stand in for it."""
+    for text in ("", "\n", "  \n"):
+        path, why = resolve({"spu-binary": text}, agent="ada")
+        assert path is None and "names no path" in why, (text, path, why)
+
+
+def test_a_file_admin_does_not_class_is_refused():
+    """Every name `_read_admin` reads is classed as admin's loader classes it, so a
+    new reader cannot read a file without saying which it is."""
+    try:
+        g._read_admin(tempfile.mkdtemp(), "coordination-root")
+    except ValueError:
+        return
+    raise AssertionError("an unclassed admin file was read")
 
 
 def test_the_spu_behind_an_unsearchable_directory_does_not_read_as_missing():
@@ -149,15 +208,14 @@ RULES = [
     ({"spu-binary": "/opt/other/worker"}, "shares its file name"),
     ({"gate-binary": "/opt/other/worker"}, "share the file name"),
     ({"gate-binary": "/opt/other/weaver-state"}, "share the file name"),
+    ({"spu-implementations": "python\x1c/opt/p/a.pyz"}, "expected two fields"),
+    ({"spu-implementations": "python /opt/p/worker/"}, "shares its file name"),
 ]
 
 
 def test_every_rule_of_admins_is_the_matrixs():
     for change, said in RULES:
-        files = {"allow-list": "karl\nada\n", "spu-binary": "/opt/weaver/bin/weaver-spu\n",
-                 "worker-binary": "/opt/weaver/bin/worker\n",
-                 "gate-binary": "/opt/weaver/bin/weaver-gate\n", **change}
-        path, why = resolve(files)
+        path, why = resolve(change)
         assert path is None and said in why, (change, path, why)
 
 
