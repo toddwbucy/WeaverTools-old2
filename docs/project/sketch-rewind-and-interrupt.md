@@ -154,20 +154,21 @@ the list of interrupt identifiers it saw, the empty list being the positive
 uninterrupted marker.
 
 **Resumption takes two forms and the operator elects between them.**
-Resume-with-interview releases the loaded agent from quiescence with its cache
-warm, the interview now part of the run by construction and marked as such.
-Resume-clean is section 1's door with a filter: a reload to the quiescence
-position with the interview turns excluded, a new run whose branch event names
-the interrupt it resumes from. Either way the interview is recorded, since an
-interview that left no mark on the resumed line is still evidence about the
-agent.
+Resume-with-interview releases the loaded agent from quiescence with its cache warm, the
+interview now part of the run by construction and marked as such. Resume-clean is two
+verbs the operator issues in turn, an unload of the quiesced run and then a load of the
+branch, because apex section 6 forbids one verb auto-chaining another, and the load is
+section 1's door with a filter: a reload to the quiescence position with the interview
+turns excluded, a new run whose branch event names the interrupt it resumes from. Either
+way the interview is recorded, since an interview that left no mark on the resumed line
+is still evidence about the agent.
 
-**The lifecycle gains two verbs and one state.** Quiesce and resume join load,
-unload and validate in apex section 6, under its rule that no verb auto-chains
-another, and `Quiesced` joins the agent's states, whose case set
-`weaver-types-Spec` holds as not free. That is the operator's ruling at the apex,
-with `weaver-admin`, `weaver-harness`, `weaver-trace` and `weaver-types`
-following in one act, contracts included.
+**The lifecycle gains two verbs and one state.** Quiesce and resume-with-interview join
+load, unload and validate in apex section 6, resume-clean composing unload and load
+rather than being a verb of its own, under its rule that no verb auto-chains another,
+and `Quiesced` joins the agent's states, whose case set `weaver-types-Spec` holds as not
+free. That is the operator's ruling at the apex, with `weaver-admin`, `weaver-harness`,
+`weaver-trace` and `weaver-types` following in one act, contracts included.
 
 ## 4. The frontend
 
@@ -178,13 +179,19 @@ web contract is the only document it touches.
 
 ## 5. What lands where
 
-- The apex, section 6: the two verbs and the state, the operator's ruling.
-- `weaver-admin-harness-contract`, `weaver-admin-PRD` and Spec: the quiescence
-  and resume exchanges and their refusals.
+- The apex, section 6: the two new verbs, quiesce and resume-with-interview, and the
+  state, with resume-clean composing unload and load, the operator's ruling.
+- `weaver-admin-harness-contract`, `weaver-admin-PRD` and Spec: the quiescence and
+  resume exchanges and their refusals.
 - `weaver-harness-PRD` and Spec: the boundary behaviour, the interview marked by the
   identifier its request carries, and no tool run while quiesced, the two resumptions,
-  the branch as a preload with a position, and the exact re-prefill of section 1, the
-  reconstruction replayed with its recorded flushes and elisions into the open.
+  the branch as a preload with a position.
+- `weaver-harness-Spec`, `weaver-harness-spu-decode-contract` and `weaver-spu-Spec`,
+  every party in one act: the exact re-prefill of section 1, the reconstruction replayed
+  with its recorded flushes and elisions into the open. The decode contract's section 2
+  admits a re-feed of recorded rendered contributions only where the instruction carries
+  a re-feed permission, which admin sets from a diagnostic binding, so a serving harness
+  writes no such ask today.
 - `weaver-trace-Spec` section 3: the quiescence event, the branch event with its world
   disposition, the turn marker, the closing list.
 - `weaver-types-Spec`: the state case.
@@ -195,7 +202,8 @@ this document.**
 
 ## 6. Open cells
 - The exact re-prefill of section 1, which replays the recorded flushes and elisions
-  that the standing restore seats whole, under the apex ruling with the verbs.
+  that the standing restore seats whole: an act reaching the decode contract and
+  `weaver-spu-Spec` beside the harness, under the apex ruling with the verbs.
 - Continuation from a position inside a turn, which the door of section 1 does not
   take: a capability of its own, and the operator's.
 - Whether a branch's parent is named by run identifier and sequence alone, or also by
