@@ -1,9 +1,9 @@
 """Digests an installed tree, per python-spu-Spec section 8.
 
 A lock states what should be installed, and this reads what is. Every entry under
-the root is listed by its path relative to the root, sorted: a regular file by its
-sha256, a symbolic link by the text it points to and never followed, and anything
-else refused. The listing's own sha256 is the tree's digest, so two trees agree on
+the root is listed by its path relative to the root, sorted: a directory by its path,
+so an empty one is a record, a regular file by its sha256, a symbolic link by the text
+it points to and never followed, and anything else refused. The listing's own sha256 is the tree's digest, so two trees agree on
 the digest exactly where they agree on every file and every link.
 
 **A digest is never of nothing.** The root must be a directory by lstat, not a link
@@ -30,12 +30,15 @@ def listing(root):
     lines = []
     for directory, subdirectories, files in os.walk(root, onerror=_raise, followlinks=False):
         subdirectories.sort()
-        for name in sorted(files + [d for d in subdirectories
-                                    if os.path.islink(os.path.join(directory, d))]):
+        for name in sorted(files + subdirectories):
             path = os.path.join(directory, name)
             relative = os.path.relpath(path, root)
             mode = os.lstat(path).st_mode
-            if stat.S_ISLNK(mode):
+            if stat.S_ISDIR(mode):
+                # Every directory is a record, so two trees differing by an empty one
+                # digest differently. os.walk descends into it after this.
+                lines.append(f"dir  {relative}")
+            elif stat.S_ISLNK(mode):
                 lines.append(f"link {os.readlink(path)}  {relative}")
             elif stat.S_ISREG(mode):
                 digest = hashlib.sha256()
@@ -46,7 +49,7 @@ def listing(root):
             else:
                 raise ValueError(f"{relative} is neither a file nor a link")
     if not lines:
-        raise ValueError(f"{root} holds no files or links")
+        raise ValueError(f"{root} holds no entries")
     return sorted(lines, key=lambda line: line.split("  ", 1)[1])
 
 

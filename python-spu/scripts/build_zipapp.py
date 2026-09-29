@@ -3,9 +3,11 @@
 The file is a zip archive of src/python_spu behind a first line naming the pinned
 interpreter by absolute path, so the digest admin takes of it covers every line of
 python-spu's own code and fixes which interpreter runs it. The classifier stays out,
-section 1 scoping the classify role out of this implementation. Entries are sorted and
-dated 1980-01-01 with fixed modes, so one tree always builds one file and the digest
-names the code rather than the moment of the build.
+section 1 scoping the classify role out of this implementation. Entries are sorted,
+dated 1980-01-01 with fixed modes and stored uncompressed, so one tree always builds one
+file and the digest names the code rather than the moment of the build or the zlib of
+the interpreter that built it, deflate's output being the compressor's and not the
+format's.
 
 **A build is never of nothing.** The package must be a directory, every error the walk
 meets is raised rather than skipped, and the files the process cannot start without
@@ -33,7 +35,7 @@ MAIN = "import sys\nfrom python_spu.server import main\nsys.exit(main())\n"
 def entry(name):
     info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
     info.external_attr = 0o644 << 16
-    info.compress_type = zipfile.ZIP_DEFLATED
+    info.compress_type = zipfile.ZIP_STORED
     return info
 
 

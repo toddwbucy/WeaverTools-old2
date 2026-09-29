@@ -95,12 +95,13 @@ bit for bit.
 **It ships as one file.** `scripts/build_zipapp.py` packs `src/python_spu/`, the
 classifier left out, into one zip archive behind a first line naming the pinned
 interpreter by absolute path, and admin's configuration names that file for each agent
-it serves. Its entries are sorted and dated 1980-01-01 with fixed modes, so one tree
-always builds one file and the file's digest names the code rather than the moment of
-the build. A launcher importing a package from elsewhere would leave the package out of
-the hash the harness takes, so two runs of different code could report one provenance.
-The zipapp holds no third-party package: the engine is imported from the environment,
-whose installed tree section 8 digests. The file is built, not committed.
+it serves. Its entries are sorted, dated 1980-01-01 with fixed modes and stored
+uncompressed, so one tree always builds one file and the file's digest names the code
+rather than the moment of the build or the zlib of whichever interpreter built it. A
+launcher importing a package from elsewhere would leave the package out of the hash the
+harness takes, so two runs of different code could report one provenance. The zipapp
+holds no third-party package: the engine is imported from the environment, whose
+installed tree section 8 digests. The file is built, not committed.
 
 **The oracle depends on the workspace crates at a pinned commit and on no copy of
 them.** It is a Rust program outside the workspace, so it is not a member and its
@@ -503,13 +504,14 @@ Rust SPU's binary.
 what is.** The packages install into the interpreter's own prefix, not a venv, and the
 digest is taken over that whole prefix, the interpreter binary and its standard library
 included, by `scripts/tree_digest.py`: every entry's path relative to the prefix,
-sorted, a file by its sha256 and a symbolic link by the text it points to, never
-followed, anything else refused. The prefix holds links of its own, `bin/python3` among
-them, so a link is recorded rather than refused. A digest is never of nothing: a root
-that is not a directory by `lstat`, an error anywhere in the walk, and a tree with no
-entries each exit non-zero, and so does the zipapp's build over a package missing a
-file the process cannot start without. The digest is recorded beside the lock's hash,
-and with the SPU binary's digest it is what section 1 names as what served.
+sorted, a directory by its path, so an empty one is recorded, a file by its sha256 and a
+symbolic link by the text it points to, never followed, anything else refused. The
+prefix holds links of its own, `bin/python3` among them, so a link is recorded rather
+than refused. A digest is never of nothing: a root that is not a directory by `lstat`,
+an error anywhere in the walk, and a tree with no entries each exit non-zero, and so
+does the zipapp's build over a package missing a file the process cannot start without.
+The digest is recorded beside the lock's hash, and with the SPU binary's digest it is
+what section 1 names as what served.
 
 **The core imports the standard library alone, and the engine is the one addition.** The
 channel ends, the wire, the session, the seed and the sampler's arithmetic are standard
