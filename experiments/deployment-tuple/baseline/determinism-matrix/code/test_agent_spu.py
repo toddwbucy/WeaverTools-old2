@@ -3,7 +3,8 @@
 Perturbations, each failing a watch here: skip `_agent_spu` and read `spu-binary`
 alone, and the named agent reads the default; return the map's choice for every
 agent, and the unnamed agent reads the key; drop the relative-path check, and the
-relative path is taken; read every OSError in `_read_admin` as absence, and an
+relative path is taken; judge spu-implementations only where agent-spu names
+the run's agent, and a map admin refuses takes the default; read every OSError in `_read_admin` as absence, and an
 unreadable map reads as the default; decide presence with `os.path.exists`, and the
 SPU behind a directory this process may not search reads as missing.
 """
@@ -27,7 +28,7 @@ def test_without_the_map_the_default_stands():
 
 
 def test_a_named_agent_reads_its_key():
-    files = {"spu-binary": "/opt/weaver/bin/weaver-spu\n",
+    files = {"spu-binary": "/opt/weaver/bin/weaver-spu\n", "allow-list": "karl\nada\n",
              "spu-implementations": "python /opt/weaver/python-spu/python-spu.pyz\n",
              "agent-spu": "karl python\n"}
     assert resolve(files) == ("/opt/weaver/python-spu/python-spu.pyz",
@@ -37,13 +38,13 @@ def test_a_named_agent_reads_its_key():
 
 
 def test_a_map_it_cannot_follow_is_reported():
-    base = {"spu-binary": "/opt/weaver/bin/weaver-spu\n"}
+    base = {"spu-binary": "/opt/weaver/bin/weaver-spu\n", "allow-list": "karl\n"}
     cases = [
         ({"agent-spu": "karl rust\n", "spu-implementations": "python /p/python-spu.pyz\n"},
-         "does not hold"),
+         "not in spu-implementations"),
         ({"agent-spu": "karl python\n", "spu-implementations": "python p/python-spu.pyz\n"},
-         "relative path"),
-        ({"agent-spu": "karl\n"}, "not two fields"),
+         "is not absolute"),
+        ({"agent-spu": "karl\n"}, "expected two fields"),
     ]
     for files, said in cases:
         path, why = resolve({**base, **files})
@@ -69,7 +70,7 @@ def test_an_unreadable_value_is_unreadable_never_the_default():
     """At each of the three paths, anything that stands and does not read is an
     unreadable resolution, never the default and never the guess beside admin_bin.
     Only absence falls back."""
-    base = {"spu-binary": "/opt/weaver/bin/weaver-spu\n",
+    base = {"spu-binary": "/opt/weaver/bin/weaver-spu\n", "allow-list": "karl\nada\n",
             "spu-implementations": "python /opt/weaver/python-spu/python-spu.pyz\n",
             "agent-spu": "karl python\n"}
     for name in ("agent-spu", "spu-implementations", "spu-binary"):
@@ -111,6 +112,53 @@ def test_the_spu_behind_an_unsearchable_directory_does_not_read_as_missing():
     assert "does not stat" in answer["unreadable"], answer
     gone = g.engine_libraries({"admin_config": root}, spu=(os.path.join(root, "gone"), "test"))
     assert gone["unreadable"].startswith("no SPU binary at"), gone
+
+
+def test_a_map_admin_refuses_is_unreadable_whoever_it_names():
+    """Admin judges both maps on every invocation, so a malformed
+    spu-implementations is refused whether agent-spu is absent or names someone
+    else, and the matrix never hashes the default over it. Perturbation: judge
+    spu-implementations only where agent-spu names the run's agent, as the first
+    form did, and both cases take the default."""
+    bad = "python relative/python-spu.pyz\n"
+    for agents in (None, "ada python\n"):
+        files = {"spu-binary": "/opt/weaver/bin/weaver-spu\n", "allow-list": "karl\nada\n",
+                 "spu-implementations": bad}
+        if agents:
+            files["agent-spu"] = agents
+        path, why = resolve(files)
+        assert path is None and "not absolute" in why, (agents, path, why)
+
+
+# Admin's section 9 checks, rule for rule, each case the Rust suite's
+# every_contradiction_fails_naming_itself holds, with the message both say.
+RULES = [
+    ({"spu-implementations": "python"}, "expected two fields"),
+    ({"spu-implementations": "python /a /b"}, "expected two fields"),
+    ({"spu-implementations": "Python /opt/p/python-spu.pyz"}, "is not lowercase"),
+    ({"spu-implementations": "py_thon /opt/p/python-spu.pyz"}, "is not lowercase"),
+    ({"spu-implementations": "python opt/p/python-spu.pyz"}, "is not absolute"),
+    ({"spu-implementations": "python /opt/p/a.pyz\npython /opt/p/b.pyz"}, "is named twice"),
+    ({"spu-implementations": "python /opt/p/a.pyz", "agent-spu": "karl"}, "expected two fields"),
+    ({"spu-implementations": "python /opt/p/a.pyz", "agent-spu": "eve python"}, "not on the allow-list"),
+    ({"spu-implementations": "python /opt/p/a.pyz", "agent-spu": "karl rust"}, "not in spu-implementations"),
+    ({"spu-implementations": "python /opt/p/a.pyz", "agent-spu": "karl python\nkarl python"}, "is named twice"),
+    ({"spu-implementations": "python /opt/p/worker"}, "shares its file name"),
+    ({"spu-implementations": "python /opt/p/weaver-gate"}, "shares its file name"),
+    ({"spu-implementations": "python /opt/p/weaver-state"}, "shares its file name"),
+    ({"spu-binary": "/opt/other/worker"}, "shares its file name"),
+    ({"gate-binary": "/opt/other/worker"}, "share the file name"),
+    ({"gate-binary": "/opt/other/weaver-state"}, "share the file name"),
+]
+
+
+def test_every_rule_of_admins_is_the_matrixs():
+    for change, said in RULES:
+        files = {"allow-list": "karl\nada\n", "spu-binary": "/opt/weaver/bin/weaver-spu\n",
+                 "worker-binary": "/opt/weaver/bin/worker\n",
+                 "gate-binary": "/opt/weaver/bin/weaver-gate\n", **change}
+        path, why = resolve(files)
+        assert path is None and said in why, (change, path, why)
 
 
 if __name__ == "__main__":

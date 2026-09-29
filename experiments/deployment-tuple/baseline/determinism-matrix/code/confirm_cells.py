@@ -822,34 +822,102 @@ def _read_admin(directory, name):
         return None, f"{path}: {_why(e)}"
 
 
-def _agent_spu(directory, agent):
-    """The SPU `agent-spu` chooses for the agent, as `_resolve_spu`'s pair, or
-    None where the map is absent or does not name the agent."""
-    def pairs(name):
+_KEY = re.compile(r"[a-z0-9-]+")
+
+
+def _judge_spu_map(directory):
+    """Admin's section 9 judgment of its SPU map, rule for rule
+    (`crates/weaver-admin/src/spu_choice.rs`), as `(agents, implementations,
+    None)` or `(None, None, why)`.
+
+    **Judged whole on every call, before any default is taken**, as admin judges
+    it before any verb: a map admin would refuse is an unreadable resolution here,
+    whether or not it names the run's agent, since admin launches nothing on it.
+    The rules, each admin's: a line of two fields in either file, a key of
+    lowercase letters, digits and hyphens, an absolute path, no key named twice, an
+    agent on the allow-list, a key `spu-implementations` holds, no agent named
+    twice, and no file name shared by two binaries the stack records, the worker,
+    the state member and the gate pairwise and each SPU against those three.
+    """
+    def lines_of(name):
         text, why = _read_admin(directory, name)
         if why is not None:
-            return why
+            return None, why
         if text is None:
-            return None
-        lines = [line.split() for line in text.splitlines() if line.strip()]
-        if any(len(fields) != 2 for fields in lines):
-            return f"{name} holds a line that is not two fields"
-        return dict(lines)
-    agents = pairs("agent-spu")
-    if agents is None or (isinstance(agents, dict) and agent not in agents):
+            return [], None
+        rows = []
+        for number, line in enumerate(text.splitlines(), 1):
+            if not line.strip():
+                continue
+            fields = line.split()
+            if len(fields) != 2:
+                return None, f"{name} line {number}: expected two fields"
+            rows.append((number, fields[0], fields[1]))
+        return rows, None
+
+    implementations, why = lines_of("spu-implementations")
+    if why:
+        return None, None, why
+    chosen = {}
+    for number, key, path in implementations:
+        if not _KEY.fullmatch(key):
+            return None, None, f"spu-implementations line {number}: the key {key!r} is not lowercase letters, digits and hyphens"
+        if not os.path.isabs(path):
+            return None, None, f"spu-implementations line {number}: the path {path!r} is not absolute"
+        if key in chosen:
+            return None, None, f"spu-implementations line {number}: the key {key!r} is named twice"
+        chosen[key] = path
+    agents_rows, why = lines_of("agent-spu")
+    if why:
+        return None, None, why
+    agents = {}
+    if agents_rows:
+        allow, why = _read_admin(directory, "allow-list")
+        if why is not None or allow is None:
+            return None, None, why or "agent-spu cannot be judged without the allow-list"
+        allowed = {line.strip() for line in allow.splitlines() if line.strip()}
+        for number, agent, key in agents_rows:
+            if agent not in allowed:
+                return None, None, f"agent-spu line {number}: the agent {agent!r} is not on the allow-list"
+            if key not in chosen:
+                return None, None, f"agent-spu line {number}: the key {key!r} is not in spu-implementations"
+            if agent in agents:
+                return None, None, f"agent-spu line {number}: the agent {agent!r} is named twice"
+            agents[agent] = key
+    fixed = []
+    for label, name in (("the worker", "worker-binary"), ("the gate", "gate-binary")):
+        text, why = _read_admin(directory, name)
+        if why is not None:
+            return None, None, why
+        if text and text.strip():
+            fixed.append((label, os.path.basename(text.strip())))
+    fixed.insert(1, ("the state member", "weaver-state"))
+    for i, (one, name) in enumerate(fixed):
+        for other, other_name in fixed[i + 1:]:
+            if name == other_name:
+                return None, None, f"{one} and {other} share the file name {name!r}"
+    default, why = _read_admin(directory, "spu-binary")
+    if why is not None:
+        return None, None, why
+    spus = ([default.strip()] if default and default.strip() else []) + list(chosen.values())
+    for spu in spus:
+        clash = [one for one, name in fixed if name == os.path.basename(spu)]
+        if clash:
+            return None, None, f"the SPU binary {spu} shares its file name with {clash[0]}"
+    return agents, chosen, None
+
+
+def _agent_spu(directory, agent):
+    """The SPU `agent-spu` chooses for the agent, as `_resolve_spu`'s pair, or
+    None where the map does not name the agent, the whole map having been judged
+    first as admin judges it."""
+    agents, chosen, why = _judge_spu_map(directory)
+    if why is not None:
+        return None, why
+    if agent not in agents:
         return None
-    if isinstance(agents, str):
-        return None, agents
     key = agents[agent]
-    implementations = pairs("spu-implementations")
-    if isinstance(implementations, str):
-        return None, implementations
-    if not isinstance(implementations, dict) or key not in implementations:
-        return None, f"agent-spu names the key {key!r}, which spu-implementations does not hold"
-    path = implementations[key]
-    if not os.path.isabs(path):
-        return None, f"spu-implementations names a relative path {path!r} for {key!r}"
-    return path, f"admin config agent-spu key {key}"
+    return chosen[key], f"admin config agent-spu key {key}"
 
 
 def _why(error):
