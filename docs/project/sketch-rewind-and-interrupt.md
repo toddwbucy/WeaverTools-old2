@@ -44,9 +44,11 @@ turn's close, and never a position inside a turn, since a cut inside one would l
 generation without its close. Nothing in R is rewritten and nothing is removed. The new
 run's first event after its load is the branch event, carrying the parent run, the
 branch position, the reason (a retry, an interrupt's resumption, a diagnostic entry),
-and the deployment tuple the branch stands on. Every later reader can walk from any run
-to the position it grew from, which is the lineage the analysis-web contract's branch
-position already expects a record to state.
+the deployment tuple the branch stands on, and the world's disposition, one of section
+2's three: reset to N, divergence measured with what was found, or a changed world
+declared. Every later reader can walk from any run to the position it grew from, which
+is the lineage the analysis-web contract's branch position already expects a record to
+state.
 
 **That departs from a standing ruling, and the departure is the operator's to make.**
 Under `weaver-state-PRD` section 4 today, a cut lands as a branch under a new session
@@ -75,10 +77,13 @@ cache held.
 **What the standing door reproduces, and its limit.** The restore of
 `weaver-harness-Spec` section 6.1 recalls every message through the cut and seats the
 recalled conversation beside the identity as one prefix in the open. So it is exact only
-for a run with no flush and no elision recorded before N, since it seats the
-conversation whole rather than replaying the edits that shaped what the model held. The
-exact re-prefill, the reconstruction of section 0 with the recorded flushes and elisions
-replayed, is a capability this feature owes the harness, and section 5 lists it.
+for a run with no flush and no elision recorded before N, between turns included:
+`weaver-harness-Spec` section 6 lets the seat's flush run between turns and records it
+there, and `--through` cuts at a turn's close and excludes an edit recorded after it,
+since it seats the conversation whole rather than replaying the edits that shaped what
+the model held. The exact re-prefill, the reconstruction of section 0 with every
+recorded flush and elision replayed, between-turn ones included, is a capability this
+feature owes the harness, and section 5 lists it.
 
 ## 2. Rewinding the agent does not rewind the world
 
@@ -118,12 +123,15 @@ concurrent organ work finish, and nothing is cancelled mid-flight. **Every reque
 already queued at the harness is refused as quiesced**, since the gate admits concurrent
 exchanges and the harness serialises them, each refusal returning by the path its
 request line came in on, and the harness declares the run quiesced with an empty queue.
-**While quiesced the harness executes no tool**: a call the model makes in an interview
-turn is recorded and refused as quiesced, so an interview is conversation and never
-work. A half-written state is a state that never existed and is not worth interviewing.
-The trace records a quiescence event carrying the position, the wall clock instant and
-what was in flight when the request arrived, so a clean stop reads differently from a
-stop that caught the loop mid-turn.
+**The quiescence position is the last closed turn boundary together with every flush and
+elision recorded between that turn's close and the quiescence event**, so a resumption
+from it is the exact re-prefill of section 1 whenever such an edit stands. **While
+quiesced the harness executes no tool**: a call the model makes in an interview turn is
+recorded and refused as quiesced, so an interview is conversation and never work. A
+half-written state is a state that never existed and is not worth interviewing. The
+trace records a quiescence event carrying the position, the wall clock instant and what
+was in flight when the request arrived, so a clean stop reads differently from a stop
+that caught the loop mid-turn.
 
 **The interview enters through the gate as ordinary traffic.** The gate is the sole work
 ingress and it authenticates the researcher already, so a second channel would cost a
@@ -177,13 +185,15 @@ web contract is the only document it touches.
   identifier its request carries, and no tool run while quiesced, the two resumptions,
   the branch as a preload with a position, and the exact re-prefill of section 1, the
   reconstruction replayed with its recorded flushes and elisions into the open.
-- `weaver-trace-Spec` section 3: the quiescence event, the branch event, the
-  turn marker, the closing list.
+- `weaver-trace-Spec` section 3: the quiescence event, the branch event with its world
+  disposition, the turn marker, the closing list.
 - `weaver-types-Spec`: the state case.
 - The web contract: the branch lineage as presented.
 
-## 6. Open cells
+**The mechanics beyond this sketch are hardened in the Spec acts listed here, and not in
+this document.**
 
+## 6. Open cells
 - The exact re-prefill of section 1, which replays the recorded flushes and elisions
   that the standing restore seats whole, under the apex ruling with the verbs.
 - Continuation from a position inside a turn, which the door of section 1 does not
