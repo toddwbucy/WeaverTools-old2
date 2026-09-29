@@ -13,18 +13,19 @@ operator's ruling.
 
 ## 0. What this document is
 
-The design for stopping a running agent and continuing from any recorded position, and
-for the researcher's interrupt as the first caller of that door. It rests on one
-property the record already has: the trace determines what the agent was presented at
-every position. `model.request` carries each turn's rendered contribution, and the full
-context is "the accumulation of the recorded contributions under their recorded template
-identities, from the identity prefix the run's opening records", per `weaver-trace-PRD`
-section 3.2, with every recorded flush and elision replayed as section 3.1 requires. So
-a state the agent stood in can be stood up again from the record rather than reassembled
-from ingredients, and an exact rewind rests on the record together with the deployment
-tuple. It is written on the operator's word of 2026-09-29, in his framing: the trace is
-the append-only source of truth, a reload is a bookkeeping event in it, and the power of
-a trace this detailed is the ability to rewind and try again from a given spot.
+The design for stopping a running agent and continuing from any closed turn boundary of
+its record, and for the researcher's interrupt as the first caller of that door. It
+rests on one property the record already has: the trace determines what the agent was
+presented at every position. `model.request` carries each turn's rendered contribution,
+and the full context is "the accumulation of the recorded contributions under their
+recorded template identities, from the identity prefix the run's opening records", per
+`weaver-trace-PRD` section 3.2, with every recorded flush and elision replayed as
+section 3.1 requires. So a state the agent stood in can be stood up again from the
+record rather than reassembled from ingredients, and an exact rewind rests on the record
+together with the deployment tuple. It is written on the operator's word of 2026-09-29,
+in his framing: the trace is the append-only source of truth, a reload is a bookkeeping
+event in it, and the power of a trace this detailed is the ability to rewind and try
+again from a given spot.
 
 ## 1. The door: preload to a position
 
@@ -37,7 +38,10 @@ cut at a named turn. A restored conversation is recorded under `message.restored
 to it, the position, and one rule of lineage.
 
 **A continuation from position N of run R is a new run under the same session, and its
-opening event names R and N.** Nothing in R is rewritten and nothing is removed. The new
+opening event names R and N.** N is a closed turn boundary, the cut
+`weaver-analysis-Spec` section 4's `--through <run>:<turn>` already takes, through that
+turn's close, and never a position inside a turn, since a cut inside one would land a
+generation without its close. Nothing in R is rewritten and nothing is removed. The new
 run's first event after its load is the branch event, carrying the parent run, the
 branch position, the reason (a retry, an interrupt's resumption, a diagnostic entry),
 and the deployment tuple the branch stands on. Every later reader can walk from any run
@@ -70,12 +74,12 @@ cache held.
 
 ## 2. Rewinding the agent does not rewind the world
 
-The record restores what the agent was presented. The world the agent's tools
-touched has moved on: a HeroBench character has the position, inventory and
-equipment the abandoned line left it with, and a filesystem has the files. A
-branch from N is therefore exact on the agent's side and one of two things on the
-world's side, and the sketch names which applies to each tool rather than
-letting the question be discovered by a retry that behaves strangely.
+The record restores what the agent was presented. The world the agent's tools touched
+has moved on: a HeroBench character has the position, inventory and equipment the
+abandoned line left it with, and a filesystem has the files. A branch from N is
+therefore exact on the agent's side and one of two things on the world's side, and the
+sketch names which applies to each tool rather than letting the question be discovered
+by a retry that behaves strangely.
 
 - **The tool resets the world to its state at N.** HeroBench can: the environment
   creates a character, and a branch recreates it and replays the accepted actions to N,
@@ -88,6 +92,10 @@ letting the question be discovered by a retry that behaves strangely.
   the record said it was at N.
 - **The shell tool has neither.** A branch there is a new experiment against a changed
   world and the branch event says so, so a reader does not take it for a retry.
+
+**An interview changes nothing in the world.** Section 3 refuses every tool call while
+the run is quiesced, so an interview is conversation and never work, and resume-clean
+has nothing in the world to undo.
 
 ## 3. The researcher's interrupt, the first caller
 
@@ -102,22 +110,28 @@ concurrent organ work finish, and nothing is cancelled mid-flight. **Every reque
 already queued at the harness is refused as quiesced**, since the gate admits concurrent
 exchanges and the harness serialises them, each refusal returning by the path its
 request line came in on, and the harness declares the run quiesced with an empty queue.
-A half-written state is a state that never existed and is not worth interviewing. The
-trace records a quiescence event carrying the position, the wall clock instant and what
-was in flight when the request arrived, so a clean stop reads differently from a stop
-that caught the loop mid-turn.
+**While quiesced the harness executes no tool**: a call the model makes in an interview
+turn is recorded and refused as quiesced, so an interview is conversation and never
+work. A half-written state is a state that never existed and is not worth interviewing.
+The trace records a quiescence event carrying the position, the wall clock instant and
+what was in flight when the request arrived, so a clean stop reads differently from a
+stop that caught the loop mid-turn.
 
 **The interview enters through the gate as ordinary traffic.** The gate is the sole work
 ingress and it authenticates the researcher already, so a second channel would cost a
 socket and a contract for nothing. **An interview turn is marked positively, by its
-request, and timing marks nothing.** The client's request line carries the interrupt's
-identifier. The harness admits a request carrying one only while the run is quiesced and
-refuses it otherwise, and while the run is quiesced it refuses a request carrying none
-as quiesced. `turn.started` carries the identifier for the turn it admits. The field
-that carries it on the request line is a Spec election owed, the line's format being the
-Spec's under `weaver-gate-world-contract`. The trace is turn-bracketed, so the turn is
-the unit that is marked, and a replay presents the run with the interview or without it
-by that mark alone, and a count reports both.
+request, and timing marks nothing.** **The harness mints the interrupt's identifier and
+returns it in the quiescence verb's answer over admin**, single-use per interrupt, and
+the client's request line carries it. The harness admits an interview request only while
+the run is quiesced and only when its line carries that identifier, and refuses it
+otherwise, so the mark binds to the quiescence act rather than to any principal the gate
+admits, on the pattern of `weaver-admin-harness-contract`'s "what crosses is a
+capability rather than a name", and while the run is quiesced it refuses a request
+carrying none as quiesced. `turn.started` carries the identifier for the turn it admits.
+The field that carries it on the request line is a Spec election owed, the line's format
+being the Spec's under `weaver-gate-world-contract`. The trace is turn-bracketed, so the
+turn is the unit that is marked, and a replay presents the run with the interview or
+without it by that mark alone, and a count reports both.
 
 **Cleanliness is read rather than inferred.** The run's closing event carries
 the list of interrupt identifiers it saw, the empty list being the positive
@@ -160,6 +174,8 @@ web contract is the only document it touches.
 
 ## 6. Open cells
 
+- Continuation from a position inside a turn, which the door of section 1 does not
+  take: a capability of its own, and the operator's.
 - Whether a branch's parent is named by run identifier and sequence alone, or also by
   the hash of the context reconstructed at N, so a branch against an edited record
   refuses rather than continues.
