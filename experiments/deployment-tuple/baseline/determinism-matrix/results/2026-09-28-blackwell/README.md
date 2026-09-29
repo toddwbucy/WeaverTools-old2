@@ -1,20 +1,19 @@
-# The Blackwell baseline runs, thinkpad, 2026-09-27 to 2026-09-28
+# The Blackwell baseline runs, thinkpad, 2026-09-27 to 2026-09-29
 
 The determinism matrix, `../../determinism-matrix-Spec.md`, run on thinkpad's RTX PRO
 5000 Blackwell Generation Laptop GPU at 0000:01:00.0, on the stack built at 39fe573.
-Four runs, each with a folder here holding its note, where it has one, a `COMMANDS.md`
-saying how it was executed, and every script that produced a number in its note. The
-data stays on the share: the record, the log, the summary, the config, the box facts,
-the clock readings and the journal evidence are in each run's deposit, named below with
-the sha256 of every file as it sits there, and none of it is copied here. Each note is a
-verbatim copy of the note in its deposit, so where a note says "this directory" or
-"here", or names an evidence subdirectory such as `run3-evidence/` or `run2-close/`, it
-means that deposit on the shared bulk store:
-`/bulk-store/weaver-testing/determinism-matrix-thinkpad-2026-09-27-39fe573-run3/` for
-run3 and
-`/bulk-store/weaver-testing/determinism-matrix-thinkpad-2026-09-27-39fe573-run2/` for
-run2, on olympus, and the same paths under `/mnt` on the thinkpad. The harness is not
-copied in either. Each `COMMANDS.md` names its commit, and git holds it.
+Five runs and four smokes. Each run, and run3's smoke, has a folder here holding its
+note, where it has one, a `COMMANDS.md` saying how it was executed, and every script
+that produced a number in its note. The later smokes are told in the `COMMANDS.md` of
+the run they preceded. The data stays on the share: the record, the log, the summary,
+the config, the box facts, the clock readings and the journal evidence are in each run's
+deposit, named below with the sha256 of every file as it sits there, and none of it is
+copied here. Each note is a verbatim copy of the note in its deposit, so where a note
+says "this directory" or "here", or names an evidence subdirectory such as
+`run3-evidence/` or `run2-close/`, it means that deposit on the shared bulk store, under
+`/bulk-store/weaver-testing/` on olympus and the same path under `/mnt` on the thinkpad,
+by the deposit names below. The harness is not copied in any. Each `COMMANDS.md` names
+its commit, and git holds it.
 
 ## The runs
 
@@ -24,10 +23,19 @@ copied in either. Each `COMMANDS.md` names its commit, and git holds it.
 | `run2` | 2026-09-27 11:47:05 to 18:47:08 | 39fe573 | `d04da2a`, carried as `afae421` | 6,883 | 6,883 | 0 | 0 | not echoed, 0 by its harness's rule over its summary |
 | `run3-smoke` | 2026-09-27 21:41:36 to 21:43:32 | 39fe573 | `07a7e5d` | 31 | 31 | 0 | 0 | 0, echoed |
 | `run3` | 2026-09-27 21:55:05 to 2026-09-28 04:55:09 | 39fe573 | `07a7e5d` | 6,887 | 6,886 | 0 | 1 | not echoed, 1 by its harness's rule, for the one fault alone |
+| `run4-smoke` | 2026-09-28 09:53:51 to 09:55:46 | 39fe573 | `6072c69` | 31 | 31 | 0 | 0 | 0, echoed |
+| `run4-smoke2` | 2026-09-28 10:00:14 to 10:02:11 | 39fe573 | `6072c69` | 31 | 31 | 0 | 0 | not echoed, 0 by its harness's rule over its summary |
+| `run4` | 2026-09-28 10:06:53 to 14:42:09, interrupted by the operator | 39fe573 | `6072c69` | 4,479 | 4,477 | 0 | 2 | not echoed, interrupted: not a reproduction result |
+| `run5-smoke` | 2026-09-28 19:49:36 to 19:51:30 | 39fe573 | `bb28f4f` | 31 | 31 | 0 | 0 | 0, echoed |
+| `run5` | 2026-09-28 19:51:54 to 2026-09-29 02:52:09 | 39fe573 | `bb28f4f` | 6,855 | 6,855 | 0 | 0 | not echoed, 0 by its harness's rule over its summary |
 
-All four ran on one box, one card and one stack: the six binaries, the five engine
+All of them ran on one box, one card and one stack: the six binaries, the five engine
 libraries, the 0.5b at q6_k (`2f822336`) and karl's declaration (`a2a03d10`), re-hashed
-unchanged before each run. The harness changed between run2 and the smoke.
+unchanged before each run. The harness changed between run2 and run3's smoke, and
+again before run4's smokes, `determinism_matrix.py` taking #717's interrupt guard. It
+is the same two files at `6072c69` and at `bb28f4f`. Between run3 and run4 the worker
+unit's journald rate limit was lifted, and between run4 and run5 the journal's size cap
+was raised, both by the operator.
 
 **What each run establishes, and what it does not**, in its note's words:
 
@@ -51,15 +59,35 @@ unchanged before each run. The harness changed between run2 and the smoke.
   journald's rate limit dropped its replay load's device lines, and the harness failed
   closed. That fault is the exit's only cause. The faulted session's verdict is not
   established. `RESULT-2026-09-28.md`.
+- **`run4-smoke` and `run4-smoke2`**: 31 of 31 each, the same sessions and volume, the
+  first under `LogRateLimitIntervalSec=0`, where journald still suppressed 392 worker
+  lines, and the second under `LogRateLimitIntervalSec=30s` and
+  `LogRateLimitBurst=1000000`, where it suppressed none. Neither wrote a note, and the
+  comparison is run4's `box-facts.txt`.
+- **`run4`**: interrupted by the operator at 14:42 to free the card, so not a
+  reproduction result. 4,477 of 4,479 sessions reproduced over 140 sweeps, with 64,864
+  turns compared and 0 unmatched. One session was cut by the interrupt, and one faulted
+  at 13:24 on a replay load reading the card twice, a doubled `using device` line whose
+  cause is not established, since the lifted rate limit let the 50M journal hold only
+  about 13.5 minutes and its lines had rotated out. `RESULT-2026-09-28.md`.
+- **`run5-smoke`**: 31 of 31 reproduced under both settings, the journal's cap raised to
+  4G. It wrote no note.
+- **`run5`**: the first Blackwell baseline to exit clean. 6,855 of 6,855 reproduced over
+  215 sweeps, with 99,310 turns compared and 0 unmatched, a cold reload and the device
+  verified for all 13,710 loads, and every window field unchanged. journald suppressed
+  nothing over the run, every load kept its three device markers, and the journal kept
+  the whole run at 2G of 4G. `RESULT-2026-09-29.md`.
 
 Every run inherits the probe's standing limits, per its Spec's section 8. karl declares
 no loop file, the model is the 0.5b, and time to first token is not measured. No clock
 was held: the card's clock state was recorded instead. What an exit 0 certifies, and
 what it does not guard against, is the Spec's section 5.
 
-**Open**: epic #698's item "journald's rate limit can drop a load's device lines,
-faulting the session" awaits the operator's ruling on `LogRateLimitIntervalSec=0` for
-the worker unit.
+**Closed on thinkpad by run5**: epic #698's items "journald's rate limit can drop a
+load's device lines, faulting the session" and "the journal's size cap must rise
+whenever the rate limit is lifted", each ticked with run5 as the confirming run. Olympus
+needs the same two settings before its next baseline run, where it does not already
+carry them.
 
 ## Where the deposits live
 
@@ -74,7 +102,8 @@ and where one read a path under the operator's home its header says what that pa
 written as here. No home path, IP address, email address or username appears in any
 file here.
 
-Checked with `sha256sum -c` from inside each deposit, 2026-09-28:
+Checked with `sha256sum -c` from inside each deposit, 2026-09-28 for the first four and
+2026-09-29 for the rest:
 
 `partial`, `determinism-matrix-thinkpad-2026-09-27-39fe573/`:
 
@@ -134,4 +163,86 @@ db148be0f1d03d01ed2e933be7e5f84f08ae1159d2bd090e8ad1c143923c508d  run3-evidence/
 1f9901ad62d514ab9dae293faa64ba2394ee7060754550ce6d674553b7f04df9  run3-evidence/suppressed-unique.txt
 35a3c3186fd13e13b92ee6bce24d9650f247168e9c9bebeb478ec7eecba75336  run-console.log
 5ebc905c99932237fab4528f3e5d7d1393a468e23beb8603b84976d2954ee40c  summary.json
+```
+
+`run4-smoke`, `determinism-matrix-thinkpad-2026-09-28-39fe573-run4-smoke/`:
+
+```
+7ac895272de98b43820a8fab1f53a120828b8794106c0dfdb652ebbd084980ce  box-facts.txt
+d0b3641b25c0e907f17deaeb02aa85d9990962349acdd3304d5aa5a84c551ea2  config.json
+429b555e1b19d337ff04c123e080be898cbe428527e75db58bbc4f3895a0ab9e  matrix.jsonl
+98933e8e4ffb8a3843d3780509a0f425e59f9c10e84a03032ac6e247c1f13a3a  matrix.log
+669d5ca2419c6706ba70ee4d16728fb7da6ff24afbf9b11f9de789416cdc6e51  summary.json
+```
+
+`run4-smoke2`, `determinism-matrix-thinkpad-2026-09-28-39fe573-run4-smoke2/`:
+
+```
+bf97d526b6d25bafdcc7277243b3adad5c2afb20bd98065d7d601e3f44690fff  box-facts.txt
+d0b3641b25c0e907f17deaeb02aa85d9990962349acdd3304d5aa5a84c551ea2  config.json
+4b338140038aeca63ee480bb732849ebc78ecdf2b47d472cb7ee47e6bca776a7  matrix.jsonl
+aa838d44e0396b7e9cfec60265614115b2ed886b828fd2594b9a85dbfb3de031  matrix.log
+669d5ca2419c6706ba70ee4d16728fb7da6ff24afbf9b11f9de789416cdc6e51  summary.json
+```
+
+`run4`, `determinism-matrix-thinkpad-2026-09-28-39fe573-run4/`:
+
+```
+682a8f05b4584847795f2c5b0bbfacb318d35722693db35cdeb7fcd0be36d30a  box-facts.txt
+f9cf4a4da8ba38e7f8fd739157387847b2347b57b675d208ad4b4fa9d2736311  clock.log
+d0b3641b25c0e907f17deaeb02aa85d9990962349acdd3304d5aa5a84c551ea2  config.json
+465c6fe660ee675717ffb68165cf61f7b919427e7f2a490c4ca686164e7b3b81  matrix.jsonl
+6c753ec7c7f805d14f7b3ffb5764e089d9cbd9d0ba3c40a1fee77948e6efc1a4  matrix.log
+9bc043d7a7f2c8043e1ae4ffde63b631f34f262c5294864a28b2d3799ca14273  RESULT-2026-09-28.md
+df0f691eb213663c92cf063b9671dadf8f2cc021a9334ab85eb00e62935bb615  run4-evidence/capture.py
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  run4-evidence/capture.stderr
+209353fc5495b7b77ca147f39263a0236ba15241f88e8499d230209fac112bfe  run4-evidence/clock_join.py
+2f12d87268079b09acd47697b89af76ec7e383b2b9720751377002c055c5ae85  run4-evidence/clock-join.txt
+dc5c4b4574a76e2a170bf957e4bb9859e90d8bc870819233e6d9c3e260ed5956  run4-evidence/invocation_markers.py
+7f5b1430ee9198371b6085f2da71b9e353d464b70f58611fbc440fbb8b260f2a  run4-evidence/invocation-markers.txt
+5055141270281bc1f2e6b2cb01229d5c63822e241fc199dd81d87766252a4578  run4-evidence/line-counts.json
+47fd2630fc52ce898bde104e4e7063778c05027f82cb6b0ee24b4d5c440f3bba  run4-evidence/markers.jsonl
+4dfd297eb7f04cadf5bd950827a2cbeeee126bd8191fa8f020b4c1e8ed468a31  run4-evidence/reads.log
+722bb3a3bdfb4eb2ab2415a0b85504b37351261e9db3c728f3225e22df8e61fb  run4-evidence/record_counts.py
+95a9f3e7f3231c307799c5d6408d4ae3ec672ac59bb3cce238be531f50fea49e  run4-evidence/record-counts.txt
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  run4-evidence/suppressed.txt
+6c753ec7c7f805d14f7b3ffb5764e089d9cbd9d0ba3c40a1fee77948e6efc1a4  run-console.log
+e08d2fb7f09c644008ba771a8730b221e9962b9e2cccc35f5d520ab4dc2233c3  summary.json
+```
+
+`run5-smoke`, `determinism-matrix-thinkpad-2026-09-28-39fe573-run5-smoke/`:
+
+```
+816df295a197029a8fb572c23dd75304ac3b8436bc9a27f639d953ea38f154d3  box-facts.txt
+d0b3641b25c0e907f17deaeb02aa85d9990962349acdd3304d5aa5a84c551ea2  config.json
+ff753035662ad278afaedd79ccb0fe3615fbf84fe935a88cb5a54f862d3bf7c9  matrix.jsonl
+d2342c247dd1711880112d00418d67ee24061baf017bee5f42b071563a1152c9  matrix.log
+669d5ca2419c6706ba70ee4d16728fb7da6ff24afbf9b11f9de789416cdc6e51  summary.json
+```
+
+`run5`, `determinism-matrix-thinkpad-2026-09-28-39fe573-run5/`:
+
+```
+6610435c4b1e9676af9166d6216eaeb4366536f09cedc36d0bf5fa78a9973059  box-facts.txt
+1685b177e367120e60f9313895cacee2bbf7e2e2fb65b66fad6a07bf08b05486  clock.log
+d0b3641b25c0e907f17deaeb02aa85d9990962349acdd3304d5aa5a84c551ea2  config.json
+9a6bc0feb7bafa9a1283b42161ee27b233bc5e225abe5d3e53af80176448d78c  matrix.jsonl
+ef7c60565c9e0e33fafae2692fc3a26223dc1571a586e814d90344093229b675  matrix.log
+4b57f95e6951588b192a721b0b9829d10206e12d865d2ca43af4d57fe31d2a03  RESULT-2026-09-29.md
+305894edda7a7211b78e3e2b2ff783e423ff3bd63ecdedd97f0e6b0c1b1bb4bf  run5-evidence/capture.py
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  run5-evidence/capture.stderr
+209353fc5495b7b77ca147f39263a0236ba15241f88e8499d230209fac112bfe  run5-evidence/clock_join.py
+342508c32c386cc1a2b9e9950cf353eba840745f8be87c36469222c8d190babb  run5-evidence/clock-join.txt
+e37c9da48ed8cc99e88a6ff1d519aa0de01d50eafe4750b943cd5f3064e16c1b  run5-evidence/found.txt
+4777fd344470de979e666d5007a1e9833a59f607dfbc2f6a7b38b074afe17c44  run5-evidence/invocation_markers.py
+a9e2bb8bbd38f117619b48cb4394d53edb5dfe77a2fa6e61dfddd173c8d4eb3c  run5-evidence/invocation-markers.txt
+71ef0233724c96d5fb4d37c787843899fcac5db4292318ef471821c2ddcdf12e  run5-evidence/journal-after.txt
+403a74dbbdcf9fde950dbc6772a913ae0f8b11fa3e97f712e48ce885d39a781b  run5-evidence/line-counts.json
+d58f26f20b7050277605f5025744aec48cf5d587fe104b320849555ed15eee28  run5-evidence/markers.jsonl
+a7910a05f81285092cea36f30bcd65b6ba45a8c467faf4826c5044ceac5dfd41  run5-evidence/reads.log
+2569f8d2e3ef9022556b6f0b2adbf6e29b69a461f03cda066fe4cd08b2dd50a3  run5-evidence/record_counts.py
+523544b06e5ae37e98bf5748b53f779406b364e539accba066a92e39e8ef35f0  run5-evidence/record-counts.txt
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  run5-evidence/suppressed.txt
+ef7c60565c9e0e33fafae2692fc3a26223dc1571a586e814d90344093229b675  run-console.log
+322aaed9c4894d6084676f41ac04f9163d4f4ade0d46f9017c21f98271b8d52f  summary.json
 ```

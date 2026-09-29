@@ -50,7 +50,8 @@ printf '/usr/local/libexec/weaver/worker\n' > /etc/weaver/config/worker-binary
 
 Every file is named by sha256 in the deposit's `box-facts.txt`. fred's declaration is
 karl's with `devices: [1]` and the trace path
-`/home/todd/.weaveragents/weaver-fred/trace.ndjson`, installed on olympus as
+`~/.weaveragents/weaver-fred/trace.ndjson`, written out in full under the operator's
+home, installed on olympus as
 `/etc/weaver/agents/fred.yaml`. Against karl's it differs in those two lines and no
 others. It hashes `b5598df7`.
 

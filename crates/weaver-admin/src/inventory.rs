@@ -2045,11 +2045,11 @@ mod tests {
     /// that matched nothing cannot read as green.
     ///
     /// **Where it runs.** On thinkpad, measured 2026-09-24: `newuidmap` and
-    /// `newgidmap` present, `todd` holding `100000:65536` in `/etc/subuid` and
-    /// `/etc/subgid`. A box where the namespace cannot be entered prints a
-    /// SKIP naming why and passes. That box has no watch, and says so rather
-    /// than claiming one. A box where the namespace enters and the instrument
-    /// fails, fails here.
+    /// `newgidmap` present, the operator's user holding `100000:65536` in
+    /// `/etc/subuid` and `/etc/subgid`. A box where the namespace cannot be
+    /// entered prints a SKIP naming why and passes. That box has no watch, and
+    /// says so rather than claiming one. A box where the namespace enters and
+    /// the instrument fails, fails here.
     ///
     /// Perturbation: as the instrument's, watched through this test.
     #[test]
