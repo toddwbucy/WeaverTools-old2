@@ -1976,10 +1976,12 @@ a forward of tens of milliseconds and the turn thread's protection. A bound that
 expires, or a channel that faults on the send or the receive, retires the arm
 one-strike, the state seam's economics on the label seam: the loss is authored as a
 `fault`, a death and not a refusal per `weaver-harness-spu-classify-contract` section 5,
-and every later ask of the run answers as the missing leg with no request authored. A
-late readiness is skipped rather than taken for the exchange's answer. A loop asking
-about many positions in a turn waits up to the bound on each, since the asks are serial
-and each one blocks.
+and every later ask of the run answers as the missing leg with no request authored. The
+bound is one deadline per ask, taken before the first receive, and a late readiness
+frame is skipped against it rather than taken for the exchange's answer, so a skipped
+frame does not renew the bound and a stream of them cannot postpone the retirement. A
+loop asking about many positions in a turn waits up to the bound on each, since the asks
+are serial and each one blocks.
 
 ### 6.1 The decode surface, chartered
 
