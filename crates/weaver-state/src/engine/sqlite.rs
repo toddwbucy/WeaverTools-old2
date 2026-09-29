@@ -615,6 +615,29 @@ mod tests {
     use super::*;
     use crate::store::*;
 
+    /// **A NUL in a message lands verbatim**, the shared test run on this
+    /// engine and its tables read: the content is a `field` row and no part
+    /// stands. Perturbation: drop the holdable check from `typed::split`, and
+    /// the service engine refuses the landing while the embedded one holds the
+    /// part typed, so this engine's count fails.
+    #[test]
+    fn a_nul_in_a_message_lands_verbatim() {
+        let mut store = Sqlite::open(std::path::Path::new(":memory:")).expect("opens");
+        super::super::a_nul_in_a_message_lands_verbatim_and_serves_whole(&mut store);
+        let count = |sql: &str| -> i64 {
+            store
+                .connection
+                .query_row(sql, [], |row| row.get(0))
+                .expect("counts")
+        };
+        assert_eq!(
+            count("SELECT COUNT(*) FROM field WHERE key = 'content'"),
+            1,
+            "the content is held verbatim"
+        );
+        assert_eq!(count("SELECT COUNT(*) FROM part"), 0, "no part is typed");
+    }
+
     /// **A recorded line of each typed kind lands typed and serves what the
     /// record reads**, the shared test run on this engine and then its tables
     /// read for the typed rows. Perturbation: make the split type nothing, so

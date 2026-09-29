@@ -10,11 +10,13 @@
 //! section 6 authoritative, and this crate defines no measurement type.
 //!
 //! **A member lands typed only where its rows render back to the bytes that
-//! crossed.** The split renders each typed fragment through [`render`], the
-//! function every answer uses, and compares it with the pair's value, so a
-//! typed row can never serve a spelling the record did not hold. A value
-//! that does not decode, or decodes and renders differently, lands verbatim
-//! instead, and custody keeps it whole either way.
+//! crossed, and where every engine can hold them.** The split renders each
+//! typed fragment through [`render`], the function every answer uses, and
+//! compares it with the pair's value, so a typed row can never serve a
+//! spelling the record did not hold. A value that does not decode, decodes
+//! and renders differently, or decodes to a string carrying U+0000 that the
+//! service engine's `TEXT` refuses, lands verbatim instead, and custody keeps
+//! it whole either way.
 
 use weaver_traits::{ContentBlock, Role, ToolCall, ToolResultBlock};
 
@@ -88,13 +90,17 @@ pub struct SeriesRow {
 
 /// Split one distillate's pairs into the typed rows and the pairs that land
 /// verbatim, per the module's rule: typed where the vocabulary names the
-/// member and the rows render back exactly, verbatim otherwise.
+/// member, the rows render back exactly, and every engine can hold them,
+/// verbatim otherwise.
 pub fn split(kind: &str, pairs: &[(String, String)]) -> (Typed, Vec<(String, String)>) {
     let mut typed = Typed::default();
     let mut verbatim = Vec::new();
     for (key, value) in pairs {
         match fragment(kind, key, value) {
-            Some(piece) if render_member(key, &piece).ok().flatten().as_deref() == Some(value) => {
+            Some(piece)
+                if piece.holdable()
+                    && render_member(key, &piece).ok().flatten().as_deref() == Some(value) =>
+            {
                 typed.absorb(piece)
             }
             _ => verbatim.push((key.clone(), value.clone())),
@@ -134,6 +140,26 @@ impl Typed {
     /// event that landed verbatim whole.
     pub fn is_empty(&self) -> bool {
         self.message.is_none() && self.measurement.is_none()
+    }
+
+    /// Whether every engine can hold these rows. A decoded string carrying
+    /// U+0000 is refused by the service engine's `TEXT`, so a member holding
+    /// one lands verbatim, where JSON escapes it, and does so under both
+    /// engines so the two answer alike.
+    fn holdable(&self) -> bool {
+        let clean = |text: &Option<String>| text.as_deref().is_none_or(|t| !t.contains('\0'));
+        self.message.as_ref().is_none_or(|m| clean(&m.role))
+            && self.parts.iter().all(|part| {
+                !part.block.contains('\0')
+                    && clean(&part.text)
+                    && clean(&part.name)
+                    && clean(&part.arguments)
+                    && clean(&part.content)
+            })
+            && self
+                .series
+                .iter()
+                .all(|reading| !reading.member.contains('\0'))
     }
 
     fn absorb(&mut self, piece: Typed) {
@@ -446,6 +472,26 @@ mod tests {
         assert_eq!(row.perplexity, None, "an absent perplexity is not zero");
         assert_eq!(row.entropies, Some(2));
         assert_eq!(render(&typed).unwrap(), pairs);
+    }
+
+    /// **A string carrying U+0000 lands verbatim**, because the service
+    /// engine's `TEXT` cannot hold it, and the rule is one rule for both
+    /// engines. The escaped JSON holds it, so custody keeps the pair whole.
+    #[test]
+    fn a_nul_in_a_string_lands_verbatim() {
+        for (key, value) in [
+            ("content", r#"[{"type":"text","text":"a\u0000b"}]"#),
+            (
+                "content",
+                r#"[{"type":"tool_call","name":"n\u0000","arguments":"{}"}]"#,
+            ),
+            ("content", r#"[{"type":"tool_result","content":"\u0000"}]"#),
+        ] {
+            let pairs = [pair(key, value)];
+            let (typed, verbatim) = split("message.user", &pairs);
+            assert!(typed.is_empty(), "{value} typed");
+            assert_eq!(verbatim, pairs, "{value}");
+        }
     }
 
     /// Rows missing from their count are refused at read rather than served

@@ -166,3 +166,31 @@ fn recorded_lines_land_typed_and_serve_what_the_record_reads(store: &mut dyn cra
         }
     }
 }
+
+/// **A message whose text carries U+0000 lands verbatim and serves back byte
+/// for byte**, per `weaver-state-Spec` section 3's rule that a member lands
+/// typed only where every engine can hold it. The service engine's `TEXT`
+/// refuses the decoded NUL, so without the rule that engine rolls the
+/// distillate back, and the embedded one would hold it typed where the other
+/// could not. Each engine's caller then reads its own `field` table for the
+/// verbatim row.
+#[cfg(test)]
+fn a_nul_in_a_message_lands_verbatim_and_serves_whole(store: &mut dyn crate::store::Store) {
+    use crate::store::Distillate;
+    let content = r#"[{"type":"text","text":"before\u0000after"}]"#;
+    let sent = Distillate {
+        session: "nul-session".into(),
+        run: "nul-run".into(),
+        turn: Some("t-1".into()),
+        kind: "message.user".into(),
+        sequence: 1,
+        pairs: vec![
+            ("content".into(), content.into()),
+            ("role".into(), r#""user""#.into()),
+        ],
+    };
+    store.land(&sent).expect("a NUL in a message lands");
+    let served = store.replay("nul-session").expect("replays");
+    assert_eq!(served.len(), 1);
+    assert_eq!(served[0].pairs, sent.pairs, "served byte for byte");
+}

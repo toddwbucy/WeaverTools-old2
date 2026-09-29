@@ -216,17 +216,20 @@ sibling stood on, and never a zero**, so section 6's absent-not-empty property
 of the SPU survives the landing: a measurement that crossed with no perplexity
 holds a null and serves no perplexity member.
 
-**A member lands typed only where its rows render back to the bytes that
-crossed.** `typed::split` renders each typed fragment through the renderer
-every answer uses and compares it with the pair, and a value that does not
-decode as its named type, or decodes and renders differently, lands as a
-`field` row instead. So a typed row cannot serve a spelling the record did not
-hold, and the contract's served-as-it-crossed clause holds by construction. A
-block the floor adds after this build, or a named member the SPU spells some
-other way, lands whole and verbatim rather than typed in part or refused. The
-canonical form spells each value one way, so what the tee sends from a record
-always types where the vocabulary names it, and the fallback is reached only by
-frames the tee does not produce.
+**A member lands typed only where its rows render back to the bytes that crossed, and
+where every engine can hold the value.** `typed::split` renders each typed fragment
+through the renderer every answer uses and compares it with the pair, and a value that
+does not decode as its named type, or decodes and renders differently, lands as a
+`field` row instead. So a typed row cannot serve a spelling the record did not hold, and
+the contract's served-as-it-crossed clause holds by construction. A decoded string
+carrying U+0000 lands verbatim too, in any string the message model holds, because the
+service engine's `TEXT` refuses it where the escaped JSON in `field` holds it, and it
+does so under both engines so the two answer alike rather than one typing what the other
+rolls back. A block the floor adds after this build, or a named member the SPU spells
+some other way, lands whole and verbatim rather than typed in part or refused. The
+canonical form spells each value one way, so what the tee sends from a record types
+where the vocabulary names it unless a string in it carries U+0000, and the other
+fallbacks are reached only by frames the tee does not produce.
 
 **A pair lands one way and never both.** The `field` row and the typed rows
 never hold one pair twice, so the elected index over `field` for a path that
@@ -552,7 +555,7 @@ is cited at a test.** Every `conforms:` line in the crate sits at a `//!` file
 header but one, the line inside `stand_preload_name`, which is a function the
 binary runs, so none of the nine is a sighting under that rule.
 
-**Requiring a perturbation-verified test.** Ten claims, each watched where the
+**Requiring a perturbation-verified test.** Eleven claims, each watched where the
 behaviour sits.
 
 - The serve restricts to the opener's session, watched by dropping any of the
@@ -605,6 +608,13 @@ behaviour sits.
   `an_absent_reading_is_absent_and_not_zero` and at both engines by the null
   perplexity the recorded test lands. The perturbation defaults a measurement's
   missing perplexity to zero, and all three fail.
+- A string no engine can hold lands verbatim, watched by
+  `a_nul_in_a_string_lands_verbatim` and at both engines by
+  `a_nul_in_a_message_lands_verbatim`, which lands a message whose text carries
+  U+0000 and requires it served byte for byte from a `field` row with no part
+  typed. The perturbation drops the holdable check from `typed::split`: the
+  service engine refuses the landing and rolls it back, and the embedded engine
+  holds the part typed, so each engine's test fails.
 
 **The session claim is watched at both engines, as of PR #644.** The service
 engine's in-file suite stands a scratch PostgreSQL per test, lands two sessions
