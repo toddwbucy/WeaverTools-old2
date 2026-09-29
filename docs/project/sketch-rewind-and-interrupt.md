@@ -163,21 +163,26 @@ clean stop reads differently from a stop that caught the loop mid-turn.
 **The interview enters through the gate as ordinary traffic.** The gate is the sole work
 ingress and it authenticates the researcher already, so a second channel would cost a
 socket and a contract for nothing. **An interview turn is marked positively, by its
-request, and timing marks nothing.** **The harness mints the interrupt's identifier and
-returns it in the quiescence verb's answer over admin**, and the client's request line
-carries it. The identifier is an unguessable bearer capability: 128 bits drawn from the
-harness's entropy source, single-use per interrupt, and returned only in that answer, so
-holding it is the proof of having asked for the quiescence, which is what the mark needs
-because the gate admits any authorised principal. The harness admits an interview
-request only while the run is quiesced and only when its line carries that identifier,
-and refuses it otherwise, so the mark binds to the quiescence act rather than to any
-principal the gate admits, on the pattern of `weaver-admin-harness-contract`'s "what
-crosses is a capability rather than a name", and while the run is quiesced it refuses a
-request carrying none as quiesced. **Every event the harness authors while the run is
-quiesced carries the interrupt's identifier**, however many turns the loop makes of one
-request and including the turnless events between them, since a loop may flush and
-recall between turns of one request as `bravo_loop.py` does. The field that carries it
-on the request line is a Spec election owed, the line's format being the Spec's under
+request, and timing marks nothing.** **Two values are minted with the interrupt, and
+only one of them is a secret.** The interrupt's identifier is a public name: the harness
+writes it on every event authored while the run is quiesced and on the closing list, so
+it stands in the record and proves nothing. **The bearer capability is a separate
+value**, 128 bits drawn from the harness's entropy source, returned only in the
+quiescence verb's answer over admin, presented on the client's request line, checked by
+the harness, single-use per interrupt, and never written to the record, so holding it is
+the proof of having asked for the quiescence, which is what the mark needs because the
+gate admits any authorised principal. A mark that was the capability would put the
+unspent secret on the quiescence event for any reader of the record. The harness admits
+an interview request only while the run is quiesced and only when its line carries that
+capability, and refuses it otherwise, so the mark binds to the quiescence act rather
+than to any principal the gate admits, on the pattern of
+`weaver-admin-harness-contract`'s "what crosses is a capability rather than a name", and
+while the run is quiesced it refuses a request carrying none as quiesced. **Every event
+the harness authors while the run is quiesced carries the interrupt's identifier**,
+however many turns the loop makes of one request and including the turnless events
+between them, since a loop may flush and recall between turns of one request as
+`bravo_loop.py` does. The field that carries the capability on the request line is a
+Spec election owed, the line's format being the Spec's under
 `weaver-gate-world-contract`. The trace is turn-bracketed, so the turn is the unit that
 is marked, and a replay presents the run with the interview or without it by that mark
 on every event, and a count reports both.
@@ -224,13 +229,13 @@ carries the toggle.
   those terms.
 - `weaver-admin-harness-contract`, `weaver-admin-PRD` and Spec: the quiescence and
   resume exchanges and their refusals.
-- `weaver-harness-PRD` and Spec: the boundary behaviour, the interview marked by the
-  identifier its request carries, and no tool run while quiesced, the two resumptions,
-  the branch as a preload with a position.
-- `weaver-gate-Spec` and then `weaver-harness-Spec`: the interrupt identifier on the
-  client's request line. The gate Spec's section 4 holds the line's member list, one
-  required member, `text`, an unknown member refusing the turn, so the field is that
-  Spec's election first and the harness's admission second.
+- `weaver-harness-PRD` and Spec: the boundary behaviour, the interview admitted by the
+  capability its request carries and marked by the interrupt's identifier, and no tool
+  run while quiesced, the two resumptions, the branch as a preload with a position.
+- `weaver-gate-Spec` and then `weaver-harness-Spec`: the bearer capability on the
+  client's request line, checked and never recorded. The gate Spec's section 4 holds the
+  line's member list, one required member, `text`, an unknown member refusing the turn,
+  so the field is that Spec's election first and the harness's admission second.
 - `weaver-harness-Spec`, `weaver-harness-spu-decode-contract`, `weaver-spu-Spec`,
   `weaver-analysis-Spec` and `weaver-harness-state-contract`, every party in one act:
   the exact re-prefill of section 1, the reconstruction replayed with its recorded
@@ -240,8 +245,8 @@ carries the toggle.
   such ask today. `weaver-analysis-Spec` section 4's `--through` cuts at a turn's close
   and excludes a between-turn edit, and the preload's election is the state contract's.
 - `weaver-trace-Spec` section 3: the quiescence event, the branch event with its world
-  disposition, the interrupt's identifier on every event authored while quiesced, the
-  closing list.
+  disposition, the interrupt's public identifier on every event authored while quiesced
+  and on the closing list, and no field for the capability.
 - `weaver-types-Spec`: the quiescence condition beside `AgentState` in the observation's
   answer, the state's cases unchanged.
 - The web contract: the branch lineage as presented, and the fog toggle's agent-side
