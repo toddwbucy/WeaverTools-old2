@@ -26,9 +26,10 @@ A task with no answer within --task-timeout is not graded and ends the driver:
 the agent is unloaded before anything else, because the relay does not cancel a
 frame it admitted.
 
-Writes, under --out: one `<task>.json` per task with the gate's answer, the
-character's log since creation, the result, the reward and the score, and
-`run.json` with each task's load, unload and outcome.
+Writes, under --out, which must not already hold a `run.json`: one
+`<task>.json` per task with the gate's answer, the character's log since
+creation, the result, the reward and the score, and `run.json` with each task's
+load, unload and outcome and what ended the run, written on every exit.
 """
 import argparse
 import json
@@ -136,69 +137,92 @@ def main():
     # which is how the pairs deposited on 2026-09-29 were driven. One task per
     # run makes every task's outcome a position of the record, and the shape ask
     # then counts earlier tasks as earlier runs.
-    for number in span(args.tasks):
-        prompt = prompts[args.level][number - 1]
-        task = tasks[args.level][number - 1]
-        kind = get_task_type(prompt)
-        subject = task.get("item") or task.get("monster_name")
-        name = f"{number}_{subject}_{kind}"
-        target = (task.get("monster_name", "") if kind == "kill"
-                  else (task.get("crafting_tree") or {}).get("code", ""))
-        entry = {"name": name, "load": admin("load", args.agent),
-                 "load_wall": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
-        record["tasks"].append(entry)
-        if entry["load"].get("exit") != 0:
-            entry["refused"] = "the load was refused"
-            break
-        timed_out = False
-        try:
-            if not wait_socket(gate):
-                entry["refused"] = "the load stood no gate this process can reach"
+    # **A run's record stands for that run alone.** A directory already holding
+    # a run.json is refused before anything is loaded, so a rerun never leaves an
+    # earlier record standing beside, or under, its own.
+    record_path = os.path.join(out, "run.json")
+    if os.path.exists(record_path):
+        sys.exit(f"run.py: {record_path} already holds a run's record, name a fresh --out")
+    record["ended"] = "started"
+    # **run.json is written on every exit**, carrying what ended the run: a
+    # refused load with the admin's answer beside it in the task's entry, a load
+    # that stood no reachable gate, a timeout, an error, or completion.
+    try:
+        for number in span(args.tasks):
+            prompt = prompts[args.level][number - 1]
+            task = tasks[args.level][number - 1]
+            kind = get_task_type(prompt)
+            subject = task.get("item") or task.get("monster_name")
+            name = f"{number}_{subject}_{kind}"
+            target = (task.get("monster_name", "") if kind == "kill"
+                      else (task.get("crafting_tree") or {}).get("code", ""))
+            entry = {"name": name, "load": admin("load", args.agent),
+                     "load_wall": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
+            record["tasks"].append(entry)
+            if entry["load"].get("exit") != 0:
+                entry["refused"] = "the load was refused"
                 break
-            create_character(args.agent, prompt)
-            header = {"url": f"http://127.0.0.1:{args.port}", "character": args.agent,
-                      "kind": kind, "target": target, "name": name,
-                      "turn_cap": args.turn_cap}
-            text = "HEROBENCH " + json.dumps(header) + "\n" + presented(prompt)
-            began = time.time()
+            timed_out = False
             try:
-                answer = gate_turn(gate, text, args.task_timeout)
-            except socket.timeout:
-                # **A timed-out task ends the driver.** The relay does not cancel
-                # a frame it admitted, so the task's turns may still be running:
-                # it is not graded, and no further task starts, until the unload
-                # below has stopped the agent.
-                timed_out = True
-                entry["fault"] = f"no answer within {args.task_timeout} s"
+                if not wait_socket(gate):
+                    entry["refused"] = "the load stood no gate this process can reach"
+                    break
+                create_character(args.agent, prompt)
+                header = {"url": f"http://127.0.0.1:{args.port}", "character": args.agent,
+                          "kind": kind, "target": target, "name": name,
+                          "turn_cap": args.turn_cap}
+                text = "HEROBENCH " + json.dumps(header) + "\n" + presented(prompt)
+                began = time.time()
+                try:
+                    answer = gate_turn(gate, text, args.task_timeout)
+                except socket.timeout:
+                    # **A timed-out task ends the driver.** The relay does not cancel
+                    # a frame it admitted, so the task's turns may still be running:
+                    # it is not graded, and no further task starts, until the unload
+                    # below has stopped the agent.
+                    timed_out = True
+                    entry["fault"] = f"no answer within {args.task_timeout} s"
+                    break
+                except Exception as error:
+                    answer = {"fault": repr(error)}
+                took = time.time() - began
+                logs = cut_events_before_creation(
+                    get_character_logs(args.agent, LOG_CUTOFF),
+                    creation_log=f"Successfully created custom character - {args.agent}.")
+                result = extract_result(logs, prompt, task)
+                reward, _ = compute_episode_reward(task, logs)
+                ideal, _ = compute_ideal_episode_reward(task)
+                score = reward * 100.0 / ideal if ideal else 0.0
+                outcome = {"name": name, "kind": kind, "target": target, "seconds": took,
+                           "answer": answer, "result": result, "reward": reward,
+                           "ideal_reward": ideal, "score": score,
+                           "actions": sum(1 for e in logs
+                                          if not e.get("action_type", "").startswith("create")),
+                           "logs": logs}
+                json.dump(outcome, open(os.path.join(out, f"{name}.json"), "w"), indent=1)
+                entry.update({k: outcome[k] for k in
+                              ("result", "reward", "ideal_reward", "score", "actions", "seconds")})
+                print(f"{args.agent} {args.label} {name}: {result} score {score:.1f} "
+                      f"actions {outcome['actions']} in {took:.0f}s", flush=True)
+            finally:
+                entry["unload"] = admin("unload", args.agent)
+                json.dump(record, open(record_path, "w"), indent=1)
+            if timed_out:
                 break
-            except Exception as error:
-                answer = {"fault": repr(error)}
-            took = time.time() - began
-            logs = cut_events_before_creation(
-                get_character_logs(args.agent, LOG_CUTOFF),
-                creation_log=f"Successfully created custom character - {args.agent}.")
-            result = extract_result(logs, prompt, task)
-            reward, _ = compute_episode_reward(task, logs)
-            ideal, _ = compute_ideal_episode_reward(task)
-            score = reward * 100.0 / ideal if ideal else 0.0
-            outcome = {"name": name, "kind": kind, "target": target, "seconds": took,
-                       "answer": answer, "result": result, "reward": reward,
-                       "ideal_reward": ideal, "score": score,
-                       "actions": sum(1 for e in logs
-                                      if not e.get("action_type", "").startswith("create")),
-                       "logs": logs}
-            json.dump(outcome, open(os.path.join(out, f"{name}.json"), "w"), indent=1)
-            entry.update({k: outcome[k] for k in
-                          ("result", "reward", "ideal_reward", "score", "actions", "seconds")})
-            print(f"{args.agent} {args.label} {name}: {result} score {score:.1f} "
-                  f"actions {outcome['actions']} in {took:.0f}s", flush=True)
-        finally:
-            entry["unload"] = admin("unload", args.agent)
-            json.dump(record, open(os.path.join(out, "run.json"), "w"), indent=1)
-        if timed_out:
-            break
-    ended = [t for t in record["tasks"] if "refused" in t or "fault" in t]
-    return 1 if ended else 0
+    except BaseException as error:
+        record["ended"] = f"error: {error!r}"
+        raise
+    else:
+        last = record["tasks"][-1] if record["tasks"] else {}
+        if "fault" in last:
+            record["ended"] = "timeout: " + last["fault"]
+        elif "refused" in last:
+            record["ended"] = "refused: " + last["refused"]
+        else:
+            record["ended"] = "completed"
+    finally:
+        json.dump(record, open(record_path, "w"), indent=1)
+    return 0 if record["ended"] == "completed" else 1
 
 
 if __name__ == "__main__":
