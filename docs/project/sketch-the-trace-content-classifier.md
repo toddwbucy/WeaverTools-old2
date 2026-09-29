@@ -73,12 +73,13 @@ Positions no recipe reaches are a third count, never folded into either.
 a program statement of `message.assistant`, an action's request on `tool.call.started`,
 or its answer on `message.tool_result`. The harness writes one `message.assistant` and
 one `model.output` per generation, and the trace has no event per line, so the span is
-what makes a line a position. The input at a position is the trace through that event
-with every payload carrying the same generation cut at the span's end, `model.output`'s
-`emission`, `message.assistant`'s content and `model.measurement`'s output tokens and
-per-step readings alike, since the record authors the generation's `model.output` and
-`model.measurement` before its `message.assistant`, so nothing the model had not yet
-written at that span is in its input.
+what makes a line a position. The input at a position is the trace through that event,
+and **every event of the same generation, of whatever kind, up to and including its
+assistant message, is cut at the span's end where it can be cut and excluded where it
+cannot**, so nothing the model had not yet written at that span is in its input.
+`model.output`'s `emission`, the assistant message's own content, `model.measurement`'s
+per-step members and the per-token `model.field` events are instances of the rule rather
+than its extent.
 
 Measured 2026-09-29 over HeroBench's own results, 3,882 single-shot completions
 whose text is on disk, segmented into positions (prose lines, draft lines,
