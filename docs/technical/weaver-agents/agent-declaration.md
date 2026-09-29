@@ -53,7 +53,7 @@ denied-uids = []
 
 [trace-sink]
 kind = "file"
-path = "/home/todd/.weaveragents/karl/trace.ndjson"
+path = "/home/operator/.weaveragents/karl/trace.ndjson"
 create = true
 ```
 

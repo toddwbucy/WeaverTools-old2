@@ -24,19 +24,54 @@ The stack is run3's, at 39fe573, re-hashed unchanged before this run, per the de
 `box-facts.txt`, which also records the two journald settings the run ran under and
 the file each lives in.
 
-## The smoke and the run
+## The journal's cap, the smoke and the run
 
-The operator ran both from their own terminal, and its echo was not returned to this
-seat, so neither command is given here as typed. What the deposits show:
+Each as executed, from the operator's terminal echo, which they pasted back to the
+Planner, with the prompt left out. None is rerun, since each changes root-owned
+configuration or drives the stack.
 
-- The smoke, `determinism-matrix-thinkpad-2026-09-28-39fe573-run5-smoke`, ran from
-  19:49:36 to 19:51:30 CDT on 2026-09-28 and wrote its summary, 31 of 31 reproduced.
-  It has no clock log.
-- The run's `matrix.log` opens at 19:51:54 and closes at 02:52:09 on 2026-09-29.
-  `run-console.log` is byte-identical to it, and `clock.log`, the output of
-  `nvidia-smi dmon -s pc -d 5 -o DT` by its header, opens the same second, which is
-  run3's arrangement.
-  `found.txt` records the matrix process as PID 2062688.
+The journal's size cap, raised first:
+
+```
+sudo mkdir -p /etc/systemd/journald.conf.d
+printf '[Journal]\nSystemMaxUse=4G\n' | sudo tee /etc/systemd/journald.conf.d/50-weaver-runs.conf
+sudo systemctl restart systemd-journald
+journalctl --disk-usage
+```
+
+`journalctl --disk-usage` printed 50M, the journal's size as the old cap had left
+it. The smoke, from the harness's `code/` directory in the primary checkout after
+`sudo -v`, run4's smoke lines without the `systemctl` one:
+
+```
+OUT=/mnt/bulk-store/weaver-testing/determinism-matrix-thinkpad-2026-09-28-39fe573-run5-smoke
+S=$(date '+%F %T')
+python3 determinism_matrix.py --config $OUT/config.json --outdir $OUT --hours 0.03 2>&1 | tail -5; echo "exit ${PIPESTATUS[0]}"
+journalctl --since "$S" -q -g 'Suppressed' | grep -c weaver-worker
+```
+
+It printed 31 of 31 reproduced, `exit 0`, and a count of 0. Then the run, run3's
+arrangement, from the same directory:
+
+```
+OUT=/mnt/bulk-store/weaver-testing/determinism-matrix-thinkpad-2026-09-28-39fe573-run5
+sudo -v
+( sudo -n -v && echo renewed || echo refused ) < /dev/null &
+```
+
+The console printed `renewed`. Then:
+
+```
+( ( while sleep 120; do sudo -n -v || break; done ) & K=$!
+  nvidia-smi dmon -s pc -d 5 -o DT > $OUT/clock.log 2>&1 & D=$!
+  python3 determinism_matrix.py --config $OUT/config.json --outdir $OUT \
+    --hours 7 > $OUT/run-console.log 2>&1
+  kill $D $K ) < /dev/null &
+```
+
+The console printed `[1] 2062685`, and the matrix process was PID 2062688, per
+`run5-evidence/found.txt`. `matrix.log` opens at 19:51:54 and closes at 02:52:09 on
+2026-09-29, and `run-console.log` is byte-identical to it.
 
 ## During and after the run
 

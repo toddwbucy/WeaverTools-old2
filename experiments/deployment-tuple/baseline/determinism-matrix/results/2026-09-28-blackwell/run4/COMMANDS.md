@@ -26,12 +26,18 @@ The stack is run3's, at 39fe573, re-hashed unchanged before this run, per the de
 ## The smokes
 
 Two smokes ran before the run, one per rate-limit setting, and their comparison is in
-the run's `box-facts.txt`. The first, as it ran, from the operator's terminal echo,
-which they pasted back, from the harness's `code/` directory in the primary checkout.
-It is not rerun, since it drives the stack:
+the run's `box-facts.txt`. Each is as executed, from the operator's terminal echo, which
+they pasted back, with the prompt left out. Each ran from the harness's `code/`
+directory in the primary checkout after `sudo -v`, and none is rerun, since each changes
+root-owned configuration or drives the stack.
+
+The first setting, then the first smoke:
 
 ```
-sudo -v
+echo 'LogRateLimitIntervalSec=0' | sudo tee -a /etc/weaver/admin/unit-properties
+```
+
+```
 OUT=/mnt/bulk-store/weaver-testing/determinism-matrix-thinkpad-2026-09-28-39fe573-run4-smoke
 S=$(date '+%F %T')
 python3 determinism_matrix.py --config $OUT/config.json --outdir $OUT --hours 0.03 2>&1 | tail -5; echo "exit ${PIPESTATUS[0]}"
@@ -40,18 +46,50 @@ journalctl --since "$S" -q -g 'Suppressed' | grep -c weaver-worker
 ```
 
 It printed 31 of 31 reproduced, `exit 0`, `LogRateLimitIntervalUSec=0` and a count of
-1, the Suppressed line that showed an interval of 0 does not lift the limit. The second
-smoke, `-run4-smoke2`, ran from 10:00:14 to 10:02:11 under the settings the run kept,
-31 of 31 reproduced. Its echo was not returned to this seat.
+1, the Suppressed line that showed an interval of 0 does not lift the limit.
+
+The second setting, then the second smoke, the same lines without the `systemctl` one:
+
+```
+sudo sed -i 's/^LogRateLimitIntervalSec=0$/LogRateLimitIntervalSec=30s\nLogRateLimitBurst=1000000/' /etc/weaver/admin/unit-properties
+```
+
+```
+OUT=/mnt/bulk-store/weaver-testing/determinism-matrix-thinkpad-2026-09-28-39fe573-run4-smoke2
+S=$(date '+%F %T')
+python3 determinism_matrix.py --config $OUT/config.json --outdir $OUT --hours 0.03 2>&1 | tail -5; echo "exit ${PIPESTATUS[0]}"
+journalctl --since "$S" -q -g 'Suppressed' | grep -c weaver-worker
+```
+
+Its console tail was not pasted back. Its summary reads 31 of 31 reproduced.
 
 ## The run
 
-The operator ran it from their own terminal, and its echo was not returned to this
-seat, so the command is not given here as typed. What the deposit shows: `matrix.log`
-opens at 10:06:53 and closes at 14:42:09, `run-console.log` is byte-identical to it,
-and `clock.log`, `nvidia-smi dmon -s pc -d 5 -o DT`'s output by its header, runs
-beside it, which is run3's arrangement. The operator interrupted it at 14:42 to free
-the card, and unloaded karl by hand after the harness's closing unload was refused.
+As given to the operator, not echoed: no echo of this run's launch was pasted back.
+It is run5's block with this run's deposit, which is run3's arrangement, and the
+deposit agrees with it. `matrix.log` opens at 10:06:53 and closes at 14:42:09,
+`run-console.log` is byte-identical to it, and `clock.log` is `nvidia-smi dmon`'s
+output by its header. Not rerun, since it drives the stack for hours and writes into
+the deposit:
+
+```
+OUT=/mnt/bulk-store/weaver-testing/determinism-matrix-thinkpad-2026-09-28-39fe573-run4
+sudo -v
+( sudo -n -v && echo renewed || echo refused ) < /dev/null &
+```
+
+Then:
+
+```
+( ( while sleep 120; do sudo -n -v || break; done ) & K=$!
+  nvidia-smi dmon -s pc -d 5 -o DT > $OUT/clock.log 2>&1 & D=$!
+  python3 determinism_matrix.py --config $OUT/config.json --outdir $OUT \
+    --hours 7 > $OUT/run-console.log 2>&1
+  kill $D $K ) < /dev/null &
+```
+
+The operator interrupted it at 14:42 to free the card, and unloaded karl by hand after
+the harness's closing unload was refused.
 
 ## During and after the run
 

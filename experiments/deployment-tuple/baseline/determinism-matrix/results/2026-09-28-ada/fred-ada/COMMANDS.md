@@ -39,8 +39,8 @@ the `worker-binary` still named the Rust worker, and the toolchain still read ru
 
 As it ran, on olympus as root, and not rerun, since it edits the installed declaration:
 fred's `devices` line set to `[2]`, so that fred's declaration is karl's `a2a03d10` with
-`devices: [2]` and the trace path `/home/todd/.weaveragents/weaver-fred/trace.ndjson`
-and no other line changed. It hashes `84c43db6`.
+`devices: [2]` and the trace path `~/.weaveragents/weaver-fred/trace.ndjson`, written
+out in full under the operator's home, and no other line changed. It hashes `84c43db6`.
 
 ## The config
 

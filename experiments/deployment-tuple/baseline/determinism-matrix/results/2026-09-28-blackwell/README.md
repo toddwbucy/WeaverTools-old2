@@ -26,7 +26,7 @@ its commit, and git holds it.
 | `run4-smoke` | 2026-09-28 09:53:51 to 09:55:46 | 39fe573 | `6072c69` | 31 | 31 | 0 | 0 | 0, echoed |
 | `run4-smoke2` | 2026-09-28 10:00:14 to 10:02:11 | 39fe573 | `6072c69` | 31 | 31 | 0 | 0 | not echoed, 0 by its harness's rule over its summary |
 | `run4` | 2026-09-28 10:06:53 to 14:42:09, interrupted by the operator | 39fe573 | `6072c69` | 4,479 | 4,477 | 0 | 2 | not echoed, interrupted: not a reproduction result |
-| `run5-smoke` | 2026-09-28 19:49:36 to 19:51:30 | 39fe573 | `bb28f4f` | 31 | 31 | 0 | 0 | not echoed, 0 by its harness's rule over its summary |
+| `run5-smoke` | 2026-09-28 19:49:36 to 19:51:30 | 39fe573 | `bb28f4f` | 31 | 31 | 0 | 0 | 0, echoed |
 | `run5` | 2026-09-28 19:51:54 to 2026-09-29 02:52:09 | 39fe573 | `bb28f4f` | 6,855 | 6,855 | 0 | 0 | not echoed, 0 by its harness's rule over its summary |
 
 All of them ran on one box, one card and one stack: the six binaries, the five engine
