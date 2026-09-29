@@ -86,20 +86,28 @@ Each candidate is fitted on the training split, in the one shape section 7 finds
 seam can serve: **one softmax head over the eight combinations of the three
 predicates**, each label one combination. A position's probability for a predicate is
 the sum of the probabilities of the combinations that hold it, which gives each
-predicate its own decision out of one forward. **Every threshold is the one that
-maximises F1 on the training split**, chosen once per candidate and predicate and
-recorded, and none is chosen on the held-out split.
+predicate its own decision out of one forward. **The threshold is a procedure.** For
+each candidate and predicate, the cutoff is the value of the predicate's probability
+that maximises F1 on the training split, over the distinct probabilities the training
+positions take. A tie between cutoffs goes to the largest, and a position whose
+probability is at or above the cutoff counts positive. F1 is zero where a cutoff
+predicts no positive, precision being undefined there. The cutoff is recorded, and none
+is chosen on the held-out split.
 
 ## 6. Scoring
 
 The candidates are compared per predicate on precision and recall over the held-out
 positions. No figure pooled across the predicates is reported.
 
-**Every figure carries its uncertainty.** Each candidate's F1 per predicate has a 95 per
-cent bootstrap interval over 1,000 resamples, reported beside the point figure. The
-resampling unit is the held-out session and not the position, for the reason section 4
-splits by session: positions of one session share inputs, and a bootstrap that treated
-them as independent would draw an interval narrower than the data supports.
+**Every figure carries its uncertainty, by a fixed procedure.** Each candidate's F1 per
+predicate has a percentile bootstrap interval over the held-out sessions: 1,000
+resamples, each drawing as many sessions as were held out, with replacement, from a
+generator seeded with 20260929, the seed recorded in the deposit so two compliant runs
+draw the same resamples. The interval runs from the 2.5th to the 97.5th percentile of
+the resampled F1, and its lower bound is the 2.5th percentile. The unit is the session
+and not the position, for the reason section 4 splits by session: positions of one
+session share inputs, and treating them as independent would draw an interval narrower
+than the data supports.
 
 ## 7. Serving
 
@@ -146,19 +154,27 @@ failed:
 4. **The rubric.** `RUBRIC.md` is merged and the two labelers' agreement meets its floor
    for every predicate.
 
-**The rule is a strict total order.** Among the eligible candidates, those with every
-observed answer under 30,000 ms and a per-turn cost within the budget:
+**The selection is a procedure over one key.** Among the eligible candidates, those with
+every observed answer under 30,000 ms and a per-turn cost within the budget:
 
-1. Candidates are ranked by the lower bound of the 95 per cent interval on their worst
-   predicate, highest first.
-2. Equal lower bounds are ordered by per-turn cost at the maximum, lowest first.
-3. Equal costs are ordered by the candidate's name, so no three candidates can cycle.
-4. The first candidate is selected. With no eligible candidate, none is selected and the
-   report says which bound each one missed.
+1. **The key.** For each candidate, the key is the minimum over the three predicates of
+   the lower bound of its F1 interval, section 6's 2.5th percentile.
+2. **The floor.** A candidate whose key is under 0.5 is not selected. F1 is a harmonic
+   mean and never falls below the smaller of precision and recall, so a key under 0.5
+   means that on some predicate, at the interval's low end, one of the two is under one
+   half: the classifier is wrong more often than right on that predicate's positives or
+   on its positive calls.
+3. **The order.** Candidates at or above the floor are ordered by key, highest first,
+   then by per-turn cost at the maximum positions per turn, lowest first, then by name.
+   The order is total, so no set of candidates can cycle.
+4. **The selection.** The first candidate in the order is selected. With none eligible
+   or none at the floor, none is selected, and the report says where each candidate
+   fell: which bound it missed or which key it reached.
 
-Precision, recall and the intervals are reported for every candidate and every
-predicate. The rule stands as merged, and the held-out results are read only after the
-split, the bound, the thresholds, the budget and the gates are recorded.
+Precision, recall, F1 and the intervals are reported for every candidate and every
+predicate. The held-out results are read only after the split, the bound, the cutoffs,
+the budget and the gates are recorded. **This procedure stands as merged and changes
+only by an act of its own.**
 
 ## 9. Deposit
 
