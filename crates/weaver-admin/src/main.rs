@@ -28,6 +28,7 @@ mod channel;
 mod inventory;
 mod log;
 mod sink;
+mod spu_choice;
 mod surface;
 mod unit;
 mod verbs;
@@ -88,9 +89,26 @@ struct ServiceConfig {
     /// where the file is silent.
     state_store_socket: PathBuf,
     allow_list: inventory::AllowList,
+    /// Which SPU each agent's worker forks, per Spec section 9: the unit
+    /// template's `spu` where the map does not name the agent.
+    spu_choice: spu_choice::SpuChoice,
 }
 
 impl ServiceConfig {
+    /// The agent's SPU, per Spec section 9.
+    fn spu_for(&self, agent: &str) -> spu_choice::AgentSpu {
+        self.spu_choice.for_agent(agent, &self.unit.spu)
+    }
+
+    /// The unit template a load of this agent starts: the installation's, its
+    /// SPU replaced by the agent's own, so the vector section 6 builds carries
+    /// the path section 9 chose and no other.
+    fn template_for(&self, agent: &str) -> unit::UnitTemplate {
+        let mut template = self.unit.clone();
+        template.spu = self.spu_for(agent).path;
+        template
+    }
+
     /// The per-agent socket the harness binds inside the unit's runtime
     /// directory. Admin resolves the same name to dial it, which is the one
     /// value that reaches two crates and the reason the operator's file is
@@ -456,12 +474,16 @@ fn member_vector(
     vector
 }
 
-/// The digests of the organ binaries this crate starts, keyed by the
-/// binary's name, per `weaver-admin-harness-contract` section 3 as of
-/// 2026-09-04: the worker the unit runs and the state member beside it, each
-/// sha256 hex and the empty string where the file does not read.
+/// The digests of the organ binaries this crate starts and hands the worker,
+/// keyed by the binary's name, per `weaver-admin-harness-contract` section 3:
+/// the worker the unit runs, the state member beside it where it stood, and
+/// the agent's own SPU and the gate the worker forks from the paths section 6
+/// hands it, per Spec section 9. Each is sha256 hex, and the empty string where
+/// the file does not read. The names cannot collide, section 9's read having
+/// refused an SPU whose file name another of them has.
 fn stack_digests(
     config: &ServiceConfig,
+    agent: &str,
     member_started: bool,
 ) -> std::collections::BTreeMap<String, String> {
     let worker = config.unit.worker.as_path();
@@ -469,10 +491,13 @@ fn stack_digests(
         .parent()
         .map(|directory| directory.join("weaver-state"))
         .unwrap_or_else(|| std::path::PathBuf::from("weaver-state"));
+    let spu = config.spu_for(agent).path;
     let mut binaries = vec![worker];
     if member_started {
         binaries.push(member.as_path());
     }
+    binaries.push(spu.as_path());
+    binaries.push(config.unit.gate.as_path());
     let mut stack = std::collections::BTreeMap::new();
     for binary in binaries {
         let name = binary
@@ -655,11 +680,19 @@ fn load(config: &ServiceConfig, agent: &AgentName) -> Result<LifecycleAnswer, Li
     let outcome = run_load(config, agent, &mut standing);
     match outcome {
         Ok(()) => {
+            // The line names the agent's SPU, per Spec section 8: the key where
+            // section 9's map chose it, `default` where `spu-binary` stood.
+            let spu = config.spu_for(&agent.0);
             let _ = operations.record(&log::Act {
                 verb: "load",
                 agent: agent.0.clone(),
                 outcome: "ready".into(),
                 undone: None,
+                spu: Some(format!(
+                    "{} {}",
+                    spu.key.as_deref().unwrap_or("default"),
+                    spu.path.display()
+                )),
             });
             // Idle is honest here and only here: the enter aggregate came back
             // ready, which is the interior serving and at rest. It is not read
@@ -694,6 +727,7 @@ fn load(config: &ServiceConfig, agent: &AgentName) -> Result<LifecycleAnswer, Li
                         undone.act,
                         if undone.succeeded { "undone" } else { "held" }
                     )),
+                    spu: None,
                 });
             }
             Err(refusal)
@@ -722,7 +756,7 @@ fn run_load(
     // agree by construction rather than by two readings of one convention.
     let socket_path = config.coordination_socket(&agent.0);
     started(unit::start(
-        &config.unit,
+        &config.template_for(&agent.0),
         &inventory.identity,
         &agent.0,
         &socket_path,
@@ -748,11 +782,11 @@ fn run_load(
     // down and the load unrefused, the harness's end below then absent from
     // the enter and the directive carrying the sink alone.
     let state_end = stand_state_member(config, &inventory);
-    // **The stack names the binaries this crate started**, per
-    // `weaver-admin-harness-contract` section 3: the worker always, and the
-    // member only where it stood, a declined or failed spawn being a binary
-    // admin did not start.
-    let stack = stack_digests(config, state_end.is_some());
+    // **The stack names the binaries this crate started and handed the
+    // worker**, per `weaver-admin-harness-contract` section 3: the worker
+    // always, the member only where it stood, a declined or failed spawn being
+    // a binary admin did not start, and the agent's SPU and the gate always.
+    let stack = stack_digests(config, &agent.0, state_end.is_some());
 
     let ordinal = coordination.next_ordinal();
     // **The session is read and the run is minted**, per Spec section 7. The
@@ -1015,6 +1049,7 @@ fn unload(config: &ServiceConfig, agent: &AgentName) -> Result<LifecycleAnswer, 
         agent: agent.0.clone(),
         outcome: residency.as_str().into(),
         undone: None,
+        spu: None,
     });
     // **The state ask decides and the stop ask's status does not**, per Spec
     // section 6. That status returns the same value for a unit that is still
@@ -1117,7 +1152,12 @@ fn stop(config: &ServiceConfig, agent: &AgentName) -> Result<LifecycleAnswer, Li
 fn load_service_config() -> Result<ServiceConfig, String> {
     let root = std::env::var("WEAVER_ADMIN_CONFIG")
         .map_err(|_| "WEAVER_ADMIN_CONFIG names the service configuration and is unset")?;
-    let root = PathBuf::from(root);
+    load_service_config_from(&PathBuf::from(root))
+}
+
+/// The service configuration read from its directory, so a test can hand one
+/// in without the process environment.
+fn load_service_config_from(root: &std::path::Path) -> Result<ServiceConfig, String> {
     let read = |name: &str| -> Result<String, String> {
         std::fs::read_to_string(root.join(name))
             .map(|s| s.trim().to_string())
@@ -1131,6 +1171,21 @@ fn load_service_config() -> Result<ServiceConfig, String> {
         .map(|l| l.trim().to_string())
         .filter(|l| !l.is_empty())
         .collect();
+    let worker = PathBuf::from(read("worker-binary")?);
+    // Required rather than defaulted, on the same ground as every other value
+    // here: a missing one refuses and names itself rather than being searched
+    // for, per Spec section 9. `spu-binary` is the SPU of every agent the
+    // optional map does not name.
+    let spu = PathBuf::from(read("spu-binary")?);
+    let gate = PathBuf::from(read("gate-binary")?);
+    let spu_choice = spu_choice::SpuChoice::read(
+        read("spu-implementations").ok().as_deref(),
+        read("agent-spu").ok().as_deref(),
+        &provisioned,
+        &spu,
+        &worker,
+        &gate,
+    )?;
     Ok(ServiceConfig {
         coordination_root: PathBuf::from(read("coordination-root")?),
         log_path: PathBuf::from(read("log-path")?),
@@ -1144,12 +1199,9 @@ fn load_service_config() -> Result<ServiceConfig, String> {
                 .map(|l| l.trim().to_string())
                 .filter(|l| !l.is_empty())
                 .collect(),
-            worker: PathBuf::from(read("worker-binary")?),
-            // Required rather than defaulted, on the same ground as every
-            // other value here: a missing one refuses and names itself
-            // rather than being searched for, per Spec section 9.
-            spu: PathBuf::from(read("spu-binary")?),
-            gate: PathBuf::from(read("gate-binary")?),
+            worker,
+            spu,
+            gate,
             // Optional, unlike the binaries above: an installation that states
             // no headroom leaves the organ's compiled default standing.
             headroom_bytes: read("headroom-bytes").ok().filter(|v| !v.is_empty()),
@@ -1160,6 +1212,7 @@ fn load_service_config() -> Result<ServiceConfig, String> {
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(inventory::STORE_SOCKET_DIRECTORY)),
         allow_list: inventory::AllowList::new(provisioned),
+        spu_choice,
     })
 }
 
@@ -1367,22 +1420,111 @@ mod tests {
         );
     }
 
-    /// **The stack names the binaries this crate started**, per
-    /// `weaver-admin-harness-contract` section 3: the worker on every load,
-    /// the member only where it stood.
+    /// **The stack names the binaries this crate started and handed the
+    /// worker**, per `weaver-admin-harness-contract` section 3 and Spec
+    /// section 9: the worker on every load, the member only where it stood, and
+    /// the agent's own SPU and the gate always.
     ///
-    /// Perturbation: name the member whatever stood and the first
-    /// assertion fails, a load that declined its member naming a binary
-    /// admin never started. Watched under exactly that change.
+    /// Perturbations, each failing an assertion here: name the member whatever
+    /// stood; leave the SPU out; digest the installation's `spu-binary` where
+    /// the map chose another for the agent; leave the gate out.
     #[test]
-    fn the_stack_names_what_was_started() {
+    fn the_stack_names_what_was_started_and_handed() {
         let config = unread_config();
-        let without = stack_digests(&config, false);
-        assert_eq!(without.len(), 1, "the worker alone");
-        assert!(!without.contains_key("weaver-state"));
-        let with = stack_digests(&config, true);
-        assert_eq!(with.len(), 2, "the worker and the member");
+        let alpha = stack_digests(&config, "alpha", false);
+        let names: Vec<&str> = alpha.keys().map(String::as_str).collect();
+        assert_eq!(names, ["python-spu.pyz", "weaver-gate", "worker"]);
+        let gamma = stack_digests(&config, "gamma", false);
+        let names: Vec<&str> = gamma.keys().map(String::as_str).collect();
+        assert_eq!(names, ["weaver-gate", "weaver-spu", "worker"]);
+        let with = stack_digests(&config, "gamma", true);
+        assert_eq!(
+            with.len(),
+            4,
+            "the worker, the member, the SPU and the gate"
+        );
         assert!(with.contains_key("weaver-state"));
+    }
+
+    /// **The vector carries the agent's SPU and no other**, per Spec sections 6
+    /// and 9. Perturbation: start the installation's template instead of the
+    /// agent's and the first assertion fails.
+    #[test]
+    fn the_agents_spu_reaches_the_vector() {
+        let config = unread_config();
+        let socket = std::path::Path::new("/run/weaver/alpha/coordination.sock");
+        let alpha = unit::start_arguments(
+            &config.template_for("alpha"),
+            "alpha",
+            "alpha",
+            socket,
+            None,
+        );
+        assert!(
+            alpha
+                .iter()
+                .any(|a| a == "/nonexistent/python/python-spu.pyz"),
+            "{alpha:?}"
+        );
+        assert!(
+            !alpha.iter().any(|a| a == "/nonexistent/bin/weaver-spu"),
+            "{alpha:?}"
+        );
+        let gamma = unit::start_arguments(
+            &config.template_for("gamma"),
+            "gamma",
+            "gamma",
+            socket,
+            None,
+        );
+        assert!(
+            gamma.iter().any(|a| a == "/nonexistent/bin/weaver-spu"),
+            "{gamma:?}"
+        );
+    }
+
+    /// **A contradictory map fails the whole read**, before any verb, per
+    /// Spec section 9, and the read with it absent or sound stands.
+    /// Perturbation: read the map with `.ok()` over its judgment and the
+    /// second assertion fails.
+    #[test]
+    fn a_contradictory_map_fails_the_read() {
+        let root =
+            std::env::temp_dir().join(format!("weaver-admin-spu-map-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let write = |name: &str, text: &str| std::fs::write(root.join(name), text).unwrap();
+        for (name, text) in [
+            ("allow-list", "alpha\n"),
+            ("coordination-root", "/run/weaver"),
+            ("log-path", "/var/log/weaver/admin.log"),
+            ("agent-config-directory", "/etc/weaver/agents"),
+            ("run-tool", "/usr/bin/systemd-run"),
+            ("control-tool", "/usr/bin/systemctl"),
+            ("worker-binary", "/opt/weaver/bin/worker"),
+            ("spu-binary", "/opt/weaver/bin/weaver-spu"),
+            ("gate-binary", "/opt/weaver/bin/weaver-gate"),
+        ] {
+            write(name, text);
+        }
+        assert!(
+            load_service_config_from(&root).is_ok(),
+            "no map is the default"
+        );
+        write(
+            "spu-implementations",
+            "python /opt/weaver/python-spu/python-spu.pyz\n",
+        );
+        write("agent-spu", "alpha rust\n");
+        let failure = load_service_config_from(&root).err().unwrap_or_default();
+        assert!(
+            failure.contains("not in spu-implementations"),
+            "{failure:?}"
+        );
+        write("agent-spu", "alpha python\n");
+        let config = load_service_config_from(&root).unwrap();
+        assert_eq!(config.spu_for("alpha").key.as_deref(), Some("python"));
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// A configuration whose values are never read by the arm under test.
@@ -1398,12 +1540,21 @@ mod tests {
                 run_tool: "/bin/false".into(),
                 control_tool: "/bin/false".into(),
                 properties: vec![],
-                worker: PathBuf::from("/bin/false"),
-                spu: PathBuf::from("/bin/false"),
-                gate: PathBuf::from("/bin/false"),
+                worker: PathBuf::from("/nonexistent/bin/worker"),
+                spu: PathBuf::from("/nonexistent/bin/weaver-spu"),
+                gate: PathBuf::from("/nonexistent/bin/weaver-gate"),
                 headroom_bytes: None,
             },
-            allow_list: inventory::AllowList::new(["alpha".to_string()]),
+            allow_list: inventory::AllowList::new(["alpha".to_string(), "gamma".to_string()]),
+            spu_choice: spu_choice::SpuChoice::read(
+                Some("python /nonexistent/python/python-spu.pyz"),
+                Some("alpha python"),
+                &["alpha".to_string(), "gamma".to_string()],
+                std::path::Path::new("/nonexistent/bin/weaver-spu"),
+                std::path::Path::new("/nonexistent/bin/worker"),
+                std::path::Path::new("/nonexistent/bin/weaver-gate"),
+            )
+            .expect("the fixture's map is sound"),
         }
     }
 

@@ -763,6 +763,14 @@ def _resolve_spu(cfg):
     # source that the `resolved_by` marker suppresses.
     directory = cfg.get("admin_config")
     if directory:
+        # **The agent's own SPU first**, per weaver-admin-Spec section 9: where
+        # `agent-spu` names the run's agent, the key it gives chooses the path
+        # in `spu-implementations`, and `spu-binary` stands only where the map
+        # does not name the agent. A map this reader cannot follow is reported
+        # rather than passed over, admin itself failing every verb on it.
+        chosen = _agent_spu(directory, cfg.get("agent"))
+        if chosen is not None:
+            return chosen
         stated = os.path.join(directory, "spu-binary")
         try:
             with open(stated) as f:
@@ -785,6 +793,33 @@ def _resolve_spu(cfg):
         os.path.join(os.path.dirname(admin_bin), "weaver-spu"),
         "guessed beside admin_bin, the admin config naming none",
     )
+
+
+def _agent_spu(directory, agent):
+    """The SPU `agent-spu` chooses for the agent, as `_resolve_spu`'s pair, or
+    None where the map is absent or does not name the agent."""
+    def pairs(name):
+        try:
+            with open(os.path.join(directory, name)) as f:
+                lines = [line.split() for line in f.read().splitlines() if line.strip()]
+        except OSError:
+            return None
+        if any(len(fields) != 2 for fields in lines):
+            return f"{name} holds a line that is not two fields"
+        return dict(lines)
+    agents = pairs("agent-spu")
+    if agents is None or (isinstance(agents, dict) and agent not in agents):
+        return None
+    if isinstance(agents, str):
+        return None, agents
+    key = agents[agent]
+    implementations = pairs("spu-implementations")
+    if not isinstance(implementations, dict) or key not in implementations:
+        return None, f"agent-spu names the key {key!r}, which spu-implementations does not hold"
+    path = implementations[key]
+    if not os.path.isabs(path):
+        return None, f"spu-implementations names a relative path {path!r} for {key!r}"
+    return path, f"admin config agent-spu key {key}"
 
 
 def _why(error):

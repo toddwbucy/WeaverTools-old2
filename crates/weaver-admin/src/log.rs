@@ -27,6 +27,9 @@ pub struct Act {
     pub outcome: String,
     /// For a rollback line: what this act undid, or could not.
     pub undone: Option<String>,
+    /// For a load's line: the agent's SPU key and path, per `weaver-admin-Spec`
+    /// sections 8 and 9, which SPU admin handed the worker being supervision.
+    pub spu: Option<String>,
 }
 
 /// The log's writer: this crate's own file with this crate's own writer, a
@@ -66,10 +69,56 @@ impl OperationsLog {
         if let Some(undone) = &act.undone {
             line.insert("undone".into(), undone.clone().into());
         }
+        if let Some(spu) = &act.spu {
+            line.insert("spu".into(), spu.clone().into());
+        }
         let rendered = serde_json::to_string(&serde_json::Value::Object(line))
             .map_err(std::io::Error::other)?;
         self.file.write_all(rendered.as_bytes())?;
         self.file.write_all(b"\n")?;
         self.file.flush()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// **A load's line names the agent's SPU and no other line carries the
+    /// member**, per `weaver-admin-Spec` sections 8 and 9. Perturbation: drop
+    /// the member from the rendering and the first assertion fails.
+    #[test]
+    fn a_loads_line_names_its_spu() {
+        let path =
+            std::env::temp_dir().join(format!("weaver-admin-log-{}.ndjson", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let mut log = OperationsLog::open(&path).unwrap();
+        log.record(&Act {
+            verb: "load",
+            agent: "karl".into(),
+            outcome: "ready".into(),
+            undone: None,
+            spu: Some("python /opt/weaver/python-spu/python-spu.pyz".into()),
+        })
+        .unwrap();
+        log.record(&Act {
+            verb: "stop",
+            agent: "karl".into(),
+            outcome: "stopped".into(),
+            undone: None,
+            spu: None,
+        })
+        .unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        let lines: Vec<serde_json::Value> = text
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        assert_eq!(
+            lines[0]["spu"],
+            "python /opt/weaver/python-spu/python-spu.pyz"
+        );
+        assert!(lines[1].get("spu").is_none(), "{:?}", lines[1]);
+        let _ = std::fs::remove_file(&path);
     }
 }

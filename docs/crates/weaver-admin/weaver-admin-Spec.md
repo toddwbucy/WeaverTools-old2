@@ -1654,15 +1654,14 @@ from: weaver-admin
 to: admin-log-ndjson-own-schema
 ```
 
-**What is logged is the charter's set.** Transitions directed and their
-outcomes, refusals issued, rollbacks with what each act undid or could not,
-and units started and stopped, a unit's start naming the agent's SPU key and
-path per section 9. Never a fact about what an agent did, per
-charter section 2: the moment a line describes conduct rather than
-supervision it is a second record of the agent, and the review that finds
-one has found a defect. The instrument is named in that sentence and is the
-only one available, no mechanism being able to tell a line about supervision
-from a line about conduct.
+**What is logged is the charter's set.** Transitions directed and their outcomes,
+refusals issued, rollbacks with what each act undid or could not, and units started and
+stopped, a load's `ready` line naming the agent's SPU key and path per section 9. Never
+a fact about what an agent did, per charter section 2: the moment a line describes
+conduct rather than supervision it is a second record of the agent, and the review that
+finds one has found a defect. The instrument is named in that sentence and is the only
+one available, no mechanism being able to tell a line about supervision from a line
+about conduct.
 
 **The line between supervision and conduct is a domain line, and that is what
 this record grounds in.** What an agent did is a fact about the working the
@@ -1740,12 +1739,17 @@ two further values beside the allow-list, both optional:
 **`spu-binary` stays, and it is the SPU of every agent `agent-spu` does not name.** An
 installation with one SPU therefore changes nothing, and one with two names each agent
 that departs from the default and no other. The three values are read where every value
-of this section is read, before any verb, and they are judged there: a line that does
-not parse, a relative path, a key or an agent named twice, an agent that is not on the
-allow-list, or a key `spu-implementations` does not hold fails the invocation as an
-unreadable configuration fails it today, before any unit is asked, because each is the
-operator's file contradicting itself and no load could stand on it. No new refusal names
-it, the configuration's failure having no lifecycle case to be.
+of this section is read, before any verb, and they are judged there: a line that is not
+two fields, a key outside lowercase letters, digits and hyphens, a relative path, a key
+or an agent named twice, an agent that is not on the allow-list, a key
+`spu-implementations` does not hold, or an SPU whose file name the worker, the state
+member or the gate already has fails the invocation as an unreadable configuration fails
+it today, before any unit is asked, because each is the operator's file contradicting
+itself and no load could stand on it. The last is refused rather than keyed around
+because the stack below is keyed by file name and `weaver-analysis` carries it into a
+run's code identity by those names, so records written before this act stay comparable
+with those written after. No new refusal names any of them, the configuration's failure
+having no lifecycle case to be.
 
 **What the SPU binary is, this crate does not judge.** It passes the agent's path on
 section 6's vector as it passed the installation's, and the worker forks it at enter as
@@ -1765,8 +1769,8 @@ two as well, digested from the same paths the vector carries, so each agent's re
 names the SPU that served it by the file's name and sha256, and two agents served by two
 implementations carry two different entries. The map is keyed by name already, so no
 type changes, and a record written before this act lacks the two entries, which reads as
-those facts being unrecorded. Section 8's log line for a unit's start names the agent's
-key and path beside it.
+those facts being unrecorded. The load's `ready` line in section 8's log names the
+agent's key and path beside it.
 
 **Two agents on one card is the SPU's question and is already answered.** Admission
 judges each assigned device by one inequality, the shard's need plus the headroom

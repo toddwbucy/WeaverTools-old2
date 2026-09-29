@@ -33,9 +33,11 @@ pub struct UnitTemplate {
     pub worker: std::path::PathBuf,
     /// The SPU binary the worker forks at enter, and the gate binary beside
     /// it. **Operator-installed values rather than anything this invocation
-    /// composed**, per `weaver-admin-Spec` section 9: one installation's fact,
-    /// identical for every agent, which is why they sit here and not in the
-    /// agent's declaration. They reach the worker in the argument vector
+    /// composed**, per `weaver-admin-Spec` section 9, which is why they sit
+    /// here and not in the agent's declaration. The gate's is one
+    /// installation's fact. The SPU's here is `spu-binary`, the installation's
+    /// default, and a load replaces it with the agent's own where section 9's
+    /// map names the agent. They reach the worker in the argument vector
     /// because a process that does not yet exist has no other way to learn
     /// them.
     pub spu: std::path::PathBuf,
@@ -197,7 +199,7 @@ const ELECTED_KEYS: &[&str] = &[
     "RuntimeDirectoryMode",
 ];
 
-fn start_arguments(
+pub(crate) fn start_arguments(
     template: &UnitTemplate,
     identity: &str,
     agent: &str,
