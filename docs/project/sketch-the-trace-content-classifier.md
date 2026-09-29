@@ -12,14 +12,15 @@ moves into a charter or a Spec by an act of its own.
 
 ## 0. What this document is
 
-The plan for typing the trace's payload. The envelope is typed and positional
-already, per `weaver-trace-PRD` section 3, and the payloads are what the classifier
-reads. Each event carries its own: the conversation's text in the `message.*` kinds,
-the rendered model input in `model.request`'s `rendered`, the verbatim generation in
-`model.output`'s `emission`, and the token identifiers and readings in
-`model.measurement`. None of it is typed by what it says. Typing that payload is what
-the state organ needs, per the operator's word of
-2026-09-28, and it is the prerequisite for the prefetch organ's text head.
+The plan for typing the trace's payload. The envelope is typed and positional already,
+per `weaver-trace-PRD` section 3, and the payloads are what the classifier reads. Each
+event carries its own: the conversation's text in the `message.*` kinds, the rendered
+model input in `model.request`'s `rendered`, the verbatim generation in `model.output`'s
+`emission`, the token identifiers and readings in `model.measurement`, an action's
+request, its tool name and arguments, in `tool.call.started`, and the environment's
+answer in `message.tool_result`. None of it is typed by what it says. Typing that
+payload is what the state organ needs, per the operator's word of 2026-09-28, and it is
+the prerequisite for the prefetch organ's text head.
 
 The instrument is a trace-content classifier run in the loop as a routing stage
 and never a judging one: it types content so the loops can decide, and decides
@@ -36,15 +37,17 @@ label set taken from the game is a middle-range mapping in which the known
 process is external and finite, and a classifier trained on it can be measured
 against the game's own record of what happened.
 
-The agent plays HeroBench through the gate's shell, the environment's actions
-being a CLI in the agent's home. The task arrives as `message.user`, the rules and
-the game dump as `message.system`, and the model's reasoning and program as
-`message.assistant`. **Where the agent plays action by action, each action its own
-shell call**, every action and the environment's answer cross as
-`message.tool_result` at a position of their own, and the join from a position to
-game state is by position and free. A program run as one invocation collapses every
-action into one `message.tool_result`, which is how HeroBench's published runs ran,
-so the state work plays the per-action shape.
+The agent plays HeroBench through the gate's shell, the environment's actions being a
+CLI in the agent's home. The task arrives as `message.user`, the rules and the game dump
+as `message.system`, and the model's reasoning and program as `message.assistant`.
+**Where the agent plays action by action, each action its own shell call**, each
+action's request, the tool name and its arguments, is recorded on `tool.call.started`
+and the environment's answer on `message.tool_result`, each at a position of its own,
+and the join from a position to game state is by position and free. The computable
+labels that read the requested item, tile or action read the call event, and those that
+read the outcome read the result. A program run as one invocation collapses every action
+into one call and one `message.tool_result`, which is how HeroBench's published runs
+ran, so the state work plays the per-action shape.
 
 ## 2. The split that makes the case for building
 
