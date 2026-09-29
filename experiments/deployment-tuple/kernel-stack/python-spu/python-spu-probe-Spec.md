@@ -6,7 +6,7 @@
 **Document ID:** `python-spu-probe-Spec`
 **Parent:** `deployment-tuple-PRD`
 **Editorial:** Per the Working Rules.
-**Landing PR:** #742
+**Landing PR:** #749
 
 ---
 
