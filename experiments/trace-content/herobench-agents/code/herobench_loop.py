@@ -126,7 +126,17 @@ def drive(seat, text):
     turns = 0
     message = opening
     while turns < cap:
-        outcome = seat.turn([{"role": "user", "text": message}])
+        # **A refused turn ends the task and still leaves its verdict.** The
+        # harness refuses a turn that cannot fit the context, among others, and
+        # the seat raises. The environment's verdict is read again and scored
+        # below, between turns, so the run carries its score event whatever
+        # ended it. On 2026-09-29 a task's tool results filled the 32,768-token
+        # context at its eighth turn, and the loop died there unscored.
+        try:
+            outcome = seat.turn([{"role": "user", "text": message}])
+        except RuntimeError:
+            won = _won(task["url"], task["character"], task["kind"], task["target"])
+            break
         turns += 1
         won = _won(task["url"], task["character"], task["kind"], task["target"])
         if won:

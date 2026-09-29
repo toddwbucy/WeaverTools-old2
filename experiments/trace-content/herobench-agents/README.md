@@ -112,3 +112,35 @@ Nothing past launch. Its smoke test passed on the second A6000, three fresh proc
 exact across runs with the readout neutral, at FP32 as its Spec's section 2.1 records.
 Integration with the harness stopped at the argument above, so the section's "not yet
 shown" items stand as they were.
+
+## The corrected driver, repeated as v4
+
+The pair was repeated under the corrected driver, one task per run, as session
+`s-rusty-c` with the loop file at sha256 `34ca456c` and the same tasks, seed and turn
+cap, on the operator's approval of 2026-09-29, the installation's worker switched to the
+pyworker for it and restored after. The deposit holds it in `rusty/v4-s-rusty-c/`, the
+trace and store as they stood after it beside the passes.
+
+| pass | task | result | score | actions | turns | tool calls | score event |
+|---|---|---|---|---|---|---|---|
+| pass1 | 1_Gold_craft | lose | 0.0 | 5 | 8 | 13 | present |
+| pass1 | 2_Spruce Plank_craft | lose | 0.0 | 1 | 8 | 160 | present |
+| pass1 | 3_Hardwood Plank_craft | lose | 33.3 | 8 | 8 | 189 | absent |
+| pass2 | 1_Gold_craft | lose | 0.0 | 6 | 8 | 143 | present |
+| pass2 | 2_Spruce Plank_craft | lose | 0.0 | 0 | 8 | 0 | present |
+| pass2 | 3_Hardwood Plank_craft | lose | 0.0 | 5 | 8 | 56 | present |
+
+No task was won. **Five of the six runs carry their score event and one does not.** Pass
+1's Hardwood Plank filled the 32,768-token context at its eighth turn, resident 32,653
+with a request of 242, the harness refused the turn with `Overflow`, the seat raised,
+and the loop died before `seat.score`, so that run's outcome is the environment's log
+graded by `run.py`, and its `run.json` entry says so. The loop in `code/` now catches a
+refused turn, reads the environment's verdict again, and scores it between turns, so a
+run carries its score event whatever ended it.
+
+**The overflow is a finding of the per-action shape.** Eight turns of tool results fill
+a 32k context, because each accepted action's answer carries the whole character block.
+How much of that block a tool result carries is a design choice for the HeroBench tool,
+a trimmed answer with the block on request or a larger context capacity, and this note
+names the choice rather than making it.
+
