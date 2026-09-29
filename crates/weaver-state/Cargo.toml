@@ -6,8 +6,9 @@ edition = "2024"
 # The custodian, per weaver-state-Spec section 1: one binary, weaver-types
 # as the floor link weaver-state-PRD section 1 declares and the operator's ruling of
 # 2026-09-14 keeps, no unit here consuming it yet and what it will be drawn
-# for that charter's cell, and the externals the Spec names, one engine's
-# driver behind each engine's feature. No async runtime of the crate's own,
+# for that charter's cell, weaver-traits as the second floor link, drawn for
+# the message model the typed landing decodes, and the externals the Spec
+# names, one engine's driver behind each engine's feature. No async runtime of the crate's own,
 # no logging crate, no HTTP, per the corpus's standing refusals.
 [features]
 default = ["sqlite"]
@@ -16,6 +17,7 @@ postgres = ["dep:postgres"]
 
 [dependencies]
 weaver-types = { path = "../weaver-types" }
+weaver-traits = { path = "../weaver-traits" }
 rusqlite = { version = "0.37", features = ["bundled"], optional = true }
 postgres = { version = "0.19", optional = true }
 serde_json = { version = "1", features = ["raw_value"] }

@@ -2635,6 +2635,7 @@ dependencies = [
  "rusqlite",
  "serde_json",
  "weaver-trace",
+ "weaver-traits",
  "weaver-types",
 ]
 

@@ -6,7 +6,7 @@
 **Document ID:** `weaver-state-Spec`
 **Parent:** `weaver-state-PRD`
 **Editorial:** Per the Working Rules.
-**Landing PR:** #659
+**Landing PR:** #740
 
 ---
 
@@ -37,11 +37,15 @@ from: weaver-state
 to: state-custody-without-policy
 ```
 
-**The manifest declares one internal crate in `[dependencies]`: `weaver-types`.**
-No unit here consumes it, this crate's tests included, and charter section 5
-keeps that consumer cell open. The floor link itself is declared at charter
-section 1 and kept on the operator's ruling of 2026-09-14, a link held for work
-not yet done being an election rather than a leftover.
+**The manifest declares two internal crates in `[dependencies]`, `weaver-types`
+and `weaver-traits`.** No unit here consumes `weaver-types`, this crate's tests
+included, and charter section 5 keeps that consumer cell open. That floor link is
+declared at charter section 1 and kept on the operator's ruling of 2026-09-14, a
+link held for work not yet done being an election rather than a leftover.
+`weaver-traits` has its consumer: `src/typed.rs` decodes a message kind's `role`
+and `content` through `weaver_traits::Role` and `weaver_traits::ContentBlock`, the
+types the harness renders them from, per section 3's typed landing, and charter
+section 1 declares that floor link beside the first.
 
 **`weaver-trace` stands in `[dev-dependencies]` for this crate's tests alone.**
 They build the opener and distillate through `weaver_trace::opener` and
@@ -157,6 +161,85 @@ reshaping would buy nothing measurable and the provisional shape is kept on
 that ground. No index is added for it, by the same arithmetic. The next ask
 that arrives reopens the question under the same clause.
 
+**The election is reopened 2026-09-29 and a typed landing joins the two
+tables**, on the operator's ruling of that date that the trace's payload is
+typed where it is read rather than in the record. The asks standing since the
+shape ask read what the typing reaches: the recall and the identity serve the
+message kinds, the replay serves the measurement beside them, and the
+context-management loop and the harness's enter read those answers as
+messages. The two tables stand unchanged and four join them:
+
+```sql
+CREATE TABLE IF NOT EXISTS message (
+    event_id INTEGER PRIMARY KEY REFERENCES event(id),
+    role     TEXT,
+    parts    INTEGER
+);
+CREATE TABLE IF NOT EXISTS part (
+    event_id  INTEGER NOT NULL REFERENCES event(id),
+    ordinal   INTEGER NOT NULL,
+    block     TEXT NOT NULL,
+    text      TEXT,
+    name      TEXT,
+    arguments TEXT,
+    content   TEXT
+);
+CREATE TABLE IF NOT EXISTS measurement (
+    event_id   INTEGER PRIMARY KEY REFERENCES event(id),
+    perplexity REAL,
+    entropies  INTEGER,
+    surprisals INTEGER
+);
+CREATE TABLE IF NOT EXISTS series (
+    event_id INTEGER NOT NULL REFERENCES event(id),
+    member   TEXT NOT NULL,
+    ordinal  INTEGER NOT NULL,
+    value    REAL NOT NULL
+);
+```
+
+The service engine spells the same four in its own dialect, `BIGINT` for the
+integers and `DOUBLE PRECISION` for the readings. **What lands typed is what
+the seam's vocabulary names**, per `weaver-harness-state-contract`'s Vocabulary
+clause. A message kind's `role` and `content` are read through the floor's
+message model, `weaver_traits::Role` and `weaver_traits::ContentBlock`: the role
+lands as the floor spells it, the content as a count of its blocks on the
+`message` row, and each block as a `part` row carrying the floor's tag in
+`block` and the columns its variant fills, `text` for a text block, `name` and
+`arguments` for a tool call, `content` for a tool result. A measurement's
+`perplexity`, `entropies` and `surprisals` are read member by member as the SPU
+renders them, `weaver-spu-Spec` section 6 authoritative, and this crate defines
+no measurement type: the perplexity is a double on the `measurement` row, and
+each series is its length on that row with its readings as `series` rows in
+decode order. **An absent member has no row, or a null column on a row a
+sibling stood on, and never a zero**, so section 6's absent-not-empty property
+of the SPU survives the landing: a measurement that crossed with no perplexity
+holds a null and serves no perplexity member.
+
+**A member lands typed only where its rows render back to the bytes that crossed, and
+where every engine can hold the value.** `typed::split` renders each typed fragment
+through the renderer every answer uses and compares it with the pair, and a value that
+does not decode as its named type, or decodes and renders differently, lands as a
+`field` row instead. So a typed row cannot serve a spelling the record did not hold, and
+the contract's served-as-it-crossed clause holds by construction. A decoded string
+carrying U+0000 lands verbatim too, in any string the message model holds, because the
+service engine's `TEXT` refuses it where the escaped JSON in `field` holds it, and it
+does so under both engines so the two answer alike rather than one typing what the other
+rolls back. A block the floor adds after this build, or a named member the SPU spells
+some other way, lands whole and verbatim rather than typed in part or refused. The
+canonical form spells each value one way, so what the tee sends from a record types
+where the vocabulary names it unless a string in it carries U+0000, and the other
+fallbacks are reached only by frames the tee does not produce.
+
+**A pair lands one way and never both.** The `field` row and the typed rows
+never hold one pair twice, so the elected index over `field` for a path that
+lands typed indexes the fallback alone. The typed tables carry standing indexes
+on their event keys, `part (event_id, ordinal)` and `series (event_id, member,
+ordinal)`, built with the schema at open rather than from the election, because
+what lands typed is the vocabulary's to name and not the load's. A store opened
+before this election gains the four tables empty and serves its earlier rows
+from `field` as it always did.
+
 **The indexes are built at load from the election the seam's opener
 carried**, per the contract's ingest clause: the opener arrives before the
 first distillate on every standing of the channel, so a restarted member
@@ -212,7 +295,7 @@ The seam's traffic is the contract's `election` opener, its `distillate`
 stream, and since 2026-08-19 its `ask` and `answer`, and this crate's half
 is mechanical: parse, insert, index nothing per event, answer exactly what
 was asked. **A distillate lands whole or not at all**: the
-parse completes before any write, and the event row and its field rows go
+parse completes before any write, and the event row with its field and typed rows go
 in as one transaction that rolls back entire on any failure, because a
 distillate held in part would be an attributable envelope over missing
 pairs, a corruption custody cannot detect later. A distillate that does not
@@ -275,19 +358,21 @@ run groups are ordered by the least `id` each holds, each carrying its kinds and
 counts as the envelope spelled them, rendered as the contract's answer frame and written
 back on the channel as one answer frame, the frame's byte shape riding the encoding
 election of section 6. The `recall` ask reads the event rows of the four message kinds
-and of `message.restored`, a branch's inherited conversation (#697), with their field
-pairs, ordered by the `id` column like every landing-order answer, and
-where `last-turns` bounds it the bound resolves as the distinct session, run, and turn
-triples of the most recent turns by id, the rows outside them left unread, a turn label
-recurring across runs naming two different turns. The answer serves each event as the
-distillate's own shape, envelope and pairs, because custody serves what it kept in the
-form it kept it. The `grants` ask reads no event row: it reads the engine's own
-boundary, the catalog's lines for the connected role under the service engine and the
-file's owner, group, and mode under the embedded one, and answers them in the engine's
-order as `{"answer":{"grants":{"surface":[...]}}}`, each line a string, per the
-contract's fourth ask of 2026-09-04. The `identity` ask reads the event rows of kind
+and of `message.restored`, a branch's inherited conversation (#697), with their pairs,
+ordered by the `id` column like every landing-order answer, and where `last-turns`
+bounds it the bound resolves as the distinct session, run, and turn triples of the most
+recent turns by id, the rows outside them left unread, a turn label recurring across
+runs naming two different turns. The answer serves each event as the distillate's own
+shape, envelope and pairs, each pair the value that crossed: read back from `field`, or
+rendered from section 3's typed rows through the renderer the landing checked it
+against. One reader per engine serves every answer, so the recall, the replay and the
+identity cannot spell one event two ways. The `grants` ask reads no event row: it reads
+the engine's own boundary, the catalog's lines for the connected role under the service
+engine and the file's owner, group, and mode under the embedded one, and answers them in
+the engine's order as `{"answer":{"grants":{"surface":[...]}}}`, each line a string, per
+the contract's fourth ask of 2026-09-04. The `identity` ask reads the event rows of kind
 `message.system` whose turn is absent and whose run is the run of the newest such row,
-ordered by the `id` column, with their field pairs, and answers them as
+ordered by the `id` column, with their pairs, and answers them as
 `{"answer":{"identity":{"messages":[...]}}}`, each the distillate's own shape, an empty
 list where the session holds none, per the contract's fifth ask of 2026-09-04. A
 malformed ask is dropped whole the way a malformed distillate is, and the resulting
@@ -315,16 +400,16 @@ arriving on the preload channel parses, transacts, and lands exactly as one arri
 from the tee, one code path and one store, so nothing marks how a holding arrived and
 the serve restriction binds to the preload opener's session the way it binds to the
 harness opener's. **The one act the preload path adds is the opener's retirement**:
-receiving the preload election deletes the declared session's event and field rows in
-the same transaction that records the opener, before any distillate lands, per the
-contract's section 2. The path is thereby idempotent at the preload grain - re-running
-it replaces the session's holdings rather than appending to them - and a dead driver's
-prefix needs no cleanup act, the next opener being the cleanup. The first door's path
-performs no retirement and gains no branch: the delete hangs on the preload opener
-alone. What is new is the door's standing and its judgment, and both are conditioned
-facts: the member binds the preload name only where the party that stands it names one,
-and that party names it under a diagnostic binding or a serving load that elects a
-restore, per issue #432, holding the resolved kind from the inventory per
+receiving the preload election deletes the declared session's event, field and typed
+rows in the same transaction that records the opener, before any distillate lands, per
+the contract's section 2. The path is thereby idempotent at the preload grain -
+re-running it replaces the session's holdings rather than appending to them - and a dead
+driver's prefix needs no cleanup act, the next opener being the cleanup. The first
+door's path performs no retirement and gains no branch: the delete hangs on the preload
+opener alone. What is new is the door's standing and its judgment, and both are
+conditioned facts: the member binds the preload name only where the party that stands it
+names one, and that party names it under a diagnostic binding or a serving load that
+elects a restore, per issue #432, holding the resolved kind from the inventory per
 `weaver-admin-Spec` section 4. **That party is `weaver-admin` and the name rides the
 vector**, per that Spec's section 6 as amended 2026-08-25, no exchange this member holds
 carrying a path. **Section 2's election is narrowed rather than closed**: the descriptor
@@ -373,8 +458,8 @@ whatever the slot holds when it lands. Where the member stands without the
 door, the ask
 answers
 immediately, the query being the recall's generalized past the
-message kinds: every event row of the declared session with its field
-pairs, ordered by the `id` column, served as the distillate's own shape.
+message kinds: every event row of the declared session with its pairs,
+ordered by the `id` column, served as the distillate's own shape.
 
 ```graph
 node: state-replay-answers-at-the-seal
@@ -470,7 +555,7 @@ is cited at a test.** Every `conforms:` line in the crate sits at a `//!` file
 header but one, the line inside `stand_preload_name`, which is a function the
 binary runs, so none of the nine is a sighting under that rule.
 
-**Requiring a perturbation-verified test.** Seven claims, each watched where the
+**Requiring a perturbation-verified test.** Eleven claims, each watched where the
 behaviour sits.
 
 - The serve restricts to the opener's session, watched by dropping any of the
@@ -507,6 +592,29 @@ behaviour sits.
   row. The perturbation commits the event before its pairs, and the count moves
   by one. The embedded suite still watches the persistence half, a good landing
   surviving a reopen.
+- A named member lands typed and serves what the record reads, watched at both
+  engines by `recorded_lines_land_typed`. It distills four recorded lines through
+  the tee, lands them, and requires the replay to serve every pair as it crossed,
+  the served message read through the floor's type to equal the record's payload
+  read the same way, and the typed tables to hold the rows. The perturbation makes
+  the split type nothing: every answer still matches and the part count reads
+  zero, so the test fails on the typing rather than on the bytes.
+- A typed member serves only the bytes that crossed, watched by
+  `what_cannot_land_typed_exactly_lands_verbatim`, which lands a spelling of each
+  named member its type would change and requires it verbatim. The perturbation
+  drops the render comparison from `typed::split`, and a perplexity crossing as
+  `1.50` lands typed and would serve as `1.5`.
+- An absent reading is absent and not zero, watched by
+  `an_absent_reading_is_absent_and_not_zero` and at both engines by the null
+  perplexity the recorded test lands. The perturbation defaults a measurement's
+  missing perplexity to zero, and all three fail.
+- A string no engine can hold lands verbatim, watched by
+  `a_nul_in_a_string_lands_verbatim` and at both engines by
+  `a_nul_in_a_message_lands_verbatim`, which lands a message whose text carries
+  U+0000 and requires it served byte for byte from a `field` row with no part
+  typed. The perturbation drops the holdable check from `typed::split`: the
+  service engine refuses the landing and rolls it back, and the embedded engine
+  holds the part typed, so each engine's test fails.
 
 **The session claim is watched at both engines, as of PR #644.** The service
 engine's in-file suite stands a scratch PostgreSQL per test, lands two sessions
@@ -531,7 +639,7 @@ instruments of PR #644 are ignored by default, a loud skip that the ordinary run
 reports as fourteen ignored rather than passes, and they run under a scratch
 instance with `WEAVER_STATE_TEST_PG` naming its socket directory and
 `cargo test -p weaver-state --features postgres --locked -- --ignored`, which runs
-the live suite alongside the separately invoked statement suite; the ordinary
+the live suite alongside the separately invoked statement suite. The ordinary
 featured run and the ignored run together supply this section's test evidence
 for that engine.
 As of PR #644 the suite reaches the store as well: the live tests construct a
@@ -586,7 +694,16 @@ Format section 6.
 The serve surface's election closed 2026-08-19: its shape and vocabulary
 landed in the contract, its query-side representation at section 4, and the
 store shape's trigger fired and was answered at section 3, all elected
-against the context-injection loop's real ask per the charter's cell.
+against the context-injection loop's real ask per the charter's cell. The
+store shape was answered again 2026-09-29 with the typed landing.
+
+- **The measurement's remaining members.** The SPU renders a generation's
+  model, weights hash, token identifiers, prompt blocks, timings and residual
+  reductions beside the three readings section 3 types, and `weaver-spu-Spec`
+  section 6 spells none of their member names, so they land verbatim. Each types
+  by section 3's rule once that section spells it and the contract's vocabulary
+  names it, an act of the SPU's Spec and this seam's together rather than a name
+  this crate takes from the SPU's code.
 
 - **The transformation vocabulary, beyond its first member.** The shape
   aggregate landed with the serve act, and which further derivations

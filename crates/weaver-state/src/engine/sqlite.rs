@@ -12,6 +12,7 @@ use std::path::Path;
 use rusqlite::Connection;
 
 use crate::store::{CustodyFault, Distillate, Election, RecalledEvent, RunShape, Store};
+use crate::typed::{MeasurementRow, MessageRow, PartRow, SeriesRow, Typed, served, split};
 
 /// The embedded engine: one sqlite file in the member's territory, per
 /// `weaver-state-Spec` section 3, the store the 2026-08-18 ruling elected.
@@ -22,7 +23,8 @@ pub struct Sqlite {
 
 impl Sqlite {
     /// Open or create the store and stand the schema, per the Spec: the
-    /// event and field tables, and the envelope's standing indexes. The
+    /// event and field tables, the typed landing's four, and the standing
+    /// indexes. The
     /// election's own indexes arrive with [`Store::index_election`], read
     /// from the seam's opener.
     pub fn open(path: &Path) -> Result<Sqlite, CustodyFault> {
@@ -51,6 +53,9 @@ impl Sqlite {
                  CREATE INDEX IF NOT EXISTS event_run_turn ON event (run, turn);
                  CREATE INDEX IF NOT EXISTS event_kind_sequence ON event (kind, sequence);",
             )
+            .map_err(|e| CustodyFault::StoreUnavailable(e.to_string()))?;
+        connection
+            .execute_batch(TYPED_SCHEMA)
             .map_err(|e| CustodyFault::StoreUnavailable(e.to_string()))?;
         Ok(Sqlite {
             connection,
@@ -97,16 +102,21 @@ impl Store for Sqlite {
                 .map_err(|e| CustodyFault::LandingFailed(e.to_string()))?;
         }
         let event_id = transaction.last_insert_rowid();
+        // The named members land typed and the rest verbatim, per
+        // `weaver-state-Spec` section 3, both inside the one transaction.
+        let (typed, verbatim) = split(&distillate.kind, &distillate.pairs);
         {
             let mut insert_field = transaction
                 .prepare_cached("INSERT INTO field (event_id, key, value) VALUES (?1, ?2, ?3)")
                 .map_err(|e| CustodyFault::LandingFailed(e.to_string()))?;
-            for (key, value) in &distillate.pairs {
+            for (key, value) in &verbatim {
                 insert_field
                     .execute(rusqlite::params![event_id, key, value])
                     .map_err(|e| CustodyFault::LandingFailed(e.to_string()))?;
             }
         }
+        land_typed(&transaction, event_id, &typed)
+            .map_err(|e| CustodyFault::LandingFailed(e.to_string()))?;
         transaction
             .commit()
             .map_err(|e| CustodyFault::LandingFailed(e.to_string()))
@@ -125,15 +135,20 @@ impl Store for Sqlite {
     fn retire_and_index(&mut self, session: &str, election: &Election) -> Result<(), CustodyFault> {
         let fault = |e: rusqlite::Error| CustodyFault::LandingFailed(e.to_string());
         let transaction = self.connection.transaction().map_err(fault)?;
-        // The field rows go by their events' ids rather than by a join, so
-        // the delete is bounded to this session and cannot reach a field row
-        // whose event belongs to another.
-        transaction
-            .execute(
-                "DELETE FROM field WHERE event_id IN (SELECT id FROM event WHERE session = ?1)",
-                rusqlite::params![session],
-            )
-            .map_err(fault)?;
+        // The field and typed rows go by their events' ids rather than by a
+        // join, so the delete is bounded to this session and cannot reach a
+        // row whose event belongs to another.
+        for table in ["field", "part", "message", "series", "measurement"] {
+            transaction
+                .execute(
+                    &format!(
+                        "DELETE FROM {table} \
+                         WHERE event_id IN (SELECT id FROM event WHERE session = ?1)"
+                    ),
+                    rusqlite::params![session],
+                )
+                .map_err(fault)?;
+        }
         transaction
             .execute(
                 "DELETE FROM event WHERE session = ?1",
@@ -180,17 +195,9 @@ impl Store for Sqlite {
             .map_err(fault)?
             .collect::<Result<_, _>>()
             .map_err(fault)?;
-        let mut pairs_query = self
-            .connection
-            .prepare_cached("SELECT key, value FROM field WHERE event_id = ?1")
-            .map_err(fault)?;
         let mut replayed = Vec::with_capacity(rows.len());
         for (id, session, run, turn, kind, sequence) in rows {
-            let pairs: Vec<(String, String)> = pairs_query
-                .query_map([id], |row| Ok((row.get(0)?, row.get(1)?)))
-                .map_err(fault)?
-                .collect::<Result<_, _>>()
-                .map_err(fault)?;
+            let pairs = pairs_of(&self.connection, id)?;
             replayed.push(RecalledEvent {
                 session,
                 run,
@@ -312,10 +319,6 @@ impl Store for Sqlite {
             .map_err(fault)?
             .collect::<Result<_, _>>()
             .map_err(fault)?;
-        let mut pairs_query = self
-            .connection
-            .prepare_cached("SELECT key, value FROM field WHERE event_id = ?1")
-            .map_err(fault)?;
         let mut recalled = Vec::new();
         for (id, session, run, turn, kind, sequence) in rows {
             if let (Some(kept), Some(turn_ref)) = (&bound, &turn)
@@ -328,11 +331,7 @@ impl Store for Sqlite {
             if bound.is_some() && turn.is_none() {
                 continue;
             }
-            let pairs: Vec<(String, String)> = pairs_query
-                .query_map([id], |row| Ok((row.get(0)?, row.get(1)?)))
-                .map_err(fault)?
-                .collect::<Result<_, _>>()
-                .map_err(fault)?;
+            let pairs = pairs_of(&self.connection, id)?;
             recalled.push(RecalledEvent {
                 session,
                 run,
@@ -391,17 +390,9 @@ impl Store for Sqlite {
             .map_err(fault)?
             .collect::<Result<_, _>>()
             .map_err(fault)?;
-        let mut pairs_query = self
-            .connection
-            .prepare_cached("SELECT key, value FROM field WHERE event_id = ?1")
-            .map_err(fault)?;
         let mut held = Vec::with_capacity(rows.len());
         for (id, session, run, turn, kind, sequence) in rows {
-            let pairs: Vec<(String, String)> = pairs_query
-                .query_map([id], |row| Ok((row.get(0)?, row.get(1)?)))
-                .map_err(fault)?
-                .collect::<Result<_, _>>()
-                .map_err(fault)?;
+            let pairs = pairs_of(&self.connection, id)?;
             held.push(RecalledEvent {
                 session,
                 run,
@@ -413,6 +404,174 @@ impl Store for Sqlite {
         }
         Ok(held)
     }
+}
+
+/// The typed landing's tables, per `weaver-state-Spec` section 3: a message's
+/// role and part count and its parts, a measurement's named readings and its
+/// series. Each row keys on its event, and a table's absent row is a member
+/// that did not land typed.
+const TYPED_SCHEMA: &str = "CREATE TABLE IF NOT EXISTS message (
+         event_id INTEGER PRIMARY KEY REFERENCES event(id),
+         role     TEXT,
+         parts    INTEGER
+     );
+     CREATE TABLE IF NOT EXISTS part (
+         event_id  INTEGER NOT NULL REFERENCES event(id),
+         ordinal   INTEGER NOT NULL,
+         block     TEXT NOT NULL,
+         text      TEXT,
+         name      TEXT,
+         arguments TEXT,
+         content   TEXT
+     );
+     CREATE TABLE IF NOT EXISTS measurement (
+         event_id   INTEGER PRIMARY KEY REFERENCES event(id),
+         perplexity REAL,
+         entropies  INTEGER,
+         surprisals INTEGER
+     );
+     CREATE TABLE IF NOT EXISTS series (
+         event_id INTEGER NOT NULL REFERENCES event(id),
+         member   TEXT NOT NULL,
+         ordinal  INTEGER NOT NULL,
+         value    REAL NOT NULL
+     );
+     CREATE INDEX IF NOT EXISTS part_event ON part (event_id, ordinal);
+     CREATE INDEX IF NOT EXISTS series_event ON series (event_id, member, ordinal);";
+
+/// Land one event's typed rows inside the caller's transaction.
+fn land_typed(
+    connection: &rusqlite::Connection,
+    event_id: i64,
+    typed: &Typed,
+) -> rusqlite::Result<()> {
+    if let Some(message) = &typed.message {
+        connection
+            .prepare_cached("INSERT INTO message (event_id, role, parts) VALUES (?1, ?2, ?3)")?
+            .execute(rusqlite::params![event_id, message.role, message.parts])?;
+    }
+    for part in &typed.parts {
+        connection
+            .prepare_cached(
+                "INSERT INTO part (event_id, ordinal, block, text, name, arguments, content)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            )?
+            .execute(rusqlite::params![
+                event_id,
+                part.ordinal,
+                part.block,
+                part.text,
+                part.name,
+                part.arguments,
+                part.content
+            ])?;
+    }
+    if let Some(measurement) = &typed.measurement {
+        connection
+            .prepare_cached(
+                "INSERT INTO measurement (event_id, perplexity, entropies, surprisals)
+                 VALUES (?1, ?2, ?3, ?4)",
+            )?
+            .execute(rusqlite::params![
+                event_id,
+                measurement.perplexity,
+                measurement.entropies,
+                measurement.surprisals
+            ])?;
+    }
+    for reading in &typed.series {
+        connection
+            .prepare_cached(
+                "INSERT INTO series (event_id, member, ordinal, value) VALUES (?1, ?2, ?3, ?4)",
+            )?
+            .execute(rusqlite::params![
+                event_id,
+                reading.member,
+                reading.ordinal,
+                reading.value
+            ])?;
+    }
+    Ok(())
+}
+
+/// The typed rows one event holds.
+fn typed_of(connection: &rusqlite::Connection, id: i64) -> rusqlite::Result<Typed> {
+    use rusqlite::OptionalExtension;
+    let message = connection
+        .prepare_cached("SELECT role, parts FROM message WHERE event_id = ?1")?
+        .query_row([id], |row| {
+            Ok(MessageRow {
+                role: row.get(0)?,
+                parts: row.get(1)?,
+            })
+        })
+        .optional()?;
+    let parts = connection
+        .prepare_cached(
+            "SELECT ordinal, block, text, name, arguments, content FROM part
+             WHERE event_id = ?1 ORDER BY ordinal",
+        )?
+        .query_map([id], |row| {
+            Ok(PartRow {
+                ordinal: row.get(0)?,
+                block: row.get(1)?,
+                text: row.get(2)?,
+                name: row.get(3)?,
+                arguments: row.get(4)?,
+                content: row.get(5)?,
+            })
+        })?
+        .collect::<Result<_, _>>()?;
+    let measurement = connection
+        .prepare_cached(
+            "SELECT perplexity, entropies, surprisals FROM measurement WHERE event_id = ?1",
+        )?
+        .query_row([id], |row| {
+            Ok(MeasurementRow {
+                perplexity: row.get(0)?,
+                entropies: row.get(1)?,
+                surprisals: row.get(2)?,
+            })
+        })
+        .optional()?;
+    let series = connection
+        .prepare_cached(
+            "SELECT member, ordinal, value FROM series
+             WHERE event_id = ?1 ORDER BY member, ordinal",
+        )?
+        .query_map([id], |row| {
+            Ok(SeriesRow {
+                member: row.get(0)?,
+                ordinal: row.get(1)?,
+                value: row.get(2)?,
+            })
+        })?
+        .collect::<Result<_, _>>()?;
+    Ok(Typed {
+        message,
+        parts,
+        measurement,
+        series,
+    })
+}
+
+/// The pairs one event serves, its verbatim pairs beside its typed members
+/// rendered back, per `weaver-state-Spec` section 4: every answer reads an
+/// event through this and nothing else.
+fn pairs_of(
+    connection: &rusqlite::Connection,
+    id: i64,
+) -> Result<Vec<(String, String)>, CustodyFault> {
+    let fault = |e: rusqlite::Error| CustodyFault::StoreUnavailable(e.to_string());
+    let verbatim: Vec<(String, String)> = connection
+        .prepare_cached("SELECT key, value FROM field WHERE event_id = ?1")
+        .map_err(fault)?
+        .query_map([id], |row| Ok((row.get(0)?, row.get(1)?)))
+        .map_err(fault)?
+        .collect::<Result<_, _>>()
+        .map_err(fault)?;
+    let typed = typed_of(connection, id).map_err(fault)?;
+    served(verbatim, &typed).map_err(CustodyFault::StoreUnavailable)
 }
 
 /// Build the election's partial indexes on whatever holds the connection, the
@@ -455,6 +614,75 @@ fn quoted(text: &str) -> String {
 mod tests {
     use super::*;
     use crate::store::*;
+
+    /// **A NUL in a message lands verbatim**, the shared test run on this
+    /// engine and its tables read: the content is a `field` row and no part
+    /// stands. Perturbation: drop the holdable check from `typed::split`, and
+    /// the service engine refuses the landing while the embedded one holds the
+    /// part typed, so this engine's count fails.
+    #[test]
+    fn a_nul_in_a_message_lands_verbatim() {
+        let mut store = Sqlite::open(std::path::Path::new(":memory:")).expect("opens");
+        super::super::a_nul_in_a_message_lands_verbatim_and_serves_whole(&mut store);
+        let count = |sql: &str| -> i64 {
+            store
+                .connection
+                .query_row(sql, [], |row| row.get(0))
+                .expect("counts")
+        };
+        assert_eq!(
+            count("SELECT COUNT(*) FROM field WHERE key = 'content'"),
+            1,
+            "the content is held verbatim"
+        );
+        assert_eq!(count("SELECT COUNT(*) FROM part"), 0, "no part is typed");
+    }
+
+    /// **A recorded line of each typed kind lands typed and serves what the
+    /// record reads**, the shared test run on this engine and then its tables
+    /// read for the typed rows. Perturbation: make the split type nothing, so
+    /// every pair lands verbatim, and the answers still match while the part,
+    /// message and series counts read zero, which is the test failing on the
+    /// property rather than on the bytes.
+    #[test]
+    fn recorded_lines_land_typed() {
+        let mut store = Sqlite::open(std::path::Path::new(":memory:")).expect("opens");
+        super::super::recorded_lines_land_typed_and_serve_what_the_record_reads(&mut store);
+        let count = |sql: &str| -> i64 {
+            store
+                .connection
+                .query_row(sql, [], |row| row.get(0))
+                .expect("counts")
+        };
+        assert_eq!(
+            count("SELECT COUNT(*) FROM part"),
+            3,
+            "one part per message"
+        );
+        assert_eq!(
+            count("SELECT COUNT(*) FROM message WHERE role IS NOT NULL AND parts = 1"),
+            3
+        );
+        assert_eq!(count("SELECT COUNT(*) FROM series"), 4, "two readings each");
+        assert_eq!(
+            count("SELECT COUNT(*) FROM measurement WHERE perplexity IS NULL"),
+            1,
+            "the absent perplexity is held absent, not zero"
+        );
+        assert_eq!(
+            count(
+                "SELECT COUNT(*) FROM field \
+                 WHERE key IN ('role', 'content', 'perplexity', 'entropies', 'surprisals')"
+            ),
+            0,
+            "no typed member is also held verbatim"
+        );
+        assert_eq!(
+            count("SELECT COUNT(*) FROM field WHERE key = 'input_tokens'"),
+            2,
+            "a member no Spec names lands verbatim"
+        );
+    }
 
     #[test]
     fn raw_objects_survive_the_engine_and_answers() {
