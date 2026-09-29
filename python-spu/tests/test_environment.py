@@ -1,4 +1,5 @@
 """The environment's rules, per python-spu-Spec sections 2, 5 and 8."""
+import ast
 import json
 import os
 import re
@@ -16,8 +17,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 import build_zipapp  # noqa: E402
 import declare_imports  # noqa: E402
+import installed_set  # noqa: E402
 import tree_digest  # noqa: E402
-from python_spu import import_set  # noqa: E402
+from python_spu import import_set, loaded_code  # noqa: E402
 from python_spu.client import reap  # noqa: E402
 
 
@@ -234,17 +236,22 @@ def test_the_tree_digest_is_never_of_nothing(tmp_path):
 def test_the_zipapp_is_never_built_from_nothing(tmp_path):
     """A source without the package, a package lacking a file the process cannot
     start without, and a package with an unreadable subdirectory are each refused.
-    Perturbations: drop the REQUIRED check, and the package without server.py builds;
-    drop the walk's onerror, and the unreadable subdirectory is skipped."""
+    Among the packages lacking a file is one without loaded_code.py, which enforce
+    imports only once admission is judged, so a build without it would start and then
+    fail at admission. Perturbations: drop the REQUIRED check, and the package without
+    server.py builds; drop loaded_code.py from REQUIRED, and the package without it
+    builds; drop the walk's onerror, and the unreadable subdirectory is skipped."""
     with pytest.raises(OSError):
         build_zipapp.build(tmp_path / "absent", tmp_path / "a.pyz")
-    lacking = tmp_path / "lacking" / "python_spu"
-    lacking.mkdir(parents=True)
-    for name in build_zipapp.REQUIRED:
-        if name != "server.py":
-            (lacking / name).write_text("\n")
-    with pytest.raises(ValueError, match="server.py"):
-        build_zipapp.build(tmp_path / "lacking", tmp_path / "b.pyz")
+    for absent in ("server.py", "loaded_code.py"):
+        lacking = tmp_path / f"lacking-{absent}" / "python_spu"
+        lacking.mkdir(parents=True)
+        for name in build_zipapp.REQUIRED:
+            if name != absent:
+                (lacking / name).write_text("\n")
+        with pytest.raises(ValueError, match=re.escape(absent)):
+            build_zipapp.build(lacking.parent, lacking.parent / "lacking.pyz")
+        assert not (lacking.parent / "lacking.pyz").exists()
     whole = tmp_path / "whole" / "python_spu"
     whole.mkdir(parents=True)
     for name in build_zipapp.REQUIRED:
@@ -255,11 +262,61 @@ def test_the_zipapp_is_never_built_from_nothing(tmp_path):
             build_zipapp.build(tmp_path / "whole", tmp_path / "c.pyz")
     finally:
         os.chmod(whole / "walled", 0o700)
-    assert not any((tmp_path / name).exists() for name in ("a.pyz", "b.pyz", "c.pyz"))
+    assert not any((tmp_path / name).exists() for name in ("a.pyz", "c.pyz"))
 
 
 def test_the_zipapp_requires_both_import_set_halves():
     assert set(import_set.HALVES) <= set(build_zipapp.REQUIRED)
+
+
+def served_modules(package):
+    """The package's modules the serving entry point imports, transitively from
+    server.py, as file names: every import in each module, a function's own among
+    them, whether relative or by the package's name, read from the source rather than
+    from what a run happened to import."""
+    def targets(tree):
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                assert node.level <= 1, node.lineno
+                if node.level == 1:
+                    base = node.module
+                elif (node.module or "").split(".")[0] == "python_spu":
+                    base = node.module.removeprefix("python_spu").removeprefix(".") or None
+                else:
+                    continue
+                if base is None:
+                    for alias in node.names:
+                        yield alias.name if (package / f"{alias.name}.py").is_file() else None
+                else:
+                    yield base.split(".")[0]
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name.startswith("python_spu."):
+                        yield alias.name.split(".")[1]
+                    elif alias.name == "python_spu":
+                        yield None
+    seen, todo = {"__init__.py"}, ["server"]
+    while todo:
+        name = todo.pop()
+        if f"{name}.py" in seen:
+            continue
+        seen.add(f"{name}.py")
+        for target in targets(ast.parse((package / f"{name}.py").read_text())):
+            if target is not None:
+                todo.append(target)
+    return seen
+
+
+def test_the_zipapp_requires_every_module_the_server_imports():
+    """Every module the serving entry point reaches is a file the build requires, so a
+    source lacking one is refused at the build rather than at the admission that first
+    imports it. The derivation reaches the imports made inside functions: loaded_code,
+    which enforce imports only at admission, is among them. Perturbation: drop
+    loaded_code.py, or any other module the server reaches, from REQUIRED, and this
+    fails."""
+    served = served_modules(ROOT / "src" / "python_spu")
+    assert {"loaded_code.py", "import_set.py", "candle_chain.py", "family.py"} <= served
+    assert served <= set(build_zipapp.REQUIRED), sorted(served - set(build_zipapp.REQUIRED))
 
 
 def test_declare_imports_refuses_its_inputs_before_any_launch(tmp_path):
@@ -312,3 +369,139 @@ def test_the_zipapp_is_the_same_bytes_under_any_interpreter(tmp_path):
     assert pinned.read_bytes() == (tmp_path / "system.pyz").read_bytes()
     import zipfile
     assert {i.compress_type for i in zipfile.ZipFile(pinned).infolist()} == {zipfile.ZIP_STORED}
+
+
+def test_code_outside_the_environment_is_foreign():
+    """The maps rule, on a listing: code from the prefix and the admitted system
+    objects passes, the NVIDIA management library the card run mapped among them, and
+    code from a temporary directory, a sibling directory sharing the prefix's name, an
+    unlisted system object, a deleted file or a memfd is foreign. A data mapping is not
+    judged. Perturbations: judge data mappings too, and the safetensors mapping is
+    foreign; drop the deleted clause, and the deleted object under the prefix passes;
+    drop the separator from the root check, and the sibling passes; drop libnvidia-*
+    from the admitted names, and the management library is foreign."""
+    roots = ("/opt/weaver/python-spu",)
+    listing = "\n".join([
+        "7f00-7f01 r-xp 00000000 00:00 1 /opt/weaver/python-spu/lib/libpython3.14.so",
+        "7f01-7f02 r-xp 00000000 00:00 1 /usr/lib/libc.so.6",
+        "7f02-7f03 r-xp 00000000 00:00 1 /usr/lib/libcuda.so.615.71.09",
+        "7f03-7f04 r-xp 00000000 00:00 1 /usr/lib/libstdc++.so.6.0.36",
+        "7f03-7f04 r-xp 00000000 00:00 1 /usr/lib/libnvidia-ml.so.615.71.09",
+        "7f03-7f04 r-xp 00000000 00:00 1 /opt/weaver/python-spu-evil/x.so",
+        "7f04-7f05 r--s 00000000 00:00 1 /opt/weaver/models/m/model.safetensors",
+        "7f05-7f06 r--p 00000000 00:00 1 /tmp/data.bin",
+        "7f06-7f07 r-xp 00000000 00:00 1 /tmp/abc/cuda_utils.cpython-314-x86_64-linux-gnu.so",
+        "7f07-7f08 r-xp 00000000 00:00 1 /usr/lib/libfoo.so.1",
+        "7f08-7f09 r-xp 00000000 00:00 1 /opt/weaver/python-spu/lib/x.so (deleted)",
+        "7f09-7f0a r-xp 00000000 00:00 1 /memfd:jit (deleted)",
+        "7f0a-7f0b r-xp 00000000 00:00 0 [vdso]",
+        "7f0b-7f0c rwxp 00000000 00:00 0 ",
+    ])
+    assert loaded_code.foreign(listing, roots) == sorted([
+        "/tmp/abc/cuda_utils.cpython-314-x86_64-linux-gnu.so",
+        "/usr/lib/libfoo.so.1",
+        "/opt/weaver/python-spu-evil/x.so",
+        "/opt/weaver/python-spu/lib/x.so (deleted)",
+        "/memfd:jit (deleted)",
+    ])
+
+
+def test_a_clean_process_maps_no_foreign_code():
+    """The test process itself, in the locked environment, maps nothing foreign."""
+    assert loaded_code.foreign_now() == []
+
+
+def test_code_loaded_from_outside_faults_the_process(tmp_path, tiny_model):
+    """The perturbation section 8 names for the maps rule: a shared object copied out
+    of the environment and loaded at startup, as a compiler's output would be, faults
+    the process at admission, naming it, and it never answers. Perturbation: drop the
+    code check from enforce, and the process admits."""
+    source = Path(loaded_code.prefixes()[-1]).joinpath(
+        "lib", "python3.14", "site-packages", "markupsafe")
+    built = next(source.glob("_speedups*.so"))
+    site = tmp_path / "site"
+    site.mkdir()
+    # Loaded as an extension module rather than through ctypes, whose import in
+    # this interpreter opens a descriptor before the package counts what it
+    # inherited, which would fault the process for another reason first.
+    (site / "sitecustomize.py").write_text(
+        "import importlib.util\n"
+        f"copy = {str(tmp_path / 'throwaway.so')!r}\n"
+        f"with open({str(built)!r}, 'rb') as source, open(copy, 'wb') as target:\n"
+        "    target.write(source.read())\n"
+        "spec = importlib.util.spec_from_file_location('_speedups', copy)\n"
+        "spec.loader.exec_module(importlib.util.module_from_spec(spec))\n")
+    path = os.pathsep.join([str(site), os.environ.get("PYTHONPATH", "")])
+    died = serve_once(tmp_path, tiny_model, {"PYTHONPATH": path})
+    assert died is not None, "code loaded from outside the environment was served past"
+    code, stderr = died
+    assert code == 3, (code, stderr)
+    fault = json.loads(stderr.strip().splitlines()[-1])
+    assert fault["loaded_code_violation"] == "admission"
+    assert str(tmp_path / "throwaway.so") in fault["foreign"]
+
+
+def test_the_environment_carries_no_triton_and_torch_compiles_nothing():
+    """The lock leaves triton out, the environment holds none, and the package turns
+    torch's native DSL registration off before torch is imported."""
+    import importlib.util
+    import python_spu
+    assert importlib.util.find_spec("triton") is None
+    for lock in ("requirements.lock", "requirements-test.lock"):
+        assert not re.search(r"^triton==", (ROOT / lock).read_text(), re.M), lock
+    assert python_spu and os.environ["TORCH_DISABLE_NATIVE_JIT"] == "1"
+
+
+def test_the_locked_environment_holds_the_test_lock_and_nothing_more():
+    """The guard the install runs after pip, run as the install runs it, isolated, on
+    the environment the suite runs in: every distribution is the test lock's pin, at
+    its version, beside the interpreter's own pip."""
+    done = subprocess.run([sys.executable, "-I", "-B",
+                           str(ROOT / "scripts" / "installed_set.py"),
+                           str(ROOT / "requirements-test.lock")],
+                          capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr
+
+
+def distribution(root, name, version):
+    info = root / f"{name}-{version}.dist-info"
+    info.mkdir(parents=True)
+    (info / "METADATA").write_text(f"Metadata-Version: 2.1\nName: {name}\n"
+                                   f"Version: {version}\n")
+
+
+def test_the_installed_set_refuses_what_the_lock_does_not_pin(tmp_path):
+    """pip install adds what a lock lists and removes nothing, so a prefix installed
+    from an earlier lock keeps what the new one dropped, as triton was kept. A
+    distribution the lock does not pin, one it pins that is absent, one at another
+    version and one found twice are each refused by name, and so is a lock line that
+    is not a pin. Perturbations: drop the not-in-the-lock branch, the missing clause,
+    the version comparison or the twice clause, or skip a line that is not a pin, and
+    this fails."""
+    locked = installed_set.pins((ROOT / "requirements-test.lock").read_text())
+    assert installed_set.differences(locked) == []
+    distribution(tmp_path / "extra", "triton", "3.8.0")
+    assert installed_set.differences(locked, [*sys.path, str(tmp_path / "extra")]) == [
+        "not in the lock: triton==3.8.0"]
+    assert installed_set.differences({**locked, "absent": "1.0"}) == [
+        "missing: absent==1.0"]
+    assert installed_set.differences({**locked, "blake3": "0.0.1"}) == [
+        f"another version: blake3=={locked['blake3']}, the lock pins 0.0.1"]
+    distribution(tmp_path / "twice", "blake3", locked["blake3"])
+    assert installed_set.differences(locked, [*sys.path, str(tmp_path / "twice")]) == [
+        f"found twice: blake3 {locked['blake3']}, {locked['blake3']}"]
+    with pytest.raises(ValueError, match="line 2"):
+        installed_set.pins("blake3==1.0 \\\n-e ./somewhere\n")
+    with pytest.raises(ValueError, match="pins nothing"):
+        installed_set.pins("# a comment\n")
+    lock = tmp_path / "short.lock"
+    lock.write_text((ROOT / "requirements-test.lock").read_text() + "absent==1.0\n")
+    done = subprocess.run([sys.executable, "-I", "-B",
+                           str(ROOT / "scripts" / "installed_set.py"), str(lock)],
+                          capture_output=True, text=True, timeout=120)
+    assert (done.returncode, done.stderr) == (1, "installed_set: missing: absent==1.0\n")
+    done = subprocess.run([sys.executable, "-I", "-B",
+                           str(ROOT / "scripts" / "installed_set.py"),
+                           str(tmp_path / "no.lock")],
+                          capture_output=True, text=True, timeout=120)
+    assert done.returncode == 2, done.stderr

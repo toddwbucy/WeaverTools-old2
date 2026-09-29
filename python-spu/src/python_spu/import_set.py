@@ -57,7 +57,17 @@ def enforce(stage, declare=None):
     """Judges the process's modules at a stage, or, where the server was started
     with --declare-imports, records them instead. Declaring never serves past the
     first generation: the process exits once that stage is recorded, so the mode
-    cannot stand in for a judged process."""
+    cannot stand in for a judged process.
+
+    **The code the process maps is judged first, in either mode**, per
+    `loaded_code`: a run that loaded code from outside the environment faults
+    rather than serving, and rather than recording a half from what it held."""
+    from .loaded_code import foreign_now
+    code = foreign_now()
+    if code:
+        print(json.dumps({"loaded_code_violation": stage, "foreign": code}),
+              file=sys.stderr, flush=True)
+        os._exit(3)
     if declare is not None:
         with open(declare, "a") as fh:
             fh.write("".join(f"{name}\n" for name in sorted(sys.modules)))
