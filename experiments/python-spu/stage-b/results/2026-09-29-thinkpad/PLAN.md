@@ -108,8 +108,9 @@ The whole block ran clean against a scratch prefix on 2026-09-29, with sudo drop
 Record the digest line, `sha256sum /opt/weaver/python-spu/python-spu.pyz` and
 `sha256sum requirements.lock`.
 
-**The artifact.** The operator's home is `0710`, with an ACL admitting only `weaver-m1-state`, so an
-agent uid cannot read `$MODELS`. The copy goes under `/opt/weaver/models`.
+**The artifact.** An agent uid cannot read the operator's home, so it cannot read
+`$MODELS`. The copy goes under `/opt/weaver/models`.
+*(The first sentence is reduced for publication. The deposit's `PLAN.md` keeps it whole.)*
 The source's 8 entries are all regular files, and there are no symlinks, which answers
 the #729 cross-seat item for this artifact. `model.safetensors` is BF16, 988,097,824 bytes.
 

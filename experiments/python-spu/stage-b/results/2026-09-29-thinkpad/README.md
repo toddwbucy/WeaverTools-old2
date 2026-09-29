@@ -19,6 +19,7 @@ The deposit is on the shared bulk store at
 `/bulk-store/weaver-testing/stage-b-thinkpad-2026-09-29-b62812e/`, mounted on the
 thinkpad under `/mnt/bulk-store/weaver-testing/`. It holds:
 - both attempts' records;
+- the plan as registered, unscrubbed (`PLAN.md`);
 - the unit journals;
 - the before and after pairs;
 - the trace copies;
