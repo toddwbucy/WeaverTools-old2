@@ -26,9 +26,10 @@ report's own copy.
 - `stage-b2.sh` and `stage-b2-resume.sh`, the two root scripts as the operator ran them;
 - `deposit.sha256`.
 
-**The copies are scrubbed of one box's paths.** `<workspace>` is the operator's
-checkout directory, `<agents>` the agent-configuration directory and `<operator>` the
-operator's account. The deposit keeps the originals.
+**The copies are scrubbed of one box's paths.** In `PLAN.md`, `<workspace>` is the
+operator's checkout directory, `<agents>` the agent-configuration directory and
+`<operator>` the operator's account. The scripts carry the same three as `$WORKSPACE`,
+`$AGENTS_DIR` and `$OPERATOR`, so they still parse. The deposit keeps the originals.
 
 ## What differs from stage B
 
@@ -73,7 +74,7 @@ dc3a0f7a stack.**
 | 5 | the card is empty after the unload, and the unit is inactive | `nvidia-smi-after-unload.txt` is empty. While loaded, `nvidia-smi-loaded.txt` showed pid 2968909 at 1412 MiB | pass |
 | 6 | the diagnostic replay of the turn certifies | `replay-terminal.json`: `replay.closed` `{"kind":"certified"}`. `replay-cleanup.json`: exit codes `[0, 0]`, nothing signalled, temporary directory removed | pass |
 | 7 | the stack is the new build | the stack is `python-spu.pyz` bf1e0870, `worker` d157f76e and `weaver-gate` 1f1a2f1e, each equal to the installed file. The worker and gate are the dc3a0f7a build, `build/binaries.sha256` | pass |
-| 8 | the worker's vector carried `--headroom-bytes 268435456` | `worker-journal.txt`: `Started [systemd-run] …/worker …/coordination.sock …/python-spu.pyz …/weaver-gate --headroom-bytes 268435456`. `spu-cmdline.txt`: `python3.14 python-spu.pyz --headroom-bytes 268435456` | pass |
+| 8 | the worker's vector carried `--headroom-bytes 268435456` | `worker-journal.txt`: `Started [systemd-run] .../worker .../coordination.sock .../python-spu.pyz .../weaver-gate --headroom-bytes 268435456`. `spu-cmdline.txt`: `python3.14 python-spu.pyz --headroom-bytes 268435456` | pass |
 | 9 | the unit's environment had no `CUBLAS_WORKSPACE_CONFIG` | `unit-environment.txt`: `Environment=` is empty. `spu-environ.txt` is empty | pass, with the reading below |
 
 **Beside the criteria, nothing of karl's changed.** `karl-*.txt`,

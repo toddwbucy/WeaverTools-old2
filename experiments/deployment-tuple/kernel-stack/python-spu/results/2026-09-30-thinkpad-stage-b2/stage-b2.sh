@@ -24,14 +24,17 @@
 # a run, the new binaries, the new zipapp and the edited admin-stageb stay in place,
 # the old files beside them for a rollback.
 
+# Published copy: OPERATOR, WORKSPACE and AGENTS_DIR stand for one box's operator
+# account, checkout directory and agent-configuration directory, which the deposit's
+# copy carries.
 set -Eeuo pipefail
 umask 022
 [ "$(id -u)" = 0 ] || { echo "run as root: sudo bash $0" >&2; exit 2; }
 
-OP=<operator>
+OP=$OPERATOR
 D=/mnt/bulk-store/weaver-testing/stage-b2-thinkpad-2026-09-30-dc3a0f7
 R=$D/run
-WT=<workspace>/stageb2-read
+WT=$WORKSPACE/stageb2-read
 T=$WT/target/release
 CODE=$WT/experiments/deployment-tuple/kernel-stack/python-spu/code
 SRC=$WT/python-spu/src
@@ -39,7 +42,7 @@ CFG=/etc/weaver/admin-stageb
 BIN=/opt/weaver-stageb/bin
 PREFIX=/opt/weaver/python-spu
 PYZ=$PREFIX/python-spu.pyz
-AGENTS=<agents>
+AGENTS=$AGENTS_DIR
 TRACE=$AGENTS/karl2/trace.ndjson
 COMMIT=dc3a0f7a9b11666ed59d69363d6741869e5fabaa
 OLD_PYZ_SHA=8197449fbe343760a7d16b57102ec21ba6b80cc218f3c485aec0717a85d4d0f9

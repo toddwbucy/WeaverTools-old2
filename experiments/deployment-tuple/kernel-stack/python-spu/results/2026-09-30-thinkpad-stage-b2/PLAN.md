@@ -51,7 +51,7 @@ Stage B's six, then three more. Each is decided by the evidence named, from `run
    zipapp 7e3e01b8 and the dc3a0f7a worker and gate, whose hashes are
    `build/binaries.sha256`: `trace-judged.json`, `installed.sha256`.
 8. **The worker's argument vector carried `--headroom-bytes 268435456`.** It shows in
-   the journal's `Started [systemd-run] … worker …` line and in the SPU's own command
+   the journal's `Started [systemd-run] ... worker ...` line and in the SPU's own command
    line: `worker-journal.txt`, `spu-cmdline.txt`.
 9. **The unit's environment had no `CUBLAS_WORKSPACE_CONFIG`.** Neither the unit's
    `Environment` nor the environment the SPU started with carries it:
