@@ -15,6 +15,10 @@ registered. A narrow attempt 3 is offered to the operator: load, one turn, the l
 with the corrected selector, unload. If it runs, its listing joins this record and the
 pass reads whole.
 
+*Attempt 3 was not run. Criterion 4 was measured in stage B2, at main on 2026-09-30,
+`../2026-09-30-thinkpad-stage-b2/`: the anchored selector found one SPU process, and
+python-spu's own rule admitted all 72 of its code mappings.*
+
 **Scope:**
 - one agent, karl2;
 - one turn;
