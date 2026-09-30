@@ -169,16 +169,17 @@ class Service:
 def main(argv=None):
     """A refusal before serving is one JSON line on stderr and exit 1, before the
     channels are adopted, as the Rust SPU's main refuses a bad parameter."""
-    from . import CUBLAS_WORKSPACE,CUBLAS_WORKSPACE_PRIOR
+    from . import differing_environment
     try:
         headroom,cpu,declare=parameters(sys.argv[1:] if argv is None else argv)
     except BadParameter as e:
         print(json.dumps({'refusal':'bad_parameter','detail':str(e)}),file=sys.stderr)
         return 1
-    if CUBLAS_WORKSPACE_PRIOR not in (None,CUBLAS_WORKSPACE):
-        print(json.dumps({'refusal':'bad_environment','detail':
-            f'CUBLAS_WORKSPACE_CONFIG is {CUBLAS_WORKSPACE_PRIOR!r}, and python-spu sets '
-            f'{CUBLAS_WORKSPACE} for its deterministic algorithms'}),file=sys.stderr)
+    differing=differing_environment()
+    if differing:
+        print(json.dumps({'refusal':'bad_environment','detail':'. '.join(
+            f'{name} is {carried!r}, and python-spu sets {value} for {purpose}'
+            for name,carried,value,purpose in differing)}),file=sys.stderr)
         return 1
     try:
         lifecycle,decode=adopt()

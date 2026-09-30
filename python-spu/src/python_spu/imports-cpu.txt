@@ -516,7 +516,6 @@ multiprocessing.reduction
 multiprocessing.resource_sharer
 multiprocessing.resource_tracker
 multiprocessing.spawn
-multiprocessing.synchronize
 multiprocessing.util
 ntpath
 numbers
