@@ -118,7 +118,8 @@ off.
 Integration with the Rust harness end to end, and a trace verifying under the
 diagnostic replay, beyond the one turn of stage B
 (`experiments/deployment-tuple/kernel-stack/python-spu/results/2026-09-29-thinkpad-stage-b/`).
-The full wire vocabulary. GPU admission against a live occupant,
-headroom, and injected device faults. Other families, precisions and sharding. The
+The full wire vocabulary. GPU admission against a live occupant, and
+injected device faults. The headroom's room judgment has been shown refusing and
+admitting on an unoccupied card (#754). Other families, precisions and sharding. The
 classifier's equivalence on a trained artifact. Speed. A small model's smoke test
 passing establishes none of these.
