@@ -23,9 +23,11 @@ A session fails when the declare command exits nonzero, when run.py leaves no
 run.json, or when its run.json ends other than completed: a refused load, a load
 that stood no gate, a timeout or an error. A failed session is recorded and the
 sequence goes on to the next, and --stop-after consecutive failures stop it. A
-session whose directory already holds a run.json, failed or completed, is
-skipped as done, so a stopped sequence resumes by running the same command again
-and a failure stands in the record rather than being retried under its name. OUT/sessions.json
+session name is used once: an attempt record, `attempt.json`, is written in the
+session's directory before anything starts, the declaration included, and a
+name with one is skipped on a rerun whether or not its run finished, the
+incomplete ones printed for the operator rather than retried. A stopped sequence
+resumes by running the same command again, and a failure stands in the record. OUT/sessions.json
 lists every session this script touched, written after each one.
 """
 import argparse
@@ -79,11 +81,23 @@ def main():
         task = tasks[(n - args.first) % len(tasks)]
         out = os.path.join(args.out, session)
         record_path = os.path.join(out, "run.json")
-        if os.path.exists(record_path):
-            print(f"{session}: already run, skipped", flush=True)
+        attempt_path = os.path.join(out, "attempt.json")
+        # **A session name is used once.** An attempt record is written before
+        # anything starts, the declaration included, so a name that was ever
+        # attempted is skipped on a rerun whether or not its run finished, and a
+        # partial attempt never shares a name, a directory or a report row with a
+        # retry. An attempt that left no run.json is named for the operator.
+        if os.path.exists(attempt_path) or os.path.exists(record_path):
+            if os.path.exists(record_path):
+                print(f"{session}: already attempted, skipped", flush=True)
+            else:
+                print(f"{session}: attempted and incomplete, skipped, for the operator",
+                      flush=True)
             continue
         entry = {"session": session, "seed": seed, "level": args.level, "task": task,
                  "started": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
+        os.makedirs(out, exist_ok=True)
+        json.dump(entry, open(attempt_path, "w"), indent=1)
         index["sessions"].append(entry)
 
         declare = [part.format(session=session, seed=seed)
