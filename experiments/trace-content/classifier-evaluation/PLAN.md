@@ -20,9 +20,10 @@ cuts by session into three splits and section 8 requires at least 10 sessions in
 the two held out, so the corpus needs at least 50 sessions before any fitting, which
 those 50 meet. **Session `s-rusty-b` of `herobench-agents-2026-09-29` is the calibration
 session and stands outside the split**: one session of two runs, a shape the corpus does
-not share, whose 978 positions of the kinds section 2 names over 41 turns, 40 closed
-clean and one stopped, fixed the position count before the corpus existed. The
-single-shot corpus of the label split is not used to fit or to score.
+not share, whose 785 positions of the kinds section 2 names, 783 in 41 turns, 40 closed
+clean and one stopped, and its two runs' score events, fixed the position count before
+the corpus existed. The single-shot corpus of the label split is not used to fit or to
+score.
 
 ## 2. Positions and the input at each
 
@@ -156,9 +157,10 @@ for the rest of the run, per `weaver-harness-Spec` section 6.
 **Per turn.** The routing stage asks about every position a turn produces, one ask at a
 time, the harness blocking on each, and an eligible configuration asks once per
 position. A turn's classify cost is the sum over its positions of their asks, taken at
-the maximum positions per turn and recorded beside the median. The preliminary pair's
-turns run to a median of 4 and a maximum of 132, and section 8's gates recompute both
-over the fitting corpus. The number the per-turn cost is held to is the third open cell.
+the maximum positions per turn and recorded beside the median. The calibration session's
+turns run to a median of 4 and a maximum of 115, and section 8's gates recompute both
+over the fitting corpus. Over its first 50 sessions they read a median of 3 and a
+maximum of 207. The number the per-turn cost is held to is the third open cell.
 
 The classifier's own deployment tuple is recorded beside its results, and it serves off
 the decoder's weights and off the decoder's device.

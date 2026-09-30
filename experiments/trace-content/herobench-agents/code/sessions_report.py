@@ -8,11 +8,20 @@ sessions.py wrote, and prints one JSON document: a row per session and the
 totals. Only sessions whose name starts with --prefix are read, so a trace
 carrying earlier sessions yields the same figures as one carrying these alone.
 
-**A position** is what the evaluation plan's section 2 names, counted per turn:
-each non-blank line of a text part of `message.assistant` and each of its
-`tool_call` parts, each `tool.call.started`, and each `message.tool_result`.
-Over the counted pair of 2026-09-29, session `s-rusty-b`, this gives 978
-positions over 41 turns, a median of 4 per turn and a maximum of 132.
+**A position** is what the evaluation plan's section 2 names. Within a turn: each
+non-blank line of a text part of `message.assistant`, prose or program, each
+action's request at `tool.call.started`, and each `message.tool_result`. The
+assistant message's `tool_call` parts are not positions, the request being one
+position at `tool.call.started` and a second count of it being a double count.
+Outside every turn: each run's `score` event, a position of the computable
+share that no candidate reads, counted in a session's and the sequence's
+positions and never in a per-turn figure. Over the calibration session of
+2026-09-29, `s-rusty-b`, this gives 785 positions, 783 in 41 turns and 2 score
+events, a median of 4 per turn and a maximum of 115.
+
+**Only sessions with a run record are counted**, so an attempt that left no
+`run.json` contributes no turn, position or maximum, even where its events stand
+in the trace.
 
 **A decayed turn** is one whose model output broke the call format, read from
 `model.output`'s verbatim emission: a call opened and never closed, the closing
@@ -41,8 +50,6 @@ def positions(event):
         for part in event["payload"].get("content", []):
             if part.get("type") == "text":
                 count += sum(1 for line in part.get("text", "").splitlines() if line.strip())
-            elif part.get("type") == "tool_call":
-                count += 1
         return count
     return 1 if kind in ("tool.call.started", "message.tool_result") else 0
 
@@ -110,26 +117,24 @@ def main():
             "ended_by": task.get("ended_by"), "result": task.get("result"),
             "score": task.get("score"), "actions": task.get("actions"),
             "seconds": task.get("seconds"), "turns": len(opened),
-            "positions": sum(counts), "positions_max_turn": max(counts, default=0),
+            "turn_positions": sum(counts),
+            "score_positions": sum(1 for e in events if e["kind"] == "score"),
+            "positions": sum(counts) + sum(1 for e in events if e["kind"] == "score"),
+            "positions_max_turn": max(counts, default=0), "per_turn": counts,
             "decayed_turns": len(decayed), "landing": landing.get(name, {}),
             "weights_hash": [h[:16] if h else "" for h in hashes],
         })
 
-    every_turn = []
-    for name, events in by_session.items():
-        per_turn = collections.Counter()
-        for event in events:
-            if event.get("turn"):
-                per_turn[(event["run"], event["turn"])] += positions(event)
-        every_turn += [per_turn[(e["run"], e["turn"])] for e in events
-                       if e["kind"] == "turn.started"]
+    every_turn = [n for r in rows for n in r["per_turn"]]
     totals = {
         "sessions": len(rows),
         "completed": sum(r["ended"] == "completed" for r in rows),
         "wins": sum(r["result"] == "win" for r in rows),
         "decayed_sessions": sum(r["decayed_turns"] > 0 for r in rows),
         "turns": len(every_turn),
-        "positions": sum(every_turn),
+        "positions": sum(r["positions"] for r in rows),
+        "turn_positions": sum(every_turn),
+        "score_positions": sum(r["score_positions"] for r in rows),
         "positions_per_turn_median": statistics.median(every_turn) if every_turn else 0,
         "positions_per_turn_max": max(every_turn, default=0),
         "landing": dict(sum((collections.Counter(r["landing"]) for r in rows),
