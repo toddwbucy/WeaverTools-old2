@@ -73,6 +73,11 @@ def texts(event):
             if p.get("type") == "text"]
 
 
+def turn_key(event):
+    """A turn named whole, so no two sessions' or runs' turns share a key."""
+    return (event["session"], event["run"], event.get("turn"))
+
+
 def decayed(emission):
     """The signature #746 records, read from the model's verbatim emission: a
     call opened and never closed, whether the closing tag is missing, replaced
@@ -84,7 +89,7 @@ def decayed_turns(events):
     """The turns holding a decayed emission. The decay is the turn's own, so it
     is read from `model.output` rather than from the parsed message or from the
     loop's feedback, which lands a turn later."""
-    return {(event["run"], event.get("turn")) for event in events
+    return {turn_key(event) for event in events
             if event["kind"] == "model.output"
             and decayed(event["payload"].get("emission", ""))}
 
@@ -92,7 +97,10 @@ def decayed_turns(events):
 # 1 and 5: what crossed, and what the store holds of it.
 
 def crossing(by, store, prefixes, exact=False):
+    """Each event is measured against the election its own run's load declared,
+    so a document over runs of different elections counts each by its own."""
     elected = {}
+    by_run = {}
     elections = collections.Counter()
     kinds = collections.defaultdict(lambda: {"events": 0, "payload_bytes": 0,
                                              "elected_bytes": 0})
@@ -101,22 +109,24 @@ def crossing(by, store, prefixes, exact=False):
     for events in by.values():
         for event in events:
             if event["kind"] == "load":
-                elections[json.dumps(event["payload"].get("tee", {}), sort_keys=True)] += 1
-            if event["kind"] == "load" and not elected:
                 tee = event["payload"].get("tee", {})
-                elected = {k["kind"]: k["paths"] for k in tee.get("keys", [])}
-                elected["all_kinds"] = tee.get("all_kinds")
+                elections[json.dumps(tee, sort_keys=True)] += 1
+                by_run[(event["session"], event["run"])] = {
+                    k["kind"]: k["paths"] for k in tee.get("keys", [])}
+                if not elected:
+                    elected = dict(by_run[(event["session"], event["run"])])
+                    elected["all_kinds"] = tee.get("all_kinds")
             row = kinds[event["kind"]]
             row["events"] += 1
             payload = event.get("payload")
             if payload is not None:
                 row["payload_bytes"] += size(payload)
-            for path in elected.get(event["kind"], []):
+            for path in by_run.get((event["session"], event["run"]), {}).get(event["kind"], []):
                 if isinstance(payload, dict) and path in payload:
                     row["elected_bytes"] += size(payload[path])
                     if event["kind"] == "model.measurement":
                         readings[path].append(size(payload[path]))
-                        per_turn[(event["run"], event.get("turn"))] += size(payload[path])
+                        per_turn[turn_key(event)] += size(payload[path])
     # The store is filtered by the trace's own rule, a name whole or a literal
     # prefix compared byte for byte, so a document never counts one session's
     # events and another's rows. LIKE is not that rule: its _ and % are
@@ -333,7 +343,7 @@ def context_shares(calls, by):
         decayed |= decayed_turns(events)
     first = {}
     for call in calls:
-        first.setdefault((call["run"], call["turn"]), call)
+        first.setdefault((call["session"], call["run"], call["turn"]), call)
     rows = []
     for key, call in first.items():
         b = call["before"]
@@ -376,19 +386,22 @@ def context_shares(calls, by):
 
 def onset(by, calls):
     """Where decay set in: each decayed session's first decayed turn, its index
-    in the run and the context at its opening."""
+    in the run that holds it and the context at its opening."""
     first = {}
     for call in calls:
-        first.setdefault((call["run"], call["turn"]), call)
+        first.setdefault((call["session"], call["run"], call["turn"]), call)
     out = []
     for session, events in by.items():
         decayed = decayed_turns(events)
         if not decayed:
             continue
-        order = [(e["run"], e["turn"]) for e in events if e["kind"] == "turn.started"]
+        order = [turn_key(e) for e in events if e["kind"] == "turn.started"]
         hit = next((k for k in order if k in decayed), None)
         if hit is None or hit not in first:
             continue
+        # The index counts the turns of the run that holds the hit, so a hit in
+        # a session's second run is its place in that run, not in the session.
+        order = [k for k in order if k[1] == hit[1]]
         b = first[hit]["before"]
         total = sum(b.values()) or 1
         out.append({"session": session, "turn_index": order.index(hit) + 1,
@@ -407,7 +420,7 @@ def assistant_sizes(by):
     for events in by.values():
         for event in events:
             if event["kind"] == "message.assistant":
-                per_turn[(event["run"], event.get("turn"))] += size(event["payload"].get("content", []))
+                per_turn[turn_key(event)] += size(event["payload"].get("content", []))
     return spread(list(per_turn.values()))
 
 

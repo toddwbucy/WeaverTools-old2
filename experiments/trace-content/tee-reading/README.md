@@ -202,4 +202,8 @@ python3 experiments/trace-content/tee-reading/code/tee_reading.py \
 
 `<sessions-deposit>` is `herobench-sessions-2026-09-30` and `<agents-deposit>`
 `herobench-agents-2026-09-29`. The script reads the store read-only and prints only the
-size of each section it writes.
+size of each section it writes. **The script measures what its two documented
+invocations measure.** It keys a turn by session, run and turn, applies each run's own
+load election, and indexes a decay onset within the run that holds it, so it holds over
+sessions of several runs and of differing elections, but it is checked against these two
+readings and no others.
