@@ -107,8 +107,11 @@ def weights_digest(path,pinned):
     directory, sorted, symbolic links not followed, its relative path and then its
     bytes, in blake3. **A pinned container's bytes are read through its pin**, so under
     a swap during admission the digest names the bytes the load served, where the Rust
-    walk reads the new name. A pinned container whose name the walk does not meet is
-    refused rather than left out of the identity."""
+    walk reads the new name. A container reached through a symbolic link is left out of
+    the walk, as the Rust leaves it, the pin still serving its size and its load: that
+    parity is #726's symlinked-member item, awaiting the operator's ruling. A pinned
+    name that no longer exists at all, unlinked after the pin, is refused rather than
+    left out of the identity."""
     path=Path(path); pins=dict(pinned); met=set()
     digest=blake3()
     def walk(directory):
@@ -126,8 +129,11 @@ def weights_digest(path,pinned):
         else:
             with file.open('rb') as stream:
                 for chunk in iter(lambda:stream.read(1024*1024),b''): digest.update(chunk)
-    absent=sorted(set(pins)-met)
-    if absent: raise AdmissionError('artifact_unreadable',f'pinned and absent from the hash walk: {", ".join(absent)}')
+    absent=[]
+    for name in sorted(set(pins)-met):
+        try: os.lstat(path/name)
+        except FileNotFoundError: absent.append(name)
+    if absent: raise AdmissionError('artifact_unreadable',f'pinned and no longer named: {", ".join(absent)}')
     return digest.hexdigest()
 
 def judge_room(ordinal,free,total,shard_bytes,headroom):
@@ -161,6 +167,9 @@ class HFEngine:
         self.device='cpu' if cpu else f'cuda:{devices[0]}'
         if not cpu and (not torch.cuda.is_available() or devices[0]>=torch.cuda.device_count()):
             raise AdmissionError('device_cannot_admit','assigned CUDA device unavailable')
+        # A refusal is recorded here and raised after the except block ends, so the frames
+        # and the exception that hold a part-moved model are gone when the cache is freed.
+        model=None; failure=None
         try:
             # The pin, held for the admit. The sidecars, config and tokenizer, are opens
             # by name, the limit weaver-spu's native `sidecar_dir` states for its own.
@@ -201,12 +210,21 @@ class HFEngine:
             self.artifact=str(path.resolve())
             torch.set_num_threads(1)
             torch.use_deterministic_algorithms(True)
-        except AdmissionError:
-            self.close(); raise
+        except AdmissionError as e:
+            failure=e.with_traceback(None)
         except torch.OutOfMemoryError as e:
-            self.close(); raise AdmissionError('device_cannot_admit',str(e)) from e
+            failure=AdmissionError('device_cannot_admit',str(e))
         except Exception as e:
-            self.close(); raise AdmissionError('artifact_unreadable',str(e)) from e
+            failure=AdmissionError('artifact_unreadable',str(e))
+        # **A move that fails part-way is released.** Inside the except block the local
+        # model and the exception's traceback, whose frames hold the module being moved,
+        # keep its device tensors alive, and freeing the cache there frees nothing. Out
+        # of it, with the local dropped and no cause chained, close() collects and frees.
+        if failure is not None:
+            failure.__context__=failure.__cause__=None
+            model=None
+            self.close()
+            raise failure
     def _tap(self,module,args,output):
         values=output[0] if isinstance(output,tuple) else output
         norm=values.detach().float().square().sum().sqrt().item()

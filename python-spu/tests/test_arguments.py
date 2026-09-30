@@ -69,6 +69,25 @@ def test_a_byte_count_is_what_rusts_u64_parse_accepts():
             parameters(["--headroom-bytes", value])
 
 
+# Rust's `u64::from_str` on each value, measured by running it on 2026-09-29.
+RUST_U64 = [("+", None), ("+0", 0), ("+0005", 5), ("-0", None), ("0", 0), ("", None),
+            (" 5", None), ("5_0", None), (str(U64_MAX), U64_MAX), (str(U64_MAX + 1), None),
+            ("0" * 5000 + "1", 1), ("+" + "0" * 5000 + "7", 7), ("9" * 5000, None)]
+
+
+@pytest.mark.parametrize("value,rust", RUST_U64, ids=[v[:12] for v, _ in RUST_U64])
+def test_the_byte_count_is_rusts_u64_parse_case_for_case(value, rust):
+    """CPython's int refuses more than 4300 digits, where Rust reads 5000 zeros and a 1 as
+    1. Perturbation: judge the value with int() alone, and the long cases raise instead."""
+    assert server.byte_count(value) == rust
+
+
+def test_an_overlong_value_is_refused_in_the_one_line_form():
+    done = run_entry(["--headroom-bytes", "9" * 5000])
+    assert (done.returncode, done.stdout) == (1, "")
+    assert json.loads(done.stderr)["refusal"] == "bad_parameter"
+
+
 def test_python_spus_own_flags_follow_the_same_rules():
     assert parameters(["--cpu-experiment", "--headroom-bytes", "1"]) == (1, True, None)
     assert parameters(["--declare-imports", "x", "--cpu-experiment"]) == (HEADROOM_BYTES, True, "x")
@@ -505,3 +524,53 @@ def test_the_pins_are_closed_on_every_path(artifact, monkeypatch):
     with pytest.raises(AdmissionError):
         engine.HFEngine(root, [0], cpu=True)
     assert set(os.listdir("/proc/self/fd")) == before
+
+
+def test_a_symlinked_container_admits_and_hashes_as_the_rust_does(artifact, oracle):
+    """hash_canonical does not follow links, so a container reached through one is left
+    out of the digest, the pin still serving its load, which is #726's symlinked-member
+    item. Perturbation: refuse every pinned container the walk does not meet, and this
+    refuses."""
+    root, _ = artifact
+    blob = root.parent / "blob.safetensors"
+    os.replace(root / "model.safetensors", blob)
+    (root / "model.safetensors").symlink_to(blob)
+    served = engine.HFEngine(root, [0], cpu=True)
+    try:
+        assert oracle(op="weights_hash", path=str(root)) == {"ok": served.weights_hash}
+    finally:
+        served.close()
+
+
+def test_a_move_that_fails_part_way_is_unreachable_before_the_cache_is_freed(tiny_model, monkeypatch):
+    """The cache is freed only once nothing holds the part-moved model: not the local,
+    not the exception's frames. Freeing it inside the except block, with the model still
+    reachable, frees nothing, 444,596,224 bytes staying reserved on the card in #754's
+    measurement. Here the move fails on the host and the driver's calls are stubs, so no
+    card is touched. Perturbation: free inside the except block, and the model is still
+    alive when the cache is emptied."""
+    import contextlib
+    import gc
+    import weakref
+    import torch
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "device_count", lambda: 1)
+    monkeypatch.setattr(torch.cuda, "mem_get_info", lambda device=None: (1 << 40, 1 << 40))
+    held = {}
+
+    def fail_the_move(self, *args, **kwargs):
+        held["model"] = weakref.ref(self)
+        raise RuntimeError("forced failure part-way through the move")
+    monkeypatch.setattr(torch.nn.Module, "to", fail_the_move)
+    seen = []
+
+    def empty_cache():
+        gc.collect()
+        seen.append(held["model"]() is None)
+    monkeypatch.setattr(torch.cuda, "empty_cache", empty_cache)
+    monkeypatch.setattr(torch.cuda, "device", lambda device: contextlib.nullcontext())
+    with pytest.raises(AdmissionError) as caught:
+        engine.HFEngine(tiny_model, [0])
+    assert caught.value.kind == "artifact_unreadable"
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+    assert seen == [True]

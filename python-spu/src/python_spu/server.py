@@ -11,6 +11,17 @@ from .engine import HFEngine,AdmissionError,HEADROOM_BYTES,U64_MAX
 # u64's own parse in Rust: ASCII digits and an optional leading plus sign, nothing else.
 BYTE_COUNT=re.compile(r'\+?[0-9]+')
 
+def byte_count(value):
+    """Rust's `u64::from_str`, ported: an optional plus sign, then ASCII digits, leading
+    zeros allowed however many, the value at most 2^64 - 1. Answers the count, or None.
+    The zeros are stripped and the length judged before `int` sees the digits, since
+    CPython's `int` refuses a string past 4300 digits that Rust reads as a small number."""
+    if not BYTE_COUNT.fullmatch(value): return None
+    digits=value.lstrip('+').lstrip('0') or '0'
+    if len(digits)>len(str(U64_MAX)): return None
+    count=int(digits)
+    return count if count<=U64_MAX else None
+
 class BadParameter(ValueError):
     pass
 
@@ -27,10 +38,11 @@ def parameters(arguments):
         if argument=='--headroom-bytes':
             value=next(arguments,None)
             if value is None: raise BadParameter('--headroom-bytes takes a value')
-            if not BYTE_COUNT.fullmatch(value) or int(value)>U64_MAX:
+            count=byte_count(value)
+            if count is None:
                 raise BadParameter(f'--headroom-bytes wants a byte count, got {value}')
             if headroom is not None: raise BadParameter('--headroom-bytes is stated twice')
-            headroom=int(value)
+            headroom=count
         elif argument=='--cpu-experiment':
             if cpu: raise BadParameter('--cpu-experiment is stated twice')
             cpu=True
