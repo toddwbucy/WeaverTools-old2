@@ -6,7 +6,7 @@
 **Document ID:** `python-spu-Spec`
 **Parent:** `weaver-spu-PRD`
 **Editorial:** Per the Working Rules.
-**Landing PR:** PENDING
+**Landing PR:** #756
 
 ---
 
