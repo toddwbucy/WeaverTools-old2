@@ -14,10 +14,12 @@ each non-blank line of a text part of `message.assistant` and each of its
 Over the counted pair of 2026-09-29, session `s-rusty-b`, this gives 978
 positions over 41 turns, a median of 4 per turn and a maximum of 132.
 
-**A decayed turn** is one whose model output broke the call format: an assistant
-text part carrying a `<tool_call>` tag the harness did not take as a call, or a
-following user message opening with the loop's unclosed-call feedback. A session
-is decayed when any of its turns is.
+**A decayed turn** is one whose model output broke the call format, read from
+`model.output`'s verbatim emission: a call opened and never closed, the closing
+tag missing or a second opening tag or a stray token in its place, the signature
+#746 records. The parsed message is not the witness, and neither is the loop's
+unclosed-call feedback, which lands a turn later. A session is decayed when any
+of its turns is.
 
 **The typed landing** is counted from the store by the event table's session:
 messages, parts by block, measurements, series readings, and fields, the last
@@ -30,7 +32,6 @@ import os
 import sqlite3
 import statistics
 
-UNCLOSED = "Your last call did not run, because it was not closed"
 
 
 def positions(event):
@@ -44,11 +45,6 @@ def positions(event):
                 count += 1
         return count
     return 1 if kind in ("tool.call.started", "message.tool_result") else 0
-
-
-def texts(event):
-    return [part.get("text", "") for part in event["payload"].get("content", [])
-            if part.get("type") == "text"]
 
 
 def main():
@@ -98,10 +94,10 @@ def main():
             if event["kind"] == "turn.started":
                 opened.append(key)
             per_turn[key] += positions(event)
-            if event["kind"] == "message.assistant" and any("<tool_call>" in t for t in texts(event)):
-                decayed.add(key)
-            if event["kind"] == "message.user" and any(t.startswith(UNCLOSED) for t in texts(event)):
-                decayed.add(key)
+            if event["kind"] == "model.output":
+                emission = event["payload"].get("emission", "")
+                if emission.count("<tool_call>") > emission.count("</tool_call>"):
+                    decayed.add(key)
         counts = [per_turn[key] for key in opened]
         rows.append({
             "session": name, "seed": record.get("seed"), "task": record.get("task"),
