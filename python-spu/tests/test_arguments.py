@@ -386,6 +386,19 @@ def test_a_differing_value_is_refused_by_name_not_overwritten(name, value, other
     assert "bad_environment" not in agreed.stderr and "python_spu_fault" in agreed.stderr
 
 
+@pytest.mark.parametrize("name,value,other", OWN, ids=[n for n, _, _ in OWN])
+def test_a_carried_value_is_never_overwritten(name, value, other):
+    """The environment itself keeps the deployment's value after the package's import,
+    so a library importer, the smoke, declare_imports or a test, sees what the deployment
+    set. Perturbation: record the carried value and then overwrite it, and the refusal
+    still reads the record while this fails."""
+    env = dict(os.environ, PYTHONPATH=str(ROOT / "src"), **{name: other})
+    done = subprocess.run([sys.executable, "-c", "import os, python_spu; "
+                           f"print(os.environ[{name!r}])"],
+                          capture_output=True, text=True, timeout=120, env=env)
+    assert done.stdout.strip() == other, done.stderr
+
+
 def test_every_differing_value_is_named_in_the_one_line():
     done = run_entry([], {name: other for name, _, other in OWN})
     detail = json.loads(done.stderr)["detail"]
