@@ -509,3 +509,92 @@ def test_the_installed_set_refuses_what_the_lock_does_not_pin(tmp_path):
                            str(tmp_path / "no.lock")],
                           capture_output=True, text=True, timeout=120)
     assert done.returncode == 2, done.stderr
+
+
+def children_of(pid):
+    """The processes whose parent is pid, read from every /proc/<n>/stat, which a
+    non-dumpable parent does not hide."""
+    kids = []
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit():
+            continue
+        try:
+            stat = open(f"/proc/{entry}/stat").read()
+            cmdline = open(f"/proc/{entry}/cmdline").read().replace("\0", " ").strip()
+        except OSError:
+            continue
+        if int(stat.rsplit(")", 1)[1].split()[1]) == pid:
+            kids.append((int(entry), cmdline))
+    return kids
+
+
+def test_the_spu_is_one_process_after_admission_and_after_generation(tmp_path, tiny_model, instruction):
+    """python-spu-Spec section 8: the served process starts no child, so what the import
+    set and the maps rule judge is all it runs. Perturbation: leave transformers'
+    progress bars on, and the multiprocessing resource tracker is a child from the load
+    on."""
+    from python_spu.wire import dump
+    process = LocalProcess(tmp_path / "stderr.txt", arguments=["--cpu-experiment"])
+    try:
+        body = dump(instruction)
+        body["decoder"]["model-binding"]["artifact"] = str(tiny_model)
+        admitted = process.ask({"kind": "admit", "instruction": body})
+        assert admitted["payload"] == {"kind": "answer", "body": {"kind": "admitted"}}
+        assert children_of(process.pid) == []
+        decode = process.channels[1]
+        decode.send({"kind": "open", "session": "s",
+                     "messages": [{"role": "system", "content": [{"type": "text", "text": "be precise"}]}]})
+        assert decode.receive() == {"kind": "opened"}
+        decode.send({"kind": "append_and_generate", "turn": "t", "delta": [
+            {"role": "user", "content": [{"type": "text", "text": "hello world"}]}]})
+        while decode.receive()["kind"] != "generated":
+            pass
+        assert children_of(process.pid) == []
+    finally:
+        assert process.close() == 0, (tmp_path / "stderr.txt").read_text()
+
+
+SPAWN_WATCH = r'''
+import sys, traceback
+spawned = []
+def hook(event, args):
+    if event in ("os.posix_spawn", "os.spawn", "os.fork", "os.forkpty", "os.exec",
+                 "subprocess.Popen", "os.system"):
+        spawned.append(f"{event} {str(args)[:120]}")
+sys.addaudithook(hook)
+import multiprocessing.util as mu
+original = mu.spawnv_passfds
+def spawnv_passfds(path, args, passfds):
+    spawned.append(f"multiprocessing spawnv_passfds {args}")
+    return original(path, args, passfds)
+mu.spawnv_passfds = spawnv_passfds
+import python_spu.server
+from python_spu.engine import HFEngine
+import torch
+from python_spu.session import Session
+from python_spu.wire import SpuInstruction
+engine = HFEngine(sys.argv[1], [0], cpu=True)
+instruction = SpuInstruction.model_validate({"decoder": {
+    "model-binding": {"artifact": "fixture", "devices": [0]},
+    "residual-readout-election": False, "surprisal-election": True, "identity": [],
+    "tunable-values": {"seed": 11, "context-capacity": 256, "max-tokens-per-turn": 4}}})
+session = Session(engine, instruction.decoder, 256, 4, 11)
+session.open([{"role": "system", "content": [{"type": "text", "text": "be precise"}]}])
+session.generate("t", [{"role": "user", "content": [{"type": "text", "text": "hello world"}]}],
+                 lambda frame: None)
+engine.close()
+print("\n".join(spawned))
+'''
+
+
+def test_nothing_is_spawned_even_for_a_moment(tiny_model):
+    """A child that exits at once, like ldconfig run by ctypes.util.find_library, is never
+    seen as a child, so every spawn is watched in a fresh interpreter through the import,
+    an admission and a generation, the sampler's libm load among them. Perturbations: leave find_library as the standard
+    library has it, and cuda.pathfinder's import runs ldconfig. Leave the progress bars
+    on, and the resource tracker is spawned."""
+    done = subprocess.run([sys.executable, "-c", SPAWN_WATCH, str(tiny_model)],
+                          capture_output=True, text=True, timeout=300,
+                          env=dict(os.environ, PYTHONPATH=str(ROOT / "src"), CUDA_VISIBLE_DEVICES=""))
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.strip() == "", done.stdout

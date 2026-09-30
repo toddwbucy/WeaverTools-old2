@@ -17,7 +17,6 @@ decides at run time.
 """
 import bisect
 import ctypes
-import ctypes.util
 import struct
 from array import array
 
@@ -42,7 +41,9 @@ def f32_from_bits(b):
     return struct.unpack('<f', struct.pack('<I', b & MASK32))[0]
 
 
-_libm = ctypes.CDLL(ctypes.util.find_library('m'))
+# glibc's libm by its soname, the one the Rust SPU links, never through find_library,
+# which would start ldconfig in a subprocess, per python-spu-Spec section 8.
+_libm = ctypes.CDLL('libm.so.6')
 _expf = _libm.expf
 _expf.argtypes = [ctypes.c_float]
 _expf.restype = ctypes.c_float

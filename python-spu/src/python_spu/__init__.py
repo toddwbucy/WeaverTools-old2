@@ -32,6 +32,28 @@ INHERITED = _open_descriptors()
 # import, because the registration runs at torch's.
 _os.environ["TORCH_DISABLE_NATIVE_JIT"] = "1"
 
+# **The SPU is one process: it starts no child**, per python-spu-Spec section 8, so what
+# the import set and the maps rule judge is everything it runs. Two things started one.
+# - transformers' loading progress bar made a tqdm, whose default write lock is a
+#   multiprocessing RLock, and that semaphore's registration launches Python's
+#   resource tracker, a second interpreter that outlives the load. With the bars off,
+#   transformers uses its empty stand-in, so no lock is made, and the load writes no
+#   bar to the unit's journal either.
+# - ctypes.util.find_library runs /sbin/ldconfig, then gcc or ld where that fails, in a
+#   subprocess, and cuda.pathfinder calls it at torch's import. It answers nothing here.
+#   Every caller in the lock falls back or never runs: cuda.pathfinder to the stable
+#   `libdl.so.2`, torch's inductor, a compile path this implementation never enters,
+#   and pip's macOS truststore. The package's own libm is loaded by its soname.
+_os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+import ctypes.util as _ctypes_util  # noqa: E402, after INHERITED, since ctypes opens a descriptor
+
+
+def _find_library(name):
+    return None
+
+
+_ctypes_util.find_library = _find_library
+
 # **The determinism environment is the SPU's own**, per python-spu-Spec section 8. The
 # engine enables torch's deterministic algorithms, and cuBLAS then needs a fixed
 # workspace, so it is set here, before torch can initialise CUDA, rather than left to a

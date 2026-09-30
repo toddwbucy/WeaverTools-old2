@@ -6,7 +6,7 @@
 **Document ID:** `python-spu-Spec`
 **Parent:** `weaver-spu-PRD`
 **Editorial:** Per the Working Rules.
-**Landing PR:** #754
+**Landing PR:** PENDING
 
 ---
 
@@ -602,6 +602,21 @@ setting. torch loads its CUDA libraries from the prefix by path, so a cuBLAS of 
 name earlier on the path is never mapped. That was measured on thinkpad at import with
 the Rust stack's `/opt/cuda/lib64` on the path, and a suite test shows the same with an
 impostor library. The loaded-code rule above would fault a process that mapped one.
+
+**The SPU is one process: it starts no child, not even for a moment.** The import set
+and the rule on loaded code judge the process they run in, so a second process would run
+outside both, and outside what this document calls the SPU. Stage B2 found two, on
+2026-09-30. transformers' loading progress bar made a tqdm whose default write lock is a
+multiprocessing RLock, which launches Python's resource tracker, a second interpreter
+that outlives the load. And `ctypes.util.find_library`, which cuda.pathfinder calls at
+torch's import, runs `ldconfig`, then `gcc` or `ld`, in a subprocess. The package turns
+the progress bars off before transformers is imported, and answers `find_library` with
+nothing. Every caller in the lock falls back or never runs: cuda.pathfinder falls back
+to the stable `libdl.so.2`, torch's inductor compiles nothing here, and pip's macOS
+truststore never runs. The sampler loads glibc's libm by its soname. Two tests hold it.
+The served process has no child after admission and after the first generation. A fresh
+interpreter watching every spawn, through the audit hook and multiprocessing's own
+spawn, sees none through the import, an admission and a generation.
 
 **The process counts its inherited descriptors before any module opens one of its own.**
 python-build-standalone's `ctypes` opens the interpreter's own executable at import,
