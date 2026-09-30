@@ -16,8 +16,9 @@ The session and the seed are the declaration's, not the driver's, so before each
 session --declare runs with {session} and {seed} filled in, and it must leave the
 agent declared under them or exit nonzero. How that is done is the box's affair
 and stays out of this script. Then run.py plays the task as one run under
-OUT/<session>, and this script adds the session, the seed, the level and the
-task to that run.json.
+OUT/<session>. The session, the seed, the level and the task are written to the
+attempt record and the index before the declaration runs, and handed to run.py
+with --meta, so its run.json carries them from its first write.
 
 A session fails when the declare command exits nonzero, when run.py leaves no
 run.json, or when its run.json ends other than completed: a refused load, a load
@@ -94,11 +95,16 @@ def main():
                 print(f"{session}: attempted and incomplete, skipped, for the operator",
                       flush=True)
             continue
-        entry = {"session": session, "seed": seed, "level": args.level, "task": task,
-                 "started": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
+        meta = {"session": session, "seed": seed, "level": args.level, "task": task}
+        entry = dict(meta, started=time.strftime("%Y-%m-%dT%H:%M:%S%z"))
+        # **The session's facts are written before any external work**, into
+        # the attempt record and the index, and are handed to run.py for its
+        # record, so an interruption at the declaration, inside run.py or after
+        # it leaves every record that exists naming its session, seed and task.
         os.makedirs(out, exist_ok=True)
         json.dump(entry, open(attempt_path, "w"), indent=1)
         index["sessions"].append(entry)
+        json.dump(index, open(index_path, "w"), indent=1)
 
         declare = [part.format(session=session, seed=seed)
                    for part in shlex.split(args.declare)]
@@ -113,11 +119,10 @@ def main():
                  "--herobench", args.herobench, "--out", out,
                  "--level", args.level, "--tasks", str(task),
                  "--turn-cap", str(args.turn_cap), "--label", session,
-                 "--task-timeout", str(args.task_timeout)])
+                 "--task-timeout", str(args.task_timeout),
+                 "--meta", json.dumps(meta)])
             if os.path.exists(record_path):
                 record = json.load(open(record_path))
-                record.update({"session": session, "seed": seed, "task": task})
-                json.dump(record, open(record_path, "w"), indent=1)
                 entry["ended"] = record.get("ended", "unknown")
                 first = (record.get("tasks") or [{}])[0]
                 for key in ("result", "score", "actions", "ended_by"):

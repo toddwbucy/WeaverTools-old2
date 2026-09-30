@@ -115,6 +115,9 @@ def main():
     parser.add_argument("--turn-cap", type=int, default=8)
     parser.add_argument("--label", default="run1")
     parser.add_argument("--task-timeout", type=int, default=7200)
+    parser.add_argument("--meta", default="{}",
+                        help="a JSON object of facts about the run, carried in run.json "
+                             "from its first write")
     args = parser.parse_args()
 
     sys.path.insert(0, args.herobench)
@@ -130,6 +133,9 @@ def main():
     gate = f"/run/weaver-{args.agent}/gate.sock"
     record = {"agent": args.agent, "label": args.label, "port": args.port,
               "level": args.level, "turn_cap": args.turn_cap, "tasks": []}
+    # **The caller's facts ride every write of the record**, so a run stopped
+    # at any point still names the session, seed and task it was.
+    record.update(json.loads(args.meta))
 
     # **Each task is its own run**: load, the task's turns, its score, unload,
     # all under the declaration's one session. The harness takes one score per

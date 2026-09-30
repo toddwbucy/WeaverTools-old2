@@ -86,11 +86,21 @@ def main():
         landing[session]["part." + block] = count
 
     rows = []
+    incomplete = []
     for name in sorted(os.listdir(args.sessions)):
         record_path = os.path.join(args.sessions, name, "run.json")
-        if not name.startswith(args.prefix) or not os.path.exists(record_path):
+        attempt_path = os.path.join(args.sessions, name, "attempt.json")
+        if not name.startswith(args.prefix):
             continue
-        record = json.load(open(record_path))
+        # The attempt record holds the session's facts from before any external
+        # work, so a run record that lacks one takes it from there, and an
+        # attempt that left no run record is listed rather than counted.
+        attempt = json.load(open(attempt_path)) if os.path.exists(attempt_path) else {}
+        if not os.path.exists(record_path):
+            if attempt:
+                incomplete.append(attempt)
+            continue
+        record = dict(attempt, **json.load(open(record_path)))
         task = (record.get("tasks") or [{}])[0]
         events = by_session.get(name, [])
         per_turn = collections.Counter()
@@ -149,6 +159,7 @@ def main():
     by_task = collections.defaultdict(list)
     for r in rows:
         by_task[r["task"]].append(r)
+    totals["incomplete_attempts"] = incomplete
     totals["by_task"] = [{
         "task": task, "name": group[0]["name"], "sessions": len(group),
         "scored_above_zero": sum(1 for r in group if r["score"]),
