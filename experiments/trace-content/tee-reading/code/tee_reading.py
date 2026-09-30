@@ -94,6 +94,46 @@ def decayed_turns(events):
             and decayed(event["payload"].get("emission", ""))}
 
 
+RECALLED = ("message.system", "message.user", "message.assistant",
+            "message.tool_result", "message.restored")
+
+
+def crossed_pairs(event, paths):
+    """The pairs an event's distillate carries, key to canonical JSON text, by
+    `weaver_trace::tee::distill`'s rule: a turnless `message.system` and a
+    `message.restored` cross whole, one pair per top-level payload member under
+    every election, and any other kind crosses its elected paths it holds."""
+    payload = event.get("payload")
+    if not isinstance(payload, dict):
+        return {}
+    if ((event["kind"] == "message.system" and not event.get("turn"))
+            or event["kind"] == "message.restored"):
+        keys = list(payload)
+    else:
+        keys = [path for path in paths if path in payload]
+    return {key: json.dumps(payload[key], separators=(",", ":"), ensure_ascii=False)
+            for key in keys}
+
+
+def recall_frame(events):
+    """A recall answer as `weaver-state`'s `render_recall_answer` serialises it:
+    each event's envelope and pairs, keys in sorted order as serde_json's map
+    holds them, pair values spliced as custody kept them, which the landing's
+    exactness rule makes the text that crossed."""
+    rendered = []
+    for event, pairs in events:
+        envelope = {"session": event["session"], "run": event["run"],
+                    "kind": event["kind"], "sequence": str(event["sequence"])}
+        if event.get("turn"):
+            envelope["turn"] = event["turn"]
+        env = json.dumps(dict(sorted(envelope.items())), separators=(",", ":"),
+                         ensure_ascii=False)
+        body = ",".join(json.dumps(k, ensure_ascii=False) + ":" + v
+                        for k, v in sorted(pairs.items()))
+        rendered.append('{"envelope":' + env + ',"pairs":{' + body + "}}")
+    return '{"answer":{"recall":{"events":[' + ",".join(rendered) + "]}}}\n"
+
+
 # 1 and 5: what crossed, and what the store holds of it.
 
 def crossing(by, store, prefixes, exact=False):
@@ -121,12 +161,13 @@ def crossing(by, store, prefixes, exact=False):
             payload = event.get("payload")
             if payload is not None:
                 row["payload_bytes"] += size(payload)
-            for path in by_run.get((event["session"], event["run"]), {}).get(event["kind"], []):
-                if isinstance(payload, dict) and path in payload:
-                    row["elected_bytes"] += size(payload[path])
-                    if event["kind"] == "model.measurement":
-                        readings[path].append(size(payload[path]))
-                        per_turn[turn_key(event)] += size(payload[path])
+            paths = by_run.get((event["session"], event["run"]), {}).get(event["kind"], [])
+            for path, text in crossed_pairs(event, paths).items():
+                n = len(text.encode())
+                row["elected_bytes"] += n
+                if event["kind"] == "model.measurement":
+                    readings[path].append(n)
+                    per_turn[turn_key(event)] += n
     # The store is filtered by the trace's own rule, a name whole or a literal
     # prefix compared byte for byte, so a document never counts one session's
     # events and another's rows. LIKE is not that rule: its _ and % are
@@ -435,6 +476,9 @@ def asks(by, store):
                     "returned_bytes": size(e["payload"].get("returned") or [])}
                    for e in events if e["kind"] == "recall"]
         openings, references = [], []
+        elections = {e["run"]: {k["kind"]: k["paths"]
+                                for k in e["payload"].get("tee", {}).get("keys", [])}
+                     for e in events if e["kind"] == "load"}
         for index, run in enumerate(runs):
             opening = next((e for e in events if e["run"] == run and e["kind"] == "message.user"), None)
             line = (texts(opening)[0].split("\n", 1)[0] if opening and texts(opening) else None)
@@ -449,10 +493,23 @@ def asks(by, store):
                 "SELECT count(*) FROM message m JOIN event e ON e.id = m.event_id "
                 "WHERE e.session = ? AND e.run IN (%s)" % ",".join("?" * index),
                 [session] + runs[:index]).fetchone()[0] if index else 0
+            # The recall a later run's opening could have asked, as the store
+            # serialises it: every message kind of the earlier runs, each with
+            # the pairs its own run's election carried across.
+            earlier = [(e, crossed_pairs(e, elections.get(e["run"], {}).get(e["kind"], [])))
+                       for e in events if e["run"] in runs[:index] and e["kind"] in RECALLED]
+            store_events = store.execute(
+                "SELECT count(*) FROM event e WHERE e.session = ? AND e.run IN (%s) "
+                "AND e.kind IN (%s)" % (",".join("?" * index), ",".join("?" * len(RECALLED))),
+                [session] + runs[:index] + list(RECALLED)).fetchone()[0] if index else 0
             openings.append({"run_index": index + 1, "continuity_line": line,
                              "recall_would_return_messages": messages,
                              "recall_would_return_parts": earlier_rows[0],
-                             "recall_would_return_bytes": earlier_rows[1]})
+                             "recall_would_return_bytes": earlier_rows[1],
+                             "recall_events_in_trace": len(earlier),
+                             "recall_events_in_store": store_events,
+                             "recall_serialised_bytes":
+                                 len(recall_frame(earlier).encode()) if index else 0})
             if index:
                 for e in events:
                     if e["run"] == run and e["kind"] == "message.assistant":

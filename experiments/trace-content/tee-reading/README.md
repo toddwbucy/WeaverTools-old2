@@ -20,15 +20,18 @@ before #748, and section 5 says what that did to the store.
 
 ## 1. What crossed the tee, and what the store holds of it
 
-**The tee was elected the same way at all 50 loads**: every event kind lands as an
-event row, and four kinds carry keys, `role` and `content` on `message.user`,
+**The tee was elected the same way at all 50 loads**: every event kind lands as an event
+row, and four kinds carry keys, `role` and `content` on `message.user`,
 `message.assistant` and `message.tool_result`, and `perplexity`, `entropies` and
-`surprisals` on `model.measurement`. The store holds 14,120 event rows.
+`surprisals` on `model.measurement`. The store holds 14,120 event rows. **A turnless
+`message.system` crosses whole under every election**, one pair per top-level member of
+its payload, per `weaver_trace::tee::distill`, so the identity seated at each load
+crosses although no key names it.
 
-Of 15,052,399 bytes of payload over every kind, 7,661,911 were elected, 50.9 per cent.
-By kind:
+Of 15,052,399 bytes of payload over every kind, 7,896,561 crossed the tee, 52.5 per
+cent. By kind:
 
-| Kind | Events | Payload bytes | Elected bytes |
+| Kind | Events | Payload bytes | Crossed bytes |
 |---|---|---|---|
 | `model.measurement` | 1,963 | 8,773,630 | 5,714,194 |
 | `model.request` | 1,963 | 2,020,852 | 0 |
@@ -36,12 +39,12 @@ By kind:
 | `tool.call.completed` | 1,613 | 1,076,517 | 0 |
 | `model.output` | 1,963 | 755,813 | 0 |
 | `message.assistant` | 1,963 | 700,991 | 661,731 |
-| `message.system` | 50 | 235,650 | 0 |
+| `message.system` | 50 | 235,650 | 234,650 |
 | `message.user` | 392 | 189,866 | 182,026 |
 
-**The three readings are 74.6 per cent of what the tee elects.** The conversation is the
-rest: 1,103,960 bytes of tool results, 661,731 of the model's own messages and 182,026
-of user messages.
+**The three readings are 72.4 per cent of what crossed the tee.** The conversation is
+the rest: 1,103,960 bytes of tool results, 661,731 of the model's own messages, 234,650
+of the identity and 182,026 of user messages.
 
 The store typed 4,018 messages. Their parts are 2,405 text parts of 841,806 bytes,
 1,627 tool calls of 51,011 bytes and 1,613 tool results of 917,280 bytes, 1,810,097
@@ -102,11 +105,16 @@ earlier runs and 40 turns before this task." The identity ask returned one entry
 bytes at each later run's open.
 
 **The loop never asked `recall` for the conversation.** Had it asked for the session's
-messages before each later run, the store would have returned 49 messages of 14,360
-bytes in `s-rusty`'s second run and 75 of 32,682 in `s-rusty-b`'s. In `s-rusty-c` it
-would have returned 43 messages of 23,634 bytes before the second run, 380 of 98,394
-before the third, 774 of 194,591 before the fourth, 1,077 of 254,610 before the fifth
-and 1,094 of 262,715 before the sixth.
+messages before each later run, the store would have returned 49 messages in `s-rusty`'s
+second run, an answer of 24,903 bytes as the store serialises it, 14,360 of them message
+text, and 75 in `s-rusty-b`'s, 51,432 bytes and 32,682 of text. In `s-rusty-c` it would
+have returned 43 messages before the second run, 35,376 bytes, 380 before the third,
+196,774, 774 before the fourth, 395,624, 1,077 before the fifth, 534,572, and 1,094
+before the sixth, 546,433 bytes of which 262,715 are message text. **The serialised size
+is the answer `weaver-state` renders**, each event's envelope and pairs, keys and
+structure included, rebuilt from the trace by the landing's exactness rule. Over the
+three whole sessions it matched the store's own renderer run on a copy of the store,
+byte for byte, and the recalled events match the store's event rows in number.
 
 **No text the model wrote in a later run names an earlier run, task or session.** The
 test is a phrase naming what it points back to, and it counts 0 in these sessions and 0
@@ -175,8 +183,9 @@ Stated as questions, with the numbers beside them. None is decided here.
   the CLI's usage text are 207,070 of the 283,888 bytes the distillate keeps.
 - **Does recall serve the loop or the model?** The continuity line reached seven later
   openings and the model referred to an earlier run 0 times. A whole recall grows to
-  262,715 bytes by a sixth run, against a context of 32,768 tokens.
-- **What of the measurement crosses?** The readings are 74.6 per cent of the elected
+  546,433 bytes by a sixth run as the store serialises it, against a context of 32,768
+  tokens.
+- **What of the measurement crosses?** The readings are 72.4 per cent of the crossed
   bytes. A perplexity is 18 bytes, a turn's series a median of 2,670 bytes and at most
   161,079. Once `float_roundtrip` is installed they type, so the question is what the
   record keeps, a whole series or a summary or nothing, rather than how it lands.
