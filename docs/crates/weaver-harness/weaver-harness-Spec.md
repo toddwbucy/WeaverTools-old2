@@ -7,7 +7,7 @@ floor. Code is written against it under the gates of Working Process section 6.
 **Document ID:** `weaver-harness-Spec`
 **Parent:** `weaver-harness-PRD`
 **Editorial:** Per the Working Rules.
-**Landing PR:** #734
+**Landing PR:** #752
 
 ---
 
@@ -1970,6 +1970,18 @@ guarantees and changed in which kind carries it: it was the output's own
 refused case until 2026-08-22, when the refusal class took every seam's
 typed refusal into one kind and `classify.output` became the scored labels
 alone.
+**The ask waits thirty seconds for its answer, and an arm that misses the bound once is
+retired.** The harness holds a classify answer to 30,000 milliseconds, generous against
+a forward of tens of milliseconds and the turn thread's protection. A bound that
+expires, or a channel that faults on the send or the receive, retires the arm
+one-strike, the state seam's economics on the label seam: the loss is authored as a
+`fault`, a death and not a refusal per `weaver-harness-spu-classify-contract` section 5,
+and every later ask of the run answers as the missing leg with no request authored. The
+bound is one deadline per ask, taken before the first receive, and a late readiness
+frame is skipped against it rather than taken for the exchange's answer, so a skipped
+frame does not renew the bound and a stream of them cannot postpone the retirement. A
+loop asking about many positions in a turn waits up to the bound on each, since the asks
+are serial and each one blocks.
 
 ### 6.1 The decode surface, chartered
 
@@ -2401,9 +2413,9 @@ stops during the first, and asserts no append-and-generate after the stop
 and no second execution opened, failing when the stopped check after the
 completion is removed and the result feeds back. Both are authored ahead of
 their code and stand uncited until the act that buys them cites them, per
-Working Process section 6, and that act retires the characterization test of
-#646, which asserts the deaf interval and must fail once the interval is
-closed.
+Working Process section 6, and that act retires the characterization test
+of issue #646, which asserts the deaf interval and must fail once the
+interval is closed.
 
 **The frame's parse is loop 0's, at the seat's threshold, and it refuses
 rather than faults.** A frame's member decodes per the election of

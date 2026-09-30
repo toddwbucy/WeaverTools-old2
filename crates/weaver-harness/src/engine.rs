@@ -647,72 +647,72 @@ impl<'a> Ports<'a> {
             self.author_classify_lost();
             return None;
         }
-        loop {
-            match channel.recv_reply_within(CLASSIFY_ANSWER_BOUND_MS) {
-                Ok(crate::channel::ClassifyReply::Answer(weaver_types::LabelAnswer::Scored {
-                    labels,
-                    ..
-                })) => {
-                    let scored: Vec<(String, f64)> = labels
-                        .into_iter()
-                        .map(|scored| (scored.label, scored.score))
-                        .collect();
-                    self.author
-                        .author(
-                            self.recorder,
-                            Kind::ClassifyOutput,
-                            Subsystem::Harness,
-                            None,
-                            Some(Payload::ClassifyOutput(weaver_trace::ClassifyScored {
-                                labels: scored.clone(),
-                            })),
-                        )
-                        .ok()?;
-                    return Some(scored);
-                }
-                // A late readiness is not this exchange's answer: skipped,
-                // the way the flush skips an interleaved at-rest.
-                Ok(crate::channel::ClassifyReply::Answer(weaver_types::LabelAnswer::Ready)) => {
-                    continue;
-                }
-                // The in-flight fault is this exchange's typed answer, per
-                // the contract, and the record's fault event carries it by
-                // the fault custody rule.
-                Ok(crate::channel::ClassifyReply::Answer(weaver_types::LabelAnswer::Fault(
-                    report,
-                ))) => {
-                    let rendered = serde_json::to_string(&report).ok()?;
-                    let payload = weaver_trace::raw_payload(&rendered)?;
-                    let _ = self.author.author(
+        match channel.recv_answer_by(CLASSIFY_ANSWER_BOUND_MS) {
+            Ok(crate::channel::ClassifyReply::Answer(weaver_types::LabelAnswer::Scored {
+                labels,
+                ..
+            })) => {
+                let scored: Vec<(String, f64)> = labels
+                    .into_iter()
+                    .map(|scored| (scored.label, scored.score))
+                    .collect();
+                self.author
+                    .author(
                         self.recorder,
-                        Kind::Fault,
-                        Subsystem::Spu,
+                        Kind::ClassifyOutput,
+                        Subsystem::Harness,
                         None,
-                        Some(Payload::Fault(payload)),
-                    );
-                    return None;
-                }
-                Ok(crate::channel::ClassifyReply::Refusal(refusal)) => {
-                    // **The case travels whole where it used to be flattened
-                    // to a name.** `Oversized { requested, bound }` reached
-                    // the record as the word "oversized", so a reader learned
-                    // that a bound was exceeded and never which bound or by
-                    // how much. The class carries the seam's own case.
-                    self.author_classify_refusal(refusal);
-                    return None;
-                }
-                // The bound expired or the channel faulted: the arm retires
-                // one-strike, and the record carries the loss as a `fault`
-                // rather than leaving the request unanswered. **A lost leg
-                // is a death and not a refusal**, per the classify
-                // contract's section 5, so it does not reach the record
-                // under `Kind::Refusal`, which carries this seam's typed
-                // cases and nothing else.
-                Err(_) => {
-                    channel.retire();
-                    self.author_classify_lost();
-                    return None;
-                }
+                        Some(Payload::ClassifyOutput(weaver_trace::ClassifyScored {
+                            labels: scored.clone(),
+                        })),
+                    )
+                    .ok()?;
+                Some(scored)
+            }
+            // A late readiness is not this exchange's answer. The channel
+            // skips it against the ask's one deadline, per
+            // `weaver-harness-Spec` section 6, so it never arrives here,
+            // and the arm below answers it as the lost leg were it to.
+            Ok(crate::channel::ClassifyReply::Answer(weaver_types::LabelAnswer::Ready)) => {
+                channel.retire();
+                self.author_classify_lost();
+                None
+            }
+            // The in-flight fault is this exchange's typed answer, per
+            // the contract, and the record's fault event carries it by
+            // the fault custody rule.
+            Ok(crate::channel::ClassifyReply::Answer(weaver_types::LabelAnswer::Fault(report))) => {
+                let rendered = serde_json::to_string(&report).ok()?;
+                let payload = weaver_trace::raw_payload(&rendered)?;
+                let _ = self.author.author(
+                    self.recorder,
+                    Kind::Fault,
+                    Subsystem::Spu,
+                    None,
+                    Some(Payload::Fault(payload)),
+                );
+                None
+            }
+            Ok(crate::channel::ClassifyReply::Refusal(refusal)) => {
+                // **The case travels whole where it used to be flattened
+                // to a name.** `Oversized { requested, bound }` reached
+                // the record as the word "oversized", so a reader learned
+                // that a bound was exceeded and never which bound or by
+                // how much. The class carries the seam's own case.
+                self.author_classify_refusal(refusal);
+                None
+            }
+            // The bound expired or the channel faulted: the arm retires
+            // one-strike, and the record carries the loss as a `fault`
+            // rather than leaving the request unanswered. **A lost leg
+            // is a death and not a refusal**, per the classify
+            // contract's section 5, so it does not reach the record
+            // under `Kind::Refusal`, which carries this seam's typed
+            // cases and nothing else.
+            Err(_) => {
+                channel.retire();
+                self.author_classify_lost();
+                None
             }
         }
     }
