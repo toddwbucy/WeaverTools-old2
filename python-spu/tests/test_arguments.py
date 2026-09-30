@@ -357,25 +357,39 @@ def test_a_gguf_resolves_and_python_spu_refuses_it(tmp_path):
 
 # The determinism environment, python-spu-Spec section 8.
 
-def test_the_package_sets_the_cublas_workspace_where_none_is_set():
-    env = {k: v for k, v in os.environ.items() if k != "CUBLAS_WORKSPACE_CONFIG"}
+OWN = [("TORCH_DISABLE_NATIVE_JIT", "1", "0"),
+       ("HF_HUB_DISABLE_PROGRESS_BARS", "1", "0"),
+       ("CUBLAS_WORKSPACE_CONFIG", ":4096:8", ":16:8")]
+
+
+@pytest.mark.parametrize("name,value,other", OWN, ids=[n for n, _, _ in OWN])
+def test_the_package_sets_its_own_environment_where_none_is_set(name, value, other):
+    env = {k: v for k, v in os.environ.items() if k != name}
     env["PYTHONPATH"] = str(ROOT / "src")
-    done = subprocess.run([sys.executable, "-c", "import os, python_spu; "
-                           "print(os.environ['CUBLAS_WORKSPACE_CONFIG'])"],
+    done = subprocess.run([sys.executable, "-c", "import os, sys, python_spu; "
+                           f"print(os.environ[{name!r}])"],
                           capture_output=True, text=True, timeout=120, env=env)
-    assert done.stdout.strip() == ":4096:8", done.stderr
+    assert done.stdout.strip() == value, done.stderr
 
 
-def test_a_differing_cublas_workspace_is_refused_by_name_not_overwritten():
-    """Perturbations: overwrite the value, and the entry goes on to adopt. Accept any
-    value, and the same."""
-    done = run_entry([], {"CUBLAS_WORKSPACE_CONFIG": ":16:8"})
+@pytest.mark.parametrize("name,value,other", OWN, ids=[n for n, _, _ in OWN])
+def test_a_differing_value_is_refused_by_name_not_overwritten(name, value, other):
+    """python-spu-Spec section 8's rule for the environment the process sets for itself.
+    Perturbations: overwrite the value, as the progress-bar line first did, or accept any
+    value, and the entry goes on to adopt."""
+    done = run_entry([], {name: other})
     assert (done.returncode, done.stdout) == (1, "")
     refusal = json.loads(done.stderr)
     assert refusal["refusal"] == "bad_environment"
-    assert "CUBLAS_WORKSPACE_CONFIG is ':16:8'" in refusal["detail"]
-    agreed = run_entry([], {"CUBLAS_WORKSPACE_CONFIG": ":4096:8"})
+    assert f"{name} is {other!r}" in refusal["detail"]
+    agreed = run_entry([], {name: value})
     assert "bad_environment" not in agreed.stderr and "python_spu_fault" in agreed.stderr
+
+
+def test_every_differing_value_is_named_in_the_one_line():
+    done = run_entry([], {name: other for name, _, other in OWN})
+    detail = json.loads(done.stderr)["detail"]
+    assert all(f"{name} is {other!r}" in detail for name, _, other in OWN)
 
 
 def test_a_foreign_cublas_on_the_library_path_is_not_mapped(tmp_path):

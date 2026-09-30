@@ -597,11 +597,16 @@ relying on a deployment line. One admin configuration may serve both SPUs, per
 `weaver-admin-Spec` section 9, and the Rust SPU needs no such line. A value the
 environment already carries that differs is refused at the entry by name: one
 `bad_environment` line, then exit 1, before the channels are adopted. It is never
-overwritten, since a deployment that set one meant it. `LD_LIBRARY_PATH` needs no
-setting. torch loads its CUDA libraries from the prefix by path, so a cuBLAS of the same
-name earlier on the path is never mapped. That was measured on thinkpad at import with
-the Rust stack's `/opt/cuda/lib64` on the path, and a suite test shows the same with an
-impostor library. The loaded-code rule above would fault a process that mapped one.
+overwritten, since a deployment that set one meant it. The rule holds for every variable
+the package sets for itself, each set at its first import before the library that reads
+it: `TORCH_DISABLE_NATIVE_JIT=1` for the rule on loaded code above,
+`HF_HUB_DISABLE_PROGRESS_BARS=1` for the rule that the SPU is one process below, and
+`CUBLAS_WORKSPACE_CONFIG`. One `bad_environment` line names each that differs.
+`LD_LIBRARY_PATH` needs no setting. torch loads its CUDA libraries from the prefix by
+path, so a cuBLAS of the same name earlier on the path is never mapped. That was
+measured on thinkpad at import with the Rust stack's `/opt/cuda/lib64` on the path, and
+a suite test shows the same with an impostor library. The loaded-code rule above would
+fault a process that mapped one.
 
 **The SPU is one process: it starts no child, not even for a moment.** The import set
 and the rule on loaded code judge the process they run in, so a second process would run
@@ -610,13 +615,14 @@ outside both, and outside what this document calls the SPU. Stage B2 found two, 
 multiprocessing RLock, which launches Python's resource tracker, a second interpreter
 that outlives the load. And `ctypes.util.find_library`, which cuda.pathfinder calls at
 torch's import, runs `ldconfig`, then `gcc` or `ld`, in a subprocess. The package turns
-the progress bars off before transformers is imported, and answers `find_library` with
-nothing. Every caller in the lock falls back or never runs: cuda.pathfinder falls back
-to the stable `libdl.so.2`, torch's inductor compiles nothing here, and pip's macOS
-truststore never runs. The sampler loads glibc's libm by its soname. Two tests hold it.
-The served process has no child after admission and after the first generation. A fresh
-interpreter watching every spawn, through the audit hook and multiprocessing's own
-spawn, sees none through the import, an admission and a generation.
+the progress bars off before transformers is imported, under the environment rule above,
+and answers `find_library` with nothing. Every caller in the lock falls back or never
+runs: cuda.pathfinder falls back to the stable `libdl.so.2`, torch's inductor compiles
+nothing here, and pip's macOS truststore never runs. The sampler loads glibc's libm by
+its soname. Two tests hold it. The served process has no child after admission and after
+the first generation. A fresh interpreter watching every spawn, through the audit hook
+and multiprocessing's own spawn, sees none through the import, an admission and a
+generation.
 
 **The process counts its inherited descriptors before any module opens one of its own.**
 python-build-standalone's `ctypes` opens the interpreter's own executable at import,
