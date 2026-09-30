@@ -188,6 +188,23 @@ def test_the_engine_judges_room_before_the_load_with_the_headroom_it_was_given(t
     assert (caught.value.kind, str(caught.value)) == ("artifact_unreadable", "reached the load")
 
 
+def test_a_refusal_before_the_load_touches_no_device(tiny_model, a_device, monkeypatch):
+    """Nothing was placed, so the refusal's cleanup asks the driver nothing: with the
+    driver's context and cache calls made to raise, the room refusal is still the answer.
+    Perturbation: free the cache whenever the device string names CUDA, and the raise
+    replaces the refusal, which is how a card-hidden run failed at 01c46735."""
+    import torch
+
+    def touched(*args, **kwargs):
+        raise AssertionError("a refusal before the load touched the device")
+    monkeypatch.setattr(torch.cuda, "device", touched)
+    monkeypatch.setattr(torch.cuda, "empty_cache", touched)
+    a_device["free"] = 0
+    with pytest.raises(AdmissionError) as caught:
+        engine.HFEngine(tiny_model, [0], headroom=4096)
+    assert caught.value.kind == "device_cannot_admit"
+
+
 def test_a_cpu_experiment_judges_no_room(tiny_model, monkeypatch):
     """A CPU experiment has no device, so the driver is never asked. Perturbation: judge
     in CPU mode too, and the refusing driver refuses it."""

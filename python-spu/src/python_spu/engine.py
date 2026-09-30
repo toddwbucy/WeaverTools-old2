@@ -94,6 +94,8 @@ class HFEngine:
         from tokenizers import Tokenizer
         self.torch=torch
         self.model=None; self.cache=None; self.hooks=[]
+        # Whether a load began on the device, the one thing close() has to free there.
+        self.placing=False
         self.logits=None; self.norms=[]; self.current_norms=[]; self.readout=readout
         path=Path(artifact)
         if not path.is_dir(): raise AdmissionError('artifact_unresolvable',str(path))
@@ -124,8 +126,11 @@ class HFEngine:
                 try: free,total=torch.cuda.mem_get_info(devices[0])
                 except RuntimeError as e: raise AdmissionError('device_cannot_admit',f'device {devices[0]} unreachable: {e}') from None
                 judge_room(devices[0],free,total,shard_bytes,headroom)
-            self.model=AutoModelForCausalLM.from_pretrained(path,local_files_only=True,
-                trust_remote_code=False,dtype=getattr(torch,DTYPE),attn_implementation='eager').to(self.device).eval()
+            model=AutoModelForCausalLM.from_pretrained(path,local_files_only=True,
+                trust_remote_code=False,dtype=getattr(torch,DTYPE),attn_implementation='eager')
+            # Set where placement begins, so a move that fails part-way is still freed.
+            self.placing=not cpu
+            self.model=model.to(self.device).eval()
             self.layers=config.num_hidden_layers
             if readout:
                 for layer in self.model.model.layers:
@@ -176,5 +181,10 @@ class HFEngine:
         for hook in self.hooks: hook.remove()
         self.hooks=[]; self.cache=None; self.model=None; self.logits=None
         gc.collect()
-        if getattr(self,'device','cpu').startswith('cuda'):
+        # **The device is touched only where a load began on it.** A refusal before the
+        # load, the room judgment's among them, placed nothing, so there is nothing to
+        # free, and asking the driver would initialise a context on a card this
+        # admission never used.
+        if getattr(self,'placing',False):
+            self.placing=False
             with self.torch.cuda.device(self.device): self.torch.cuda.empty_cache()
