@@ -1,16 +1,64 @@
 """SPU process entry. No bind, no daemon installation, no remote model fetch."""
-import argparse
 import json
 import math
+import re
 import sys
 from .transport import adopt,ChannelFault,Closed
 from .wire import Envelope,SpuInstruction,TOKEN_DIRECTIVE,dump
 from .session import Session,Refusal
-from .engine import HFEngine,AdmissionError
+from .engine import HFEngine,AdmissionError,HEADROOM_BYTES,U64_MAX
+
+# u64's own parse in Rust: ASCII digits and an optional leading plus sign, nothing else.
+BYTE_COUNT=re.compile(r'\+?[0-9]+')
+
+def byte_count(value):
+    """Rust's `u64::from_str`, ported: an optional plus sign, then ASCII digits, leading
+    zeros allowed however many, the value at most 2^64 - 1. Answers the count, or None.
+    The zeros are stripped and the length judged before `int` sees the digits, since
+    CPython's `int` refuses a string past 4300 digits that Rust reads as a small number."""
+    if not BYTE_COUNT.fullmatch(value): return None
+    digits=value.lstrip('+').lstrip('0') or '0'
+    if len(digits)>len(str(U64_MAX)): return None
+    count=int(digits)
+    return count if count<=U64_MAX else None
+
+class BadParameter(ValueError):
+    pass
+
+def parameters(arguments):
+    """The worker's argument vector, read as the Rust SPU reads it: weaver-spu main.rs
+    `headroom_from`, ported, beside python-spu's own two flags, which the worker never
+    sends. **The whole vector is read before anything is answered.** A parameter stated
+    twice, a missing or malformed value, and an unknown parameter each refuse by name,
+    and an absent `--headroom-bytes` leaves the compiled default. Answers (headroom,
+    cpu, declare)."""
+    headroom=declare=None; cpu=False
+    arguments=iter(arguments)
+    for argument in arguments:
+        if argument=='--headroom-bytes':
+            value=next(arguments,None)
+            if value is None: raise BadParameter('--headroom-bytes takes a value')
+            count=byte_count(value)
+            if count is None:
+                raise BadParameter(f'--headroom-bytes wants a byte count, got {value}')
+            if headroom is not None: raise BadParameter('--headroom-bytes is stated twice')
+            headroom=count
+        elif argument=='--cpu-experiment':
+            if cpu: raise BadParameter('--cpu-experiment is stated twice')
+            cpu=True
+        elif argument=='--declare-imports':
+            value=next(arguments,None)
+            if value is None: raise BadParameter('--declare-imports takes a value')
+            if declare is not None: raise BadParameter('--declare-imports is stated twice')
+            declare=value
+        else:
+            raise BadParameter(f'unknown parameter {argument}')
+    return (HEADROOM_BYTES if headroom is None else headroom),cpu,declare
 
 class Service:
-    def __init__(self,cpu=False,engine_factory=HFEngine,enforce_imports=False,declare_imports=None):
-        self.cpu=cpu; self.factory=engine_factory; self.position='before_admit'
+    def __init__(self,cpu=False,engine_factory=HFEngine,enforce_imports=False,declare_imports=None,
+                 headroom=HEADROOM_BYTES):
+        self.cpu=cpu; self.headroom=headroom; self.factory=engine_factory; self.position='before_admit'
         self.engine=None; self.session=None
         # The import set is judged where main() serves, never in a process that
         # holds a test runner's modules too, per python-spu-Spec section 8.
@@ -63,7 +111,7 @@ class Service:
         if instruction.classify is not None:
             raise AdmissionError('artifact_unreadable','classifier residency not yet supported')
         self.engine=self.factory(d.model_binding.artifact,d.model_binding.devices,cpu=self.cpu,
-                                 readout=d.residual_readout_election)
+                                 readout=d.residual_readout_election,headroom=self.headroom)
         seed,capacity,limit=resolved
         if capacity>self.engine.max_context:
             raise AdmissionError('device_cannot_admit','context exceeds artifact position bound')
@@ -118,15 +166,24 @@ class Service:
                 if admitted: self.serve_decode(decode)
         finally: self.close()
 
-def main():
-    parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--cpu-experiment',action='store_true',help='explicit CPU deployment; device ordinal must be 0')
-    parser.add_argument('--declare-imports',metavar='PATH',help='record the modules held at admission and the first generation to PATH, then exit, per python-spu-Spec section 8')
-    args=parser.parse_args()
+def main(argv=None):
+    """A refusal before serving is one JSON line on stderr and exit 1, before the
+    channels are adopted, as the Rust SPU's main refuses a bad parameter."""
+    from . import CUBLAS_WORKSPACE,CUBLAS_WORKSPACE_PRIOR
+    try:
+        headroom,cpu,declare=parameters(sys.argv[1:] if argv is None else argv)
+    except BadParameter as e:
+        print(json.dumps({'refusal':'bad_parameter','detail':str(e)}),file=sys.stderr)
+        return 1
+    if CUBLAS_WORKSPACE_PRIOR not in (None,CUBLAS_WORKSPACE):
+        print(json.dumps({'refusal':'bad_environment','detail':
+            f'CUBLAS_WORKSPACE_CONFIG is {CUBLAS_WORKSPACE_PRIOR!r}, and python-spu sets '
+            f'{CUBLAS_WORKSPACE} for its deterministic algorithms'}),file=sys.stderr)
+        return 1
     try:
         lifecycle,decode=adopt()
-        Service(cpu=args.cpu_experiment,enforce_imports=True,
-                declare_imports=args.declare_imports).serve(lifecycle,decode)
+        Service(cpu=cpu,headroom=headroom,enforce_imports=True,
+                declare_imports=declare).serve(lifecycle,decode)
     except Exception as e:
         print(json.dumps({'python_spu_fault':type(e).__name__,'detail':str(e)}),file=sys.stderr)
         return 1
