@@ -19,7 +19,8 @@ from the record, and a turn's fill is that context over the capacity at the
 turn's first call: the prefix the run's
 open seated, then every delta rendered before the call and every emission
 before it, in order. The prefix is not in any delta, so its size is read as the
-first call's resident count less that call's input and output tokens. A delta's
+first call's resident count less that call's input and output tokens and its
+terminator, which every generation leaves resident. A delta's
 tokens are split between its rendered segments by their share of its bytes,
 each segment being user text, a tool response, or the model's own text. The
 rebuild is checked against every call's `resident`, and the largest difference
@@ -33,7 +34,6 @@ import re
 import sqlite3
 import statistics
 
-UNCLOSED = "Your last call did not run, because it was not closed"
 EXIT = "\n\nexit status"
 SEGMENT = re.compile(r"<\|im_start\|>(\w+)\n(.*?)(?=<\|im_start\|>|\Z)", re.S)
 # A reference to an earlier run names the run, task or session it points back
@@ -73,20 +73,25 @@ def texts(event):
             if p.get("type") == "text"]
 
 
+def decayed(emission):
+    """The signature #746 records, read from the model's verbatim emission: a
+    call opened and never closed, whether the closing tag is missing, replaced
+    by a second opening tag, or replaced by a stray token."""
+    return emission.count("<tool_call>") > emission.count("</tool_call>")
+
+
 def decayed_turns(events):
-    turns = set()
-    for event in events:
-        key = (event["run"], event.get("turn"))
-        if event["kind"] == "message.assistant" and any("<tool_call>" in t for t in texts(event)):
-            turns.add(key)
-        if event["kind"] == "message.user" and any(t.startswith(UNCLOSED) for t in texts(event)):
-            turns.add(key)
-    return turns
+    """The turns holding a decayed emission. The decay is the turn's own, so it
+    is read from `model.output` rather than from the parsed message or from the
+    loop's feedback, which lands a turn later."""
+    return {(event["run"], event.get("turn")) for event in events
+            if event["kind"] == "model.output"
+            and decayed(event["payload"].get("emission", ""))}
 
 
 # 1 and 5: what crossed, and what the store holds of it.
 
-def crossing(by, store, prefixes):
+def crossing(by, store, prefixes, exact=False):
     elected = {}
     elections = collections.Counter()
     kinds = collections.defaultdict(lambda: {"events": 0, "payload_bytes": 0,
@@ -112,8 +117,10 @@ def crossing(by, store, prefixes):
                     if event["kind"] == "model.measurement":
                         readings[path].append(size(payload[path]))
                         per_turn[(event["run"], event.get("turn"))] += size(payload[path])
-    like = [p + "%" for p in prefixes]
-    where = " OR ".join("e.session LIKE ?" for _ in like)
+    # The store is filtered as the trace was, by name whole or by prefix, so a
+    # document never counts one session's events and another's rows.
+    like = list(prefixes) if exact else [p + "%" for p in prefixes]
+    where = " OR ".join(("e.session = ?" if exact else "e.session LIKE ?") for _ in like)
 
     def rows(sql):
         return store.execute(sql.replace("WHERE", f"WHERE ({where}) AND")
@@ -294,6 +301,9 @@ def contexts(by):
                     rendered = request["payload"].get("rendered", "")
                     segments = [(origin(r, b), len(b.encode())) for r, b in SEGMENT.findall(rendered)]
                     total = sum(n for _, n in segments) or 1
+                    # Each generation leaves its terminator resident, one token
+                    # past its output tokens, whatever ended it.
+                    outputs += 1
                     if prefix is None:
                         prefix = payload.get("resident", 0) - inputs - outputs
                         held["prefix"] = prefix
@@ -498,7 +508,7 @@ def main():
         calls, worst = contexts(by)
         document = {
             "sessions": len(by),
-            "crossing": crossing(by, store, prefixes),
+            "crossing": crossing(by, store, prefixes, args.exact),
             "tool_results": tool_results(by),
             "context": context_shares(calls, by),
             "context_rebuild_max_token_error": round(worst, 1),

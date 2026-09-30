@@ -81,9 +81,11 @@ saves most on moves and fights, and least on errors and on the usage text, which
 CLI prints whole on every malformed call and which the distillate keeps as it is.
 
 **Tool results are the larger part of the context.** At each run's last call, rebuilt
-from the record, the context is 56.3 per cent tool responses, 23.9 per cent the model's
-own earlier text, 10.6 per cent user messages and 9.3 per cent the identity prefix. The
-rebuild agrees with the model's own resident count to within 165 tokens over a run.
+from the record, the context is 56.10 per cent tool responses, 24.12 per cent the
+model's own earlier text, 10.55 per cent user messages and 9.22 per cent the identity
+prefix. The rebuild counts each generation's terminator, which every generation leaves
+resident one token past its output tokens, and it then agrees with the model's own
+resident count at every call, the largest difference being 0 tokens.
 
 ## 3. The asks
 
@@ -115,27 +117,36 @@ line reached the model, and nothing shows the model using it.
 ## 4. The model's own text, and where decay set in
 
 The model's messages run to a median of 260 bytes a turn, a 90th percentile of 5,861
-and a maximum of 18,521. At a turn's opening, its own earlier text is a median 6.2 per
-cent of the context in a turn that did not decay and 17.8 per cent in one that did, and
-the tool responses 3.9 against 57.2 per cent.
+and a maximum of 18,521.
 
-**Decay set in early.** In the 21 sessions that decayed, the first decayed turn was a
-median turn 2 of the run, the latest turn 8, at a median fill of 17.2 per cent of the
-context, of which 14.4 per cent was the model's own text and 35.9 per cent tool
-responses. The rate of decay by the fill at a turn's opening:
+**A turn is decayed when its emission opened a call and never closed it**, read from
+`model.output`'s verbatim emission: the closing tag missing, or a second opening tag
+or a stray token where it belongs, the signature #746 records. The parsed message is
+not the witness, because the harness parses a call out of an emission whose tag decayed
+and the loop's feedback lands a turn later.
+
+At a turn's opening, the context's fill is a median 7.34 per cent in a turn that did
+not decay and 25.43 per cent in one that did. The model's own earlier text is 6.24 per
+cent of it against 17.32, and the tool responses 0.0 against 46.45.
+
+**Decay set in at the first turn.** In the 30 sessions that decayed, the first decayed
+turn was a median turn 1 of the run and the latest turn 6, at a median fill of 3.17 per
+cent, with none of the model's own text and no tool response in the context at the
+median. So the decay does not wait for the context to fill. The rate still rises with
+the fill at a turn's opening:
 
 | Fill | Turns | Decayed | Rate |
 |---|---|---|---|
-| 0.0 to 0.1 | 209 | 10 | 0.048 |
-| 0.1 to 0.2 | 53 | 10 | 0.189 |
-| 0.2 to 0.3 | 61 | 6 | 0.098 |
-| 0.3 to 0.4 | 12 | 3 | 0.250 |
-| 0.4 to 0.5 | 12 | 9 | 0.750 |
-| 0.5 to 0.6 | 21 | 7 | 0.333 |
-| 0.6 to 0.8 | 15 | 8 | 0.533 |
-| 0.8 to 1.0 | 9 | 5 | 0.556 |
+| 0.0 to 0.1 | 209 | 28 | 0.134 |
+| 0.1 to 0.2 | 52 | 14 | 0.269 |
+| 0.2 to 0.3 | 62 | 16 | 0.258 |
+| 0.3 to 0.4 | 12 | 6 | 0.500 |
+| 0.4 to 0.5 | 11 | 8 | 0.727 |
+| 0.5 to 0.6 | 22 | 8 | 0.364 |
+| 0.6 to 0.8 | 15 | 9 | 0.600 |
+| 0.8 to 1.0 | 9 | 6 | 0.667 |
 
-At a fill of 0.3 and over, 32 of 69 turns decayed, and under it 26 of 323. The buckets
+At a fill of 0.3 and over, 37 of 69 turns decayed, and under it 58 of 323. The buckets
 over 0.3 hold few turns each, so the rise is read over them together rather than bucket
 by bucket.
 
@@ -160,7 +171,7 @@ Stated as questions, with the numbers beside them. None is decided here.
 
 - **What does a tool result distil to, and whose distillate is it?** The model is its
   only reader. Outcome, position, hit points and inventory keep 31.0 per cent of its
-  bytes, and tool results are 56.3 per cent of the context by a run's end. Errors and
+  bytes, and tool results are 56.10 per cent of the context by a run's end. Errors and
   the CLI's usage text are 207,070 of the 283,888 bytes the distillate keeps.
 - **Does recall serve the loop or the model?** The continuity line reached seven later
   openings and the model referred to an earlier run 0 times. A whole recall grows to
