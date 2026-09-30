@@ -81,3 +81,31 @@ The counted pair ran as session `s-rusty-b` with loop v3, `--turn-cap 8`, labels
 and `run2`, and the first pair as session `s-rusty` with loop v2. The probes ran as
 their own sessions, one task each. Reading a trace or a store afterwards needs the state
 member's group or root, the territory being that group's.
+
+## The sessions of 2026-09-30
+
+`code/sessions.py` runs a sequence of sessions for the classifier evaluation's corpus,
+one task each, with the same interpreter and environment as `run.py`, which it calls
+once per session:
+
+```
+cd <herobench>
+<the same environment as a run above> \
+  <repo>/experiments/trace-content/herobench-agents/code/sessions.py \
+  --agent <agent> --port <port> --herobench <herobench> --out <deposit>/<agent> \
+  --declare '<declare-command> {session} {seed}' --seed-base 20260930000 \
+  --count 50 --level 1 --tasks 1-9 --turn-cap 8 --stop-after 3
+```
+
+The session and the seed are the declaration's, so `--declare` names a command that
+rewrites the agent's declaration under them and validates it. On olympus that was a
+local script rewriting the session line and the seed tunable of a kept copy of the
+declaration and nothing else, and the box's arrangement around it stays out of this
+repository. `code/sessions_report.py` then reads the agent's trace, its state store and
+the sessions directory into `report.json`:
+
+```
+python3 <repo>/experiments/trace-content/herobench-agents/code/sessions_report.py \
+  --trace <deposit>/<agent>/trace.ndjson --state <deposit>/<agent>/state.sql \
+  --sessions <deposit>/<agent> --prefix s-<agent>-n- --out <deposit>/<agent>/report.json
+```
