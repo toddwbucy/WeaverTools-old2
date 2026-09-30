@@ -63,16 +63,19 @@ def main():
             if str(event.get("session", "")).startswith(args.prefix):
                 by_session[event["session"]].append(event)
 
+    # The store is selected by the trace's rule, a literal prefix compared byte
+    # for byte, rather than by LIKE, whose _ and % are wildcards and which folds
+    # case.
     store = sqlite3.connect(f"file:{args.state}?mode=ro", uri=True)
     landing = collections.defaultdict(dict)
     for table in ("message", "measurement", "field", "series"):
         for session, count in store.execute(
                 f"SELECT e.session, count(*) FROM {table} t JOIN event e ON e.id = t.event_id "
-                "WHERE e.session LIKE ? GROUP BY e.session", (args.prefix + "%",)):
+                "WHERE substr(e.session, 1, length(?)) = ? GROUP BY e.session", (args.prefix, args.prefix)):
             landing[session][table] = count
     for session, block, count in store.execute(
             "SELECT e.session, p.block, count(*) FROM part p JOIN event e ON e.id = p.event_id "
-            "WHERE e.session LIKE ? GROUP BY e.session, p.block", (args.prefix + "%",)):
+            "WHERE substr(e.session, 1, length(?)) = ? GROUP BY e.session, p.block", (args.prefix, args.prefix)):
         landing[session]["part." + block] = count
 
     rows = []
