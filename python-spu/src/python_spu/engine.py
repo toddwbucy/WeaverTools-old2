@@ -67,14 +67,68 @@ def containers(directory):
         stem,count,suffix=parsed[0]
         first=directory/f'{stem}-{1:05}-of-{count:05}{suffix}'
     split=_split(first.name)
-    members=[first] if split is None else [
+    return [first] if split is None else [
         directory/f'{split[0]}-{index:05}-of-{split[1]:05}{split[2]}' for index in range(1,split[1]+1)]
-    for member in members:
-        try: mode=os.stat(member).st_mode
-        except FileNotFoundError: raise AdmissionError('artifact_unresolvable',f'{member} is absent') from None
-        except OSError as e: raise AdmissionError('artifact_unreadable',f'{member}: {e}') from None
-        if not stat.S_ISREG(mode): raise AdmissionError('artifact_unresolvable',f'{member} is not a file')
-    return members
+
+def pin(members):
+    """weaver-spu artifact.rs `pin`, ported: each container opened once, O_NONBLOCK so a
+    FIFO cannot block the open, its kind judged on the descriptor it opened rather than
+    on the name. **Everything after reads through these descriptors**, the size, the
+    load and the hash's container bytes, so the three cannot observe three different
+    files. Answers (name, descriptor) pairs in shard order, the caller closing them."""
+    pinned=[]
+    try:
+        for member in members:
+            try: fd=os.open(member,os.O_RDONLY|os.O_NONBLOCK|os.O_CLOEXEC)
+            except FileNotFoundError: raise AdmissionError('artifact_unresolvable',f'{member} is absent') from None
+            except OSError as e: raise AdmissionError('artifact_unreadable',f'{member}: {e}') from None
+            pinned.append((Path(member).name,fd))
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                raise AdmissionError('artifact_unresolvable',f'{member} is not a file')
+    except BaseException:
+        for _,fd in pinned: os.close(fd)
+        raise
+    return pinned
+
+def pinned_size(pinned):
+    return sum(os.fstat(fd).st_size for _,fd in pinned)
+
+def pinned_tensors(pinned):
+    """The containers' tensors, read through the pinned descriptors only."""
+    from safetensors import safe_open
+    tensors={}
+    for _,fd in pinned:
+        with safe_open(f'/proc/self/fd/{fd}',framework='pt') as f:
+            for key in f.keys(): tensors[key]=f.get_tensor(key)
+    return tensors
+
+def weights_digest(path,pinned):
+    """weaver-spu artifact.rs `hash_canonical`'s value: every regular file under the
+    directory, sorted, symbolic links not followed, its relative path and then its
+    bytes, in blake3. **A pinned container's bytes are read through its pin**, so under
+    a swap during admission the digest names the bytes the load served, where the Rust
+    walk reads the new name. A pinned container whose name the walk does not meet is
+    refused rather than left out of the identity."""
+    path=Path(path); pins=dict(pinned); met=set()
+    digest=blake3()
+    def walk(directory):
+        for file in sorted(directory.iterdir(),key=lambda p:p.name):
+            if file.is_symlink(): continue
+            if file.is_dir(): yield from walk(file)
+            elif file.is_file(): yield file
+    for file in walk(path):
+        relative=str(file.relative_to(path))
+        digest.update(relative.encode())
+        if relative in pins:
+            met.add(relative); fd=pins[relative]; offset=0
+            while chunk:=os.pread(fd,1024*1024,offset):
+                digest.update(chunk); offset+=len(chunk)
+        else:
+            with file.open('rb') as stream:
+                for chunk in iter(lambda:stream.read(1024*1024),b''): digest.update(chunk)
+    absent=sorted(set(pins)-met)
+    if absent: raise AdmissionError('artifact_unreadable',f'pinned and absent from the hash walk: {", ".join(absent)}')
+    return digest.hexdigest()
 
 def judge_room(ordinal,free,total,shard_bytes,headroom):
     """weaver-spu gpu/mod.rs `room_and_reach`, its room half, ported: a device admits
@@ -90,10 +144,10 @@ def judge_room(ordinal,free,total,shard_bytes,headroom):
 class HFEngine:
     def __init__(self,artifact,devices,cpu=False,readout=False,headroom=HEADROOM_BYTES):
         import torch
-        from transformers import AutoConfig, AutoModelForCausalLM
+        from transformers import AutoConfig, MODEL_FOR_CAUSAL_LM_MAPPING
         from tokenizers import Tokenizer
         self.torch=torch
-        self.model=None; self.cache=None; self.hooks=[]
+        self.model=None; self.cache=None; self.hooks=[]; self.pinned=[]
         # Whether a load began on the device, the one thing close() has to free there.
         self.placing=False
         self.logits=None; self.norms=[]; self.current_norms=[]; self.readout=readout
@@ -108,6 +162,9 @@ class HFEngine:
         if not cpu and (not torch.cuda.is_available() or devices[0]>=torch.cuda.device_count()):
             raise AdmissionError('device_cannot_admit','assigned CUDA device unavailable')
         try:
+            # The pin, held for the admit. The sidecars, config and tokenizer, are opens
+            # by name, the limit weaver-spu's native `sidecar_dir` states for its own.
+            self.pinned=pin(members)
             config=AutoConfig.from_pretrained(path,local_files_only=True,trust_remote_code=False)
             if config.model_type!='qwen2': raise AdmissionError('artifact_unreadable','only qwen2 is verified')
             if getattr(config,'quantization_config',None): raise AdmissionError('artifact_unreadable','quantized artifacts unsupported')
@@ -122,12 +179,16 @@ class HFEngine:
             # as the Rust SPU judges it: the shard is the pinned containers' size over
             # the device count. A CPU experiment has no device and so no room to judge.
             if not cpu:
-                shard_bytes=sum(os.stat(m).st_size for m in members)//len(devices)
+                shard_bytes=pinned_size(self.pinned)//len(devices)
                 try: free,total=torch.cuda.mem_get_info(devices[0])
                 except RuntimeError as e: raise AdmissionError('device_cannot_admit',f'device {devices[0]} unreachable: {e}') from None
                 judge_room(devices[0],free,total,shard_bytes,headroom)
-            model=AutoModelForCausalLM.from_pretrained(path,local_files_only=True,
-                trust_remote_code=False,dtype=getattr(torch,DTYPE),attn_implementation='eager')
+            # The weights come through the pins only. The concrete class for the config,
+            # from transformers' own mapping, takes them as a state dict, so the model
+            # code, its tying and its cast are the path load's, and the bytes are not.
+            model=MODEL_FOR_CAUSAL_LM_MAPPING[type(config)].from_pretrained(None,config=config,
+                state_dict=pinned_tensors(self.pinned),dtype=getattr(torch,DTYPE),
+                attn_implementation='eager')
             # Set where placement begins, so a move that fails part-way is still freed.
             self.placing=not cpu
             self.model=model.to(self.device).eval()
@@ -135,17 +196,8 @@ class HFEngine:
             if readout:
                 for layer in self.model.model.layers:
                     self.hooks.append(layer.register_forward_hook(self._tap))
-            digest=blake3()
-            def walk(directory):
-                for file in sorted(directory.iterdir(),key=lambda p:p.name):
-                    if file.is_symlink(): continue
-                    if file.is_dir(): yield from walk(file)
-                    elif file.is_file(): yield file
-            for file in walk(path):
-                digest.update(str(file.relative_to(path)).encode())
-                with file.open('rb') as stream:
-                    for chunk in iter(lambda:stream.read(1024*1024),b''): digest.update(chunk)
-            self.weights_hash=digest.hexdigest()
+            self.weights_hash=weights_digest(path,self.pinned)
+            self._unpin()
             self.artifact=str(path.resolve())
             torch.set_num_threads(1)
             torch.use_deterministic_algorithms(True)
@@ -177,7 +229,11 @@ class HFEngine:
     def rebuild(self,tokens):
         self.cache=None; self.logits=None; self.norms=[]
         self.append(tokens)
+    def _unpin(self):
+        for _,fd in getattr(self,'pinned',[]): os.close(fd)
+        self.pinned=[]
     def close(self):
+        self._unpin()
         for hook in self.hooks: hook.remove()
         self.hooks=[]; self.cache=None; self.model=None; self.logits=None
         gc.collect()

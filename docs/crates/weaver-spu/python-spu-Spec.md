@@ -213,9 +213,9 @@ the walk in the act that moves the pin to it.
 
 | `weaver-spu` items | Oracle operation, or why excluded |
 | --- | --- |
-| `artifact`: `resolve`, `pin`, `PinnedArtifact` and its accessors, `names_a_split` | `artifact`, over a fixture directory: the resolved paths, the split judgment, each refusal |
+| `artifact`: `resolve`, `pin`, `PinnedArtifact` and its accessors, `names_a_split` | `artifact`, over a fixture directory: the resolved file, the pinned length and each refusal, run as `engine.containers` then `engine.pin`. The pin holds each container's descriptor for the admit, and the size, the load and the hash's container bytes read through it |
 | `artifact`: `read_header`, `ArtifactHeader`, `Container` | `artifact`: the header of a safetensors directory. A GGUF container is refused at admit, a container this implementation does not serve |
-| `artifact`: `weights_hash`, and `residency`: `WeightsHash` and its sentinel | `artifact`: the blake3 digest over the fixture, and the sentinel |
+| `artifact`: `weights_hash`, and `residency`: `WeightsHash` and its sentinel | `weights_hash`: the canonical walk's blake3 over the fixture, equal to `python-spu`'s wherever nothing is swapped during admission, and the sentinel. `python-spu` reads the pinned containers' bytes through the pins inside that walk, so under a swap its digest names the bytes it served, where the Rust walk of a directory reads the new name. A pinned container the walk does not meet refuses `artifact_unreadable`. The sidecars are read by name, as the Rust states for its own |
 | `channel`: `adopt`, `Inherited`, `EntryFault` | excluded from the oracle: they read the process's inherited descriptors, which no call can hand over. A process test, per section 3 |
 | `channel`: `LifecycleChannel`, `DecodeSocket`, `lifecycle_from_owned`, `decode_from_owned`, `send`, `recv`, `send_octets`, `recv_octets`, `try_recv_octets`, `as_fd`, `ChannelFault` | `frame`, over a socket pair with the Rust code at one end: envelopes, segmented frames, truncation and closure faults |
 | `channel`: `ClassifySocket`, `adopt_classify` | excluded: the label seam is not this implementation's, per section 1 |
@@ -247,10 +247,13 @@ the walk in the act that moves the pin to it.
 ## 4. What is its own
 
 **The engine.** The first version runs Hugging Face `transformers` in eager mode at
-BF16, loading with `torch_dtype=bfloat16`, on one CUDA device, serving the Qwen2 family
-from a local safetensors directory. It makes no download, runs no remote code, converts
-no quantization, falls back to no other device, and shards nothing. Section 9 names the
-versions after it.
+BF16, on one CUDA device, serving the Qwen2 family from a local safetensors directory.
+It reads the weights only through the descriptors the admission pinned, with
+`safetensors` on each pin, and builds the model with the class transformers maps the
+config to, at `dtype=bfloat16`, so the model code, its tying and its cast are
+transformers' own. It makes no download, runs no remote code, converts no quantization,
+falls back to no other device, and shards nothing. Section 9 names the versions after
+it.
 
 **The kernel stack.** The kernels are PyTorch's and the CUDA libraries PyTorch brings
 with it, its own cuBLAS and cuDNN among them, not the ones the Rust SPU links. They are
@@ -581,7 +584,11 @@ one. So the lock leaves triton out, and the package sets `TORCH_DISABLE_NATIVE_J
 before torch is imported, so an environment that gained triton still serves torch's
 eager kernels and faults on triton's import rather than compiling. The suite proves the
 rule by perturbation: a shared object copied out of the environment and loaded at
-startup faults the process at admission, naming it.
+startup faults the process at admission, naming it. A container replaced under its name
+during admission stays mapped as the pinned inode, `model.safetensors (deleted)` in a
+data mapping, which the rule does not judge, measured with a replacement made between
+the pin and the load. So `python-spu` serves the pinned bytes, as the Rust SPU serves
+its pin, rather than faulting.
 
 **The determinism environment is the process's own.** The engine enables torch's
 deterministic algorithms, which require `CUBLAS_WORKSPACE_CONFIG`, so the package sets

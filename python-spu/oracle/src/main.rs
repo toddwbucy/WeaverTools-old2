@@ -37,6 +37,16 @@ fn run(v: Value, raw_body: &str) -> Result<Value, String> {
             Ok(json!({"resolved": resolved.file_name().and_then(|n| n.to_str()),
                 "len": pinned.len().map_err(|e| format!("{e:?}"))?}))
         },
+        // weaver-spu artifact.rs's weights_hash over a directory, after resolve and pin:
+        // the canonical walk's blake3, which python-spu's digest must equal whenever
+        // nothing is swapped during admission.
+        "weights_hash" => {
+            let dir = v["path"].as_str().ok_or("path")?;
+            let reference = weaver_types::ArtifactRef(dir.into());
+            let resolved = weaver_spu::artifact::resolve(&reference).map_err(|e| format!("{e:?}"))?;
+            let mut pinned = weaver_spu::artifact::pin(&resolved).map_err(|e| format!("{e:?}"))?;
+            Ok(json!(weaver_spu::artifact::weights_hash(std::path::Path::new(dir), &mut pinned).0))
+        },
         "render" => {
             let messages: Vec<weaver_traits::Message> = serde_json::from_value(body).map_err(|e| e.to_string())?;
             weaver_spu::family::qwen2::renderer().render_identity(&messages)

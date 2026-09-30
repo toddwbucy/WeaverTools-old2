@@ -157,10 +157,9 @@ def test_the_needed_sum_saturates_as_rusts_does():
 @pytest.fixture
 def a_device(monkeypatch):
     """One CUDA device as the engine sees it, with the free memory the test sets and the
-    load replaced by a stop, so no test here touches a card however the judgment is
-    perturbed."""
+    load replaced by a stop at its first step, the read through the pins, so no test here
+    touches a card however the judgment is perturbed."""
     import torch
-    import transformers
     state = {"free": 0}
     monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
     monkeypatch.setattr(torch.cuda, "device_count", lambda: 1)
@@ -168,7 +167,7 @@ def a_device(monkeypatch):
 
     def stop(*args, **kwargs):
         raise RuntimeError("reached the load")
-    monkeypatch.setattr(transformers.AutoModelForCausalLM, "from_pretrained", stop)
+    monkeypatch.setattr(engine, "pinned_tensors", stop)
     return state
 
 
@@ -259,8 +258,19 @@ def test_what_is_not_one_artifact_refuses(tmp_path, names, kind):
     first shard resolves."""
     root = directory(tmp_path, names)
     with pytest.raises(AdmissionError) as caught:
-        engine.containers(root)
+        resolve_and_pin(root)
     assert caught.value.kind == kind
+
+
+def resolve_and_pin(root):
+    """The Rust admit's first two steps, resolve and pin, as python-spu runs them. Answers
+    the pinned names and their summed size, closing the descriptors."""
+    pinned = engine.pin(engine.containers(root))
+    try:
+        return [name for name, _ in pinned], engine.pinned_size(pinned)
+    finally:
+        for _, fd in pinned:
+            os.close(fd)
 
 
 def test_a_linked_container_counts_by_its_target_and_a_named_directory_does_not(tmp_path):
@@ -310,13 +320,12 @@ def test_the_container_rule_is_the_rust_codes(tmp_path, oracle, names):
     root = directory(tmp_path, names, {name: 10 * (i + 1) for i, name in enumerate(names)})
     rust = oracle(op="artifact", path=str(root))
     try:
-        members = engine.containers(root)
+        names, size = resolve_and_pin(root)
     except AdmissionError as refused:
         assert rust == {"error": {"artifact_unresolvable": "ArtifactUnresolvable",
                                   "artifact_unreadable": "ArtifactUnreadable"}[refused.kind]}, rust
         return
-    assert rust == {"ok": {"resolved": members[0].name,
-                           "len": sum(os.stat(m).st_size for m in members)}}, (rust, members)
+    assert rust == {"ok": {"resolved": names[0], "len": size}}, (rust, names)
 
 
 def test_a_gguf_resolves_and_python_spu_refuses_it(tmp_path):
@@ -376,3 +385,123 @@ def test_a_foreign_cublas_on_the_library_path_is_not_mapped(tmp_path):
     mapped, foreign = done.stdout.strip().splitlines()
     assert foreign == "[]", foreign
     assert str(lib) not in mapped and "nvidia/cu13/lib/libcublas.so.13" in mapped, mapped
+
+
+# The pin: the size, the load and the hash read through the descriptors, weaver-spu
+# artifact.rs's PinnedArtifact, so they cannot observe different files.
+
+@pytest.fixture
+def artifact(tmp_path, tiny_model):
+    """A copy of the tiny model the test may change, and a second weights file of the
+    same shapes and different values, as a swap would bring."""
+    import torch
+    from safetensors.torch import load_file, save_file
+    root = tmp_path / "artifact"
+    shutil.copytree(tiny_model, root)
+    tensors = load_file(root / "model.safetensors")
+    other = {k: (v + 1).contiguous() if v.is_floating_point() else v for k, v in tensors.items()}
+    swap = tmp_path / "swap.safetensors"
+    save_file(other, swap, metadata={"format": "pt"})
+    return root, swap
+
+
+def swapping_after_the_pin(monkeypatch, root, replacement):
+    """Replaces the container's name right after the pin, before anything reads it."""
+    real = engine.pin
+
+    def pin_then_swap(members):
+        pinned = real(members)
+        replacement(root / "model.safetensors")
+        return pinned
+    monkeypatch.setattr(engine, "pin", pin_then_swap)
+
+
+def parameters_of(model):
+    return {k: v.clone() for k, v in model.state_dict().items()}
+
+
+def test_the_pinned_load_is_the_path_load_bitwise(tiny_model):
+    """The route changes where the bytes come from and nothing else: every parameter and
+    buffer, and the tied embedding, equal a path load's."""
+    import torch
+    from transformers import AutoModelForCausalLM
+    by_path = AutoModelForCausalLM.from_pretrained(tiny_model, local_files_only=True,
+                                                   dtype=torch.bfloat16, attn_implementation="eager")
+    served = engine.HFEngine(tiny_model, [0], cpu=True)
+    try:
+        a, b = by_path.state_dict(), served.model.state_dict()
+        assert a.keys() == b.keys()
+        assert all(a[k].dtype == b[k].dtype and torch.equal(a[k], b[k]) for k in a)
+        assert all(torch.equal(x, y) for (_, x), (_, y) in
+                   zip(sorted(by_path.named_buffers()), sorted(served.model.named_buffers())))
+        tied = lambda m: m.lm_head.weight.data_ptr() == m.model.embed_tokens.weight.data_ptr()
+        assert tied(served.model) == tied(by_path)
+    finally:
+        served.close()
+
+
+def test_the_digest_is_the_rust_codes_where_nothing_is_swapped(tiny_model, oracle):
+    served = engine.HFEngine(tiny_model, [0], cpu=True)
+    try:
+        assert oracle(op="weights_hash", path=str(tiny_model)) == {"ok": served.weights_hash}
+    finally:
+        served.close()
+
+
+def test_a_swap_after_the_pin_is_never_served_or_hashed(artifact, monkeypatch, oracle):
+    """Perturbations: load by name, and the served parameters are the swapped ones. Hash
+    by name, and the digest is the swapped directory's."""
+    import torch
+    root, swap = artifact
+    before = oracle(op="weights_hash", path=str(root))["ok"]
+    pinned_model = engine.HFEngine(root, [0], cpu=True)
+    expected = parameters_of(pinned_model.model)
+    pinned_model.close()
+    swapping_after_the_pin(monkeypatch, root, lambda name: os.replace(swap, name))
+    served = engine.HFEngine(root, [0], cpu=True)
+    try:
+        got = served.model.state_dict()
+        assert all(torch.equal(expected[k], got[k]) for k in expected)
+        assert served.weights_hash == before
+        assert served.weights_hash != oracle(op="weights_hash", path=str(root))["ok"]
+        assert served.pinned == []
+    finally:
+        served.close()
+
+
+def test_the_size_is_the_pinned_files_not_the_names(artifact, a_device, monkeypatch):
+    """A larger file swapped in under the name after the pin: room is judged on the pinned
+    size, so a device with exactly that room reaches the load. Perturbation: size by
+    name, and it refuses."""
+    root, _ = artifact
+    pinned_bytes = os.stat(root / "model.safetensors").st_size
+    larger = root.parent / "larger"
+    larger.write_bytes(b"x" * (pinned_bytes + 4096))
+    # A new file renamed over the name, as a swap is: the pinned inode is untouched.
+    swapping_after_the_pin(monkeypatch, root, lambda name: os.replace(larger, name))
+    a_device["free"] = pinned_bytes + 1024
+    with pytest.raises(AdmissionError) as caught:
+        engine.HFEngine(root, [0], headroom=1024)
+    assert (caught.value.kind, str(caught.value)) == ("artifact_unreadable", "reached the load")
+
+
+def test_a_pinned_container_the_walk_does_not_meet_is_refused(artifact, monkeypatch):
+    """The name removed after the pin: the load reads the pin and succeeds, and the digest
+    refuses rather than name an identity without the container."""
+    root, _ = artifact
+    swapping_after_the_pin(monkeypatch, root, lambda name: name.unlink())
+    with pytest.raises(AdmissionError) as caught:
+        engine.HFEngine(root, [0], cpu=True)
+    assert caught.value.kind == "artifact_unreadable"
+    assert "model.safetensors" in str(caught.value)
+
+
+def test_the_pins_are_closed_on_every_path(artifact, monkeypatch):
+    """Held for the admit and closed after it, whether it is served or refused."""
+    root, _ = artifact
+    before = set(os.listdir("/proc/self/fd"))
+    engine.HFEngine(root, [0], cpu=True).close()
+    swapping_after_the_pin(monkeypatch, root, lambda name: name.unlink())
+    with pytest.raises(AdmissionError):
+        engine.HFEngine(root, [0], cpu=True)
+    assert set(os.listdir("/proc/self/fd")) == before
