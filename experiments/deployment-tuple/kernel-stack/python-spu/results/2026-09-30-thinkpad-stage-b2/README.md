@@ -5,8 +5,11 @@ python-spu at 112ec31c on the dc3a0f7a stack, loads under admin with the worker'
 `--headroom-bytes`, answers a turn, and unloads with the card empty. The load event's
 `stack` names what served. The SPU is one process mapping only admitted code, read from
 outside while it serves. The turn's diagnostic replay certifies, and nothing of karl's
-changes. **All nine of `PLAN.md`'s criteria were measured and passed**, criterion 4, the
-external maps listing, among them. Stage B left that one untaken.
+changes. **Every criterion `PLAN.md` registered was measured. Eight pass as registered,
+criterion 4, the external maps listing, among them. The seventh, registered against
+dc3a0f7a's zipapp, did not hold as registered. It passes as amended before the resume**,
+to #756's zipapp, and "The amendment" below dates it. Stage B left criterion 4
+untaken.
 
 **Scope:**
 - one agent, karl2, and one turn;
@@ -65,6 +68,8 @@ dc3a0f7a stack.**
 
 ## The criteria, run2
 
+Criteria 1 to 6, 8 and 9 are as registered. Criterion 7 is as amended.
+
 | # | Criterion | Evidence (`run2/`) | Result |
 | --- | --- | --- | --- |
 | 1 | the load answers idle, and admin's log names the SPU | `load.txt`: `{"kind":"state","state":"idle"}`. `admin-stageb-log-tail.txt`: `{"agent":"karl2","outcome":"ready","spu":"python /opt/weaver/python-spu/python-spu.pyz","verb":"load"}` | pass |
@@ -73,7 +78,7 @@ dc3a0f7a stack.**
 | 4 | **only admitted code is mapped, read from outside** | `spu-pid.txt`: **exactly one pid**, 2968909, selected by `pgrep -u weaver-karl2 -f '^/opt/weaver/python-spu/bin/python3.14 '`. `maps-code.txt`: 72 executable file-backed mappings, 60 in the prefix and 12 system objects (glibc's family, libgcc_s, libstdc++, zlib-ng, `libcuda.so.615.71.09`, `libnvidia-ml.so.615.71.09`). `maps-judged.json`: python-spu's `loaded_code.foreign` over the prefix answers `[]` | **pass, measured** |
 | 5 | the card is empty after the unload, and the unit is inactive | `nvidia-smi-after-unload.txt` is empty. While loaded, `nvidia-smi-loaded.txt` showed pid 2968909 at 1412 MiB | pass |
 | 6 | the diagnostic replay of the turn certifies | `replay-terminal.json`: `replay.closed` `{"kind":"certified"}`. `replay-cleanup.json`: exit codes `[0, 0]`, nothing signalled, temporary directory removed | pass |
-| 7 | the stack is the new build | the stack is `python-spu.pyz` bf1e0870, `worker` d157f76e and `weaver-gate` 1f1a2f1e, each equal to the installed file. The worker and gate are the dc3a0f7a build, `build/binaries.sha256` | pass |
+| 7 | the stack is the new build: registered as dc3a0f7a's zipapp 7e3e01b8, amended to #756's bf1e0870 before the resume | the stack is `python-spu.pyz` bf1e0870, `worker` d157f76e and `weaver-gate` 1f1a2f1e, each equal to the installed file. The worker and gate are the dc3a0f7a build, `build/binaries.sha256` | **did not hold as registered; passes as amended** |
 | 8 | the worker's vector carried `--headroom-bytes 268435456` | `worker-journal.txt`: `Started [systemd-run] .../worker .../coordination.sock .../python-spu.pyz .../weaver-gate --headroom-bytes 268435456`. `spu-cmdline.txt`: `python3.14 python-spu.pyz --headroom-bytes 268435456` | pass |
 | 9 | the unit's environment had no `CUBLAS_WORKSPACE_CONFIG` | `unit-environment.txt`: `Environment=` is empty. `spu-environ.txt` is empty | pass, with the reading below |
 
@@ -81,6 +86,40 @@ dc3a0f7a stack.**
 `untouched-*.sha256` and `admin-log-*.sha256` each diff empty, with the capture time
 kept apart. The journal carries no violation, fault or refusal line. The run is one run
 of 11 records.
+
+## The amendment, and every registered value run2 met differently
+
+**`PLAN.md` stays as registered, and the amendment is recorded here, in this report.**
+
+**Criterion 7 as registered did not hold for run2.** `PLAN.md` registered, at 23:22 on
+2026-09-29 (its mtime), that the load event's `stack` equals "the installed zipapp
+7e3e01b8", dc3a0f7a's. run2 served bf1e0870, #756's. The registered zipapp could not
+pass: it failed criterion 4 in `run/`, by starting the multiprocessing resource tracker,
+and #756 was the fix.
+
+**The amendment and when it was made.** The resume was written before it ran:
+- `stage-b2-resume.sh` and `RESUME.md` at 23:48 on 2026-09-29, by their mtimes. They
+  record that the resume installs #756's zipapp in place of dc3a0f7a's, and that the rest
+  of the stack stays dc3a0f7a's.
+- The value was fixed when the zipapp was staged, at 07:24 on 2026-09-30 (the mtimes of
+  `build-resume/`): bf1e0870, from a clean worktree at 112ec31c. The Planner rebuilt it
+  and matched it before run2 started at 07:43:54.
+
+Neither file restates criterion 7's value, so the amendment is implicit in them and
+explicit only in the staged sha.
+
+**Criterion 7 as amended:** the load event's `stack` equals the installed zipapp
+bf1e0870, from 112ec31c, and the dc3a0f7a worker and gate. run2 meets it
+(`trace-judged.json`).
+
+| Registered in `PLAN.md`, at dc3a0f7a's python-spu | run2 | Disposition |
+| --- | --- | --- |
+| criterion 7: the stack's zipapp is 7e3e01b8 | bf1e0870 | **did not hold as registered.** It passes as amended, above |
+| precondition: the prefix's tree digest is stage B's 1dce454a | the resume checked 2cb9db60, the digest the first run's zipapp swap left | amended in `stage-b2-resume.sh` and holds as amended. With stage B's zipapp restored and the .850720e backup removed, the prefix digests 1dce454a, the Planner's check |
+| the title, "at main dc3a0f7a" | python-spu at 112ec31c, the stack at dc3a0f7a | this report says so |
+| the resume log's step-3 label, "the installed dc3a0f7a zipapp" | the check compared the stack with the installed file, 112ec31c's | a stale label. The result stands |
+| criteria 1 to 6, 8 and 9 | no value tied to dc3a0f7a's python-spu. Criterion 2 names "the installed file", and criterion 3's weights hash is the model's | hold as registered |
+| the rehearsals with the dc3a0f7a binaries and zipapp | facts about the preparation for `run/` | true as recorded |
 
 **Reading criterion 9.** The SPU's environment is empty because the worker starts it
 that way: weaver-harness `spawn.rs:83` calls `execve` with an empty `envp`. So nothing
