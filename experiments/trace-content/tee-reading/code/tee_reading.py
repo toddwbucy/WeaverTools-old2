@@ -117,10 +117,16 @@ def crossing(by, store, prefixes, exact=False):
                     if event["kind"] == "model.measurement":
                         readings[path].append(size(payload[path]))
                         per_turn[(event["run"], event.get("turn"))] += size(payload[path])
-    # The store is filtered as the trace was, by name whole or by prefix, so a
-    # document never counts one session's events and another's rows.
-    like = list(prefixes) if exact else [p + "%" for p in prefixes]
-    where = " OR ".join(("e.session = ?" if exact else "e.session LIKE ?") for _ in like)
+    # The store is filtered by the trace's own rule, a name whole or a literal
+    # prefix compared byte for byte, so a document never counts one session's
+    # events and another's rows. LIKE is not that rule: its _ and % are
+    # wildcards and it folds case.
+    if exact:
+        like = list(prefixes)
+        where = " OR ".join("e.session = ?" for _ in like)
+    else:
+        like = [v for p in prefixes for v in (p, p)]
+        where = " OR ".join("substr(e.session, 1, length(?)) = ?" for _ in prefixes)
 
     def rows(sql):
         return store.execute(sql.replace("WHERE", f"WHERE ({where}) AND")
