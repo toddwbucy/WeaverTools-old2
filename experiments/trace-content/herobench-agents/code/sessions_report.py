@@ -102,6 +102,8 @@ def main():
                 if emission.count("<tool_call>") > emission.count("</tool_call>"):
                     decayed.add(key)
         counts = [per_turn[key] for key in opened]
+        hashes = sorted({e["payload"].get("weights_hash") for e in events
+                         if e["kind"] == "model.measurement" and "weights_hash" in e["payload"]})
         rows.append({
             "session": name, "seed": record.get("seed"), "task": record.get("task"),
             "name": task.get("name"), "ended": record.get("ended"),
@@ -110,6 +112,7 @@ def main():
             "seconds": task.get("seconds"), "turns": len(opened),
             "positions": sum(counts), "positions_max_turn": max(counts, default=0),
             "decayed_turns": len(decayed), "landing": landing.get(name, {}),
+            "weights_hash": [h[:16] if h else "" for h in hashes],
         })
 
     every_turn = []
@@ -131,7 +134,24 @@ def main():
         "positions_per_turn_max": max(every_turn, default=0),
         "landing": dict(sum((collections.Counter(r["landing"]) for r in rows),
                             collections.Counter())),
+        "decayed_turns": sum(r["decayed_turns"] for r in rows),
+        "no_action_sessions": sum(r["actions"] == 0 for r in rows),
+        "scored_above_zero": [[r["session"], r["name"], r["score"]] for r in rows if r["score"]],
+        "ended_by": dict(collections.Counter(r["ended_by"] for r in rows if r["ended_by"])),
+        "play_seconds": round(sum(r["seconds"] or 0 for r in rows)),
+        "weights_hash_by_session": {r["session"]: r["weights_hash"] for r in rows},
     }
+    by_task = collections.defaultdict(list)
+    for r in rows:
+        by_task[r["task"]].append(r)
+    totals["by_task"] = [{
+        "task": task, "name": group[0]["name"], "sessions": len(group),
+        "scored_above_zero": sum(1 for r in group if r["score"]),
+        "decayed": sum(1 for r in group if r["decayed_turns"]),
+        "no_action": sum(1 for r in group if r["actions"] == 0),
+        "positions": sum(r["positions"] for r in group),
+        "positions_max_turn": max(r["positions_max_turn"] for r in group),
+    } for task, group in sorted(by_task.items())]
     document = json.dumps({"totals": totals, "sessions": rows}, indent=1)
     if args.out:
         open(args.out, "w").write(document + "\n")
