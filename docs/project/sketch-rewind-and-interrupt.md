@@ -20,12 +20,16 @@ presented at every position. `model.request` carries each turn's rendered contri
 and the full context is "the accumulation of the recorded contributions under their
 recorded template identities, from the identity prefix the run's opening records", per
 `weaver-trace-PRD` section 3.2, with every recorded flush and elision replayed as
-section 3.1 requires. So a state the agent stood in can be stood up again from the
-record rather than reassembled from ingredients, and an exact rewind rests on the record
-together with the deployment tuple. It is written on the operator's word of 2026-09-29,
-in his framing: the trace is the append-only source of truth, a reload is a bookkeeping
-event in it, and the power of a trace this detailed is the ability to rewind and try
-again from a given spot.
+section 3.1 requires. **The accumulation starts from what the run's opening seated**:
+the identity, and under a restoring load the conversation the load restored beside it,
+which `weaver-harness-Spec` section 6.1 makes prefix material, permanent for the
+residency and the floor a flush returns to. So a replayed flush returns to that floor
+rather than to the identity alone. So a state the agent stood in can be stood up again
+from the record rather than reassembled from ingredients, and an exact rewind rests on
+the record together with the deployment tuple. It is written on the operator's word of
+2026-09-29, in his framing: the trace is the append-only source of truth, a reload is a
+bookkeeping event in it, and the power of a trace this detailed is the ability to rewind
+and try again from a given spot.
 
 ## 1. The door: preload to a position
 
