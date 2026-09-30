@@ -123,10 +123,27 @@ def drive(seat, text):
     opening = f"{past}\n\n{body}" if past else body
     cap = int(task.get("turn_cap", 8))
     won = False
+    ended = None
     turns = 0
     message = opening
     while turns < cap:
-        outcome = seat.turn([{"role": "user", "text": message}])
+        # **A refused turn ends the task and still leaves its verdict.** The
+        # harness refuses a turn that cannot fit the context, among others, and
+        # the seat raises. The environment's verdict is read again and scored
+        # below, between turns, so the run carries its score event whatever
+        # ended it. On 2026-09-29 a task's tool results filled the 32,768-token
+        # context at its eighth turn, and the loop died there unscored.
+        try:
+            outcome = seat.turn([{"role": "user", "text": message}])
+        except RuntimeError as error:
+            # The pyworker maps every turn error to RuntimeError, so the cause
+            # rides the verdict's predicate and a fault-ended run reads as one.
+            ended = " ".join(str(error).split())[:200]
+            # The harness opened and recorded the refused turn, so it counts,
+            # and the verdict's figure matches the record's turns.
+            turns += 1
+            won = _won(task["url"], task["character"], task["kind"], task["target"])
+            break
         turns += 1
         won = _won(task["url"], task["character"], task["kind"], task["target"])
         if won:
@@ -139,7 +156,10 @@ def drive(seat, text):
     # with an earlier one and its verdict is not in the record. Raising ends the
     # crossing with the refusal in the worker's log rather than letting the next
     # task begin as if it had been scored.
-    if not seat.score(f"herobench {task['name']} won", won, turns, cap):
+    predicate = f"herobench {task['name']} won"
+    if ended:
+        predicate += f", the run ended by a refused turn: {ended}"
+    if not seat.score(predicate, won, turns, cap):
         raise RuntimeError(
             f"the harness refused the score for {task['name']}: one run carries one verdict"
         )
